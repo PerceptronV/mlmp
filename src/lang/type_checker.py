@@ -7,11 +7,11 @@ meaningful error messages.
 
 from typing import Dict, Set, Optional
 from dataclasses import dataclass
-from ast_nodes import (
+from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode
 )
-from type_system import (
+from .type_system import (
     Type, TypeVar, IntType, BoolType, ListType, FunctionType,
     TypeScheme, TypeError, INT, BOOL, list_of, func
 )
@@ -432,7 +432,7 @@ def type_check(code: str) -> Type:
     Returns:
         The type of the program
     """
-    from parser import parse
+    from .parser import parse
     ast = parse(code)
     checker = TypeChecker()
     return checker.check_program(ast)

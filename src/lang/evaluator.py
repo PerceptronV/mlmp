@@ -7,11 +7,11 @@ proper closure semantics.
 """
 
 from typing import Any, List, Callable
-from ast_nodes import (
+from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode
 )
-from environment import Environment, Closure
+from .environment import Environment, Closure
 
 
 class EvaluationError(Exception):
@@ -549,7 +549,7 @@ def evaluate(code: str) -> Any:
     Returns:
         Evaluation result
     """
-    from parser import parse
+    from .parser import parse
     ast = parse(code)
     evaluator = Evaluator()
     return evaluator.eval(ast)

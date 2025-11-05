@@ -20,8 +20,8 @@ Grammar (informal):
 """
 
 from typing import List, Optional
-from lexer import Token, TokenType, Lexer
-from ast_nodes import (
+from .lexer import Token, TokenType, Lexer
+from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode
 )
@@ -319,7 +319,7 @@ def parse(input_text: str) -> ASTNode:
 
 
 if __name__ == "__main__":
-    from ast_nodes import pretty_print
+    from .ast_nodes import pretty_print
     
     # Example programs
     examples = [

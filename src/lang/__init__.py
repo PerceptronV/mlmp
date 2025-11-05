@@ -36,7 +36,7 @@ from .type_system import (
 )
 from .type_checker import TypeChecker, type_check
 
-# Re-export TypeError from type_system to avoid confusion
+# Re-export TypeError from types to avoid confusion
 from .type_system import TypeError as TypeSystemError
 
 __version__ = "2.0.0"
