@@ -110,61 +110,99 @@ Expression = Union[NumberNode, BooleanNode, VariableNode, LambdaNode,
                    ApplicationNode, ListNode, IfNode]
 
 
-def pretty_print(node: ASTNode, indent: int = 0) -> str:
+def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:
     """
-    Pretty-print an AST with indentation for better readability.
-    
+    Pretty-print an AST with optional indentation for better readability.
+
     Args:
         node: The AST node to print
-        indent: Current indentation level
-        
+        indent: Current indentation level (used when inline=False)
+        inline: If True, format on a single line; if False, use multi-line with indentation
+
     Returns:
         Formatted string representation of the AST
     """
-    prefix = "  " * indent
-    
-    if isinstance(node, NumberNode):
-        return f"{prefix}{node.value}"
-    
-    elif isinstance(node, BooleanNode):
-        return f"{prefix}{str(node.value).lower()}"
-    
-    elif isinstance(node, VariableNode):
-        return f"{prefix}{node.name}"
-    
-    elif isinstance(node, ListNode):
-        if not node.elements:
-            return f"{prefix}[]"
-        result = f"{prefix}[\n"
-        for elem in node.elements:
-            result += pretty_print(elem, indent + 1) + "\n"
-        result += f"{prefix}]"
-        return result
-    
-    elif isinstance(node, LambdaNode):
-        result = f"{prefix}(λ {node.param}\n"
-        result += pretty_print(node.body, indent + 1) + "\n"
-        result += f"{prefix})"
-        return result
-    
-    elif isinstance(node, ApplicationNode):
-        result = f"{prefix}(\n"
-        result += pretty_print(node.function, indent + 1) + "\n"
-        for arg in node.arguments:
-            result += pretty_print(arg, indent + 1) + "\n"
-        result += f"{prefix})"
-        return result
-    
-    elif isinstance(node, IfNode):
-        result = f"{prefix}(if\n"
-        result += pretty_print(node.condition, indent + 1) + "\n"
-        result += pretty_print(node.then_expr, indent + 1) + "\n"
-        result += pretty_print(node.else_expr, indent + 1) + "\n"
-        result += f"{prefix})"
-        return result
-    
+    if inline:
+        # Inline formatting - single line, no indentation
+        if isinstance(node, NumberNode):
+            return str(node.value)
+
+        elif isinstance(node, BooleanNode):
+            return str(node.value).lower()
+
+        elif isinstance(node, VariableNode):
+            return node.name
+
+        elif isinstance(node, ListNode):
+            if not node.elements:
+                return "[]"
+            elems_str = " ".join(pretty_print(elem, 0, True) for elem in node.elements)
+            return f"[{elems_str}]"
+
+        elif isinstance(node, LambdaNode):
+            body_str = pretty_print(node.body, 0, True)
+            return f"(λ {node.param} {body_str})"
+
+        elif isinstance(node, ApplicationNode):
+            func_str = pretty_print(node.function, 0, True)
+            args_str = " ".join(pretty_print(arg, 0, True) for arg in node.arguments)
+            return f"({func_str} {args_str})"
+
+        elif isinstance(node, IfNode):
+            cond_str = pretty_print(node.condition, 0, True)
+            then_str = pretty_print(node.then_expr, 0, True)
+            else_str = pretty_print(node.else_expr, 0, True)
+            return f"(if {cond_str} {then_str} {else_str})"
+
+        else:
+            return repr(node)
+
     else:
-        return f"{prefix}{repr(node)}"
+        # Multi-line formatting with indentation
+        prefix = "  " * indent
+
+        if isinstance(node, NumberNode):
+            return f"{prefix}{node.value}"
+
+        elif isinstance(node, BooleanNode):
+            return f"{prefix}{str(node.value).lower()}"
+
+        elif isinstance(node, VariableNode):
+            return f"{prefix}{node.name}"
+
+        elif isinstance(node, ListNode):
+            if not node.elements:
+                return f"{prefix}[]"
+            result = f"{prefix}[\n"
+            for elem in node.elements:
+                result += pretty_print(elem, indent + 1, False) + "\n"
+            result += f"{prefix}]"
+            return result
+
+        elif isinstance(node, LambdaNode):
+            result = f"{prefix}(λ {node.param}\n"
+            result += pretty_print(node.body, indent + 1, False) + "\n"
+            result += f"{prefix})"
+            return result
+
+        elif isinstance(node, ApplicationNode):
+            result = f"{prefix}(\n"
+            result += pretty_print(node.function, indent + 1, False) + "\n"
+            for arg in node.arguments:
+                result += pretty_print(arg, indent + 1, False) + "\n"
+            result += f"{prefix})"
+            return result
+
+        elif isinstance(node, IfNode):
+            result = f"{prefix}(if\n"
+            result += pretty_print(node.condition, indent + 1, False) + "\n"
+            result += pretty_print(node.then_expr, indent + 1, False) + "\n"
+            result += pretty_print(node.else_expr, indent + 1, False) + "\n"
+            result += f"{prefix})"
+            return result
+
+        else:
+            return f"{prefix}{repr(node)}"
 
 
 if __name__ == "__main__":

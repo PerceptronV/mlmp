@@ -1,8 +1,10 @@
-from .composer import sample_program, Sampler
+"""
+Data Generation Module
 
-__all__ = [
-    "sample_program",
-    "Sampler",
-]
+This module provides utilities for generating random typed programs
+for the functional programming language.
+"""
 
+from .composer import sample_program
 
+__all__ = ['sample_program']
