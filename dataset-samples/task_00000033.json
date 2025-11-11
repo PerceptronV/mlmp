@@ -1,0 +1,54 @@
+{
+  "program": "(if (if (< (if (> (if false 69 25) (- 14 33)) (if (< 71 35) (if false 9 67) (sum [])) (% (if true 69 6) (max [83 46]))) 88) false true) (if (if (if false (< (length []) 28) (is_odd (if true 96 75))) (is_odd (sum (reverse []))) (if true (is_odd 99) (if (is_even 44) false true))) (\u03bb x (reverse x)) (if true (\u03bb y (reverse y)) (\u03bb z (reverse z)))) (if (and (not false) (== (/ (min [1 57]) 93) (sum (reverse [])))) (\u03bb { []) (if true (\u03bb | (reverse |)) (if (or (is_even 67) false) (if (is_even 37) (\u03bb } []) (\u03bb ~ ~)) (if (is_odd 45) (\u03bb \u007f \u007f) (\u03bb \u0080 []))))))",
+  "examples": [
+    {
+      "input": [
+        95,
+        12,
+        89,
+        55,
+        100,
+        52,
+        47,
+        35,
+        46
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        13
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        35,
+        29,
+        89,
+        41,
+        32
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        61,
+        43,
+        0,
+        15,
+        10,
+        51,
+        0
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        29,
+        56
+      ],
+      "output": []
+    }
+  ]
+}

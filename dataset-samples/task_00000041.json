@@ -1,0 +1,69 @@
+{
+  "program": "(if true (if (if (not (is_even 58)) (not (is_even (length []))) (if (if true (== 92 64) (is_even 69)) (is_odd (if true 42 88)) (is_odd (max [46 93 10])))) (\u03bb x (reverse x)) (\u03bb y (reverse y))) (\u03bb z (reverse z)))",
+  "examples": [
+    {
+      "input": [
+        48,
+        95,
+        42,
+        22,
+        55,
+        3,
+        72
+      ],
+      "output": [
+        72,
+        3,
+        55,
+        22,
+        42,
+        95,
+        48
+      ]
+    },
+    {
+      "input": [
+        77,
+        91
+      ],
+      "output": [
+        91,
+        77
+      ]
+    },
+    {
+      "input": [
+        29
+      ],
+      "output": [
+        29
+      ]
+    },
+    {
+      "input": [
+        46
+      ],
+      "output": [
+        46
+      ]
+    },
+    {
+      "input": [
+        88,
+        6,
+        11,
+        39,
+        58,
+        80
+      ],
+      "output": [
+        80,
+        58,
+        39,
+        11,
+        6,
+        88
+      ]
+    }
+  ]
+}

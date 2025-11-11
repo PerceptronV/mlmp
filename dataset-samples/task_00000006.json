@@ -1,0 +1,58 @@
+{
+  "program": "(if (if true (if (> 92 (if (and true true) (sum []) 23)) (not (== (if false 90 92) (if false 30 6))) (< 30 73)) (if (is_even (% (if true 4 4) (if true 38 86))) false (is_even 96))) (if true (if true (if (or true true) (\u03bb x []) (\u03bb y (reverse y))) (\u03bb z (reverse z))) (\u03bb { (reverse {))) (\u03bb | |))",
+  "examples": [
+    {
+      "input": [
+        17,
+        30,
+        25,
+        55,
+        60,
+        7
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        72,
+        79,
+        92,
+        33,
+        97,
+        5,
+        53,
+        55
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        11,
+        51,
+        25,
+        74,
+        71,
+        44,
+        47,
+        81,
+        94
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        72,
+        20,
+        2,
+        88,
+        90,
+        19
+      ],
+      "output": []
+    },
+    {
+      "input": [],
+      "output": []
+    }
+  ]
+}

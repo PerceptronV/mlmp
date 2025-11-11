@@ -1,0 +1,85 @@
+{
+  "program": "(if (> (length []) (/ (* 45 (% 56 26)) (if (> 64 78) 41 63))) (if (> 22 72) (\u03bb x (reverse x)) (\u03bb y (reverse y))) (if (and (or (if false (is_odd 67) false) (is_even (- 24 93))) false) (\u03bb z (reverse z)) (if (or false true) (if true (\u03bb { (cons 48 {)) (if false (if true (\u03bb | |) (\u03bb } })) (\u03bb ~ ~))) (\u03bb \u007f \u007f))))",
+  "examples": [
+    {
+      "input": [
+        71,
+        72,
+        21,
+        41,
+        49
+      ],
+      "output": [
+        48,
+        71,
+        72,
+        21,
+        41,
+        49
+      ]
+    },
+    {
+      "input": [],
+      "output": [
+        48
+      ]
+    },
+    {
+      "input": [
+        99,
+        97,
+        86,
+        90,
+        4,
+        68,
+        85
+      ],
+      "output": [
+        48,
+        99,
+        97,
+        86,
+        90,
+        4,
+        68,
+        85
+      ]
+    },
+    {
+      "input": [
+        68,
+        99,
+        37,
+        79,
+        14,
+        1
+      ],
+      "output": [
+        48,
+        68,
+        99,
+        37,
+        79,
+        14,
+        1
+      ]
+    },
+    {
+      "input": [
+        72,
+        12,
+        85,
+        45,
+        39
+      ],
+      "output": [
+        48,
+        72,
+        12,
+        85,
+        45,
+        39
+      ]
+    }
+  ]
+}

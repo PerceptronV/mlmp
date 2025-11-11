@@ -1,0 +1,49 @@
+{
+  "program": "(if false (\u03bb x (reverse x)) (if (is_even 31) (\u03bb y (reverse y)) (\u03bb z [])))",
+  "examples": [
+    {
+      "input": [
+        86,
+        68,
+        50,
+        89,
+        97,
+        83,
+        49
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        11
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        77,
+        57
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        88,
+        95
+      ],
+      "output": []
+    },
+    {
+      "input": [
+        39,
+        70,
+        38,
+        93,
+        30,
+        6,
+        0
+      ],
+      "output": []
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "program": "(if (is_odd (if (is_even (product [50 4 71])) (if true (if false (* 27 10) 80) (if true 52 (* 68 74))) (if (is_even 43) (- (/ 13 77) 89) 53))) (if (< (if false 10 (max [51 93])) 94) (\u03bb x (reverse x)) (\u03bb y (reverse y))) (\u03bb z (if false (cons (% (* 56 80) (if false 84 9)) []) (append [69 (% 43 45)] 96))))",
+  "examples": [
+    {
+      "input": [
+        9
+      ],
+      "output": [
+        69,
+        43,
+        96
+      ]
+    },
+    {
+      "input": [
+        99,
+        35,
+        40
+      ],
+      "output": [
+        69,
+        43,
+        96
+      ]
+    },
+    {
+      "input": [
+        60,
+        61,
+        42,
+        53
+      ],
+      "output": [
+        69,
+        43,
+        96
+      ]
+    },
+    {
+      "input": [
+        29,
+        93
+      ],
+      "output": [
+        69,
+        43,
+        96
+      ]
+    },
+    {
+      "input": [
+        43,
+        34,
+        86
+      ],
+      "output": [
+        69,
+        43,
+        96
+      ]
+    }
+  ]
+}

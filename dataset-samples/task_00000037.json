@@ -1,0 +1,85 @@
+{
+  "program": "(if (if (or false false) (if (not (and (is_even 91) true)) (if (or true (is_odd 83)) (== 30 (if false 94 65)) false) (< 13 94)) (> (if (is_even (* 86 95)) 78 (+ 3 (- 93 62))) (if (or (if true false false) false) (% (min [46 52 61 60]) 18) (if (or true false) (* 74 43) 16)))) (\u03bb x (reverse x)) (if true (\u03bb y y) (if (== (product [32]) (product [69 55])) (if (is_odd (* 84 95)) (\u03bb z z) (\u03bb { [])) (if false (if true (\u03bb | []) (\u03bb } [])) (\u03bb ~ (reverse ~))))))",
+  "examples": [
+    {
+      "input": [],
+      "output": []
+    },
+    {
+      "input": [
+        74,
+        8,
+        17,
+        32,
+        48,
+        2,
+        9,
+        52
+      ],
+      "output": [
+        74,
+        8,
+        17,
+        32,
+        48,
+        2,
+        9,
+        52
+      ]
+    },
+    {
+      "input": [
+        91,
+        85,
+        74,
+        75,
+        83
+      ],
+      "output": [
+        91,
+        85,
+        74,
+        75,
+        83
+      ]
+    },
+    {
+      "input": [
+        12,
+        65,
+        28,
+        32
+      ],
+      "output": [
+        12,
+        65,
+        28,
+        32
+      ]
+    },
+    {
+      "input": [
+        67,
+        59,
+        83,
+        80,
+        65,
+        9,
+        64,
+        79,
+        54
+      ],
+      "output": [
+        67,
+        59,
+        83,
+        80,
+        65,
+        9,
+        64,
+        79,
+        54
+      ]
+    }
+  ]
+}

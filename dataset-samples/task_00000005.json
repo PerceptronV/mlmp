@@ -1,0 +1,67 @@
+{
+  "program": "(if true (\u03bb x (reverse x)) (if true (if (is_odd (min [25 90 64 45])) (if (> 78 (max [33 91])) (\u03bb y (reverse y)) (\u03bb z (reverse z))) (\u03bb { {)) (if (and true true) (\u03bb | |) (\u03bb } }))))",
+  "examples": [
+    {
+      "input": [
+        57,
+        37
+      ],
+      "output": [
+        37,
+        57
+      ]
+    },
+    {
+      "input": [
+        5,
+        35,
+        42,
+        65,
+        81,
+        89,
+        56,
+        90,
+        27
+      ],
+      "output": [
+        27,
+        90,
+        56,
+        89,
+        81,
+        65,
+        42,
+        35,
+        5
+      ]
+    },
+    {
+      "input": [
+        66,
+        32,
+        3,
+        87
+      ],
+      "output": [
+        87,
+        3,
+        32,
+        66
+      ]
+    },
+    {
+      "input": [],
+      "output": []
+    },
+    {
+      "input": [
+        71,
+        34
+      ],
+      "output": [
+        34,
+        71
+      ]
+    }
+  ]
+}

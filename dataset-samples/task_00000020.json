@@ -1,0 +1,60 @@
+{
+  "program": "(\u03bb x (reverse [(% (if (is_odd 2) (if false 94 24) 22) (+ (max [60 73 45]) (if false 7 89))) (+ (length (cons 59 [])) 61) (% (max [67 27 90]) (if (if false false true) (if false 24 44) 52))]))",
+  "examples": [
+    {
+      "input": [
+        88,
+        66
+      ],
+      "output": [
+        2,
+        62,
+        22
+      ]
+    },
+    {
+      "input": [
+        73,
+        40,
+        22,
+        33,
+        54,
+        52
+      ],
+      "output": [
+        2,
+        62,
+        22
+      ]
+    },
+    {
+      "input": [],
+      "output": [
+        2,
+        62,
+        22
+      ]
+    },
+    {
+      "input": [
+        6,
+        57
+      ],
+      "output": [
+        2,
+        62,
+        22
+      ]
+    },
+    {
+      "input": [
+        67
+      ],
+      "output": [
+        2,
+        62,
+        22
+      ]
+    }
+  ]
+}
