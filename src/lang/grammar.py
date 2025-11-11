@@ -1,3 +1,4 @@
+from __future__ import annotations
 import inspect
 import random
 from typing import get_type_hints, get_origin, TypeVar, Callable
@@ -414,7 +415,7 @@ def flatten(xss: list) -> list:
 # Note: Higher-order functions like map, filter, fold require closure support
 # from the evaluator. These are placeholders that demonstrate the interface.
 @DefaultGrammar
-def map(f: Callable[T1, T2], xs: list[T1]) -> list[T2]:
+def map(f: Callable[[T1], T2], xs: list[T1]) -> list[T2]:
     """Map function over list: (map f xs)"""
     return [f(x) for x in xs]
 
@@ -480,8 +481,8 @@ def sort(f: Callable[[T1], int], xs: list[T1]) -> list[T1]:
 @DefaultGrammar
 def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
     """Group by key function: (group f xs)"""
-    from collections import DefaultGrammardict
-    groups = DefaultGrammardict(list)
+    from collections import defaultdict
+    groups = defaultdict(list)
     for x in xs:
         key = f(x)
         key = tuple(key) if isinstance(key, list) else key
@@ -491,4 +492,4 @@ def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
 
 if __name__ == "__main__":
     print(DefaultGrammar)
-    print(DefaultGrammar['+'])
+    print(DefaultGrammar['map'])
