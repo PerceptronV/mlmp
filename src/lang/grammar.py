@@ -4,7 +4,7 @@ import random
 from typing import get_type_hints, get_origin, TypeVar, Callable
 
 
-SPECIAL_CHARS_DefaultGrammar = ('λ', '(', ')', '[', ']', ' ')
+SPECIAL_CHARS_DEFAULT = ('λ', '(', ')', '[', ']', ' ')
 T1, T2 = TypeVar('T1'), TypeVar('T2')
 
 # ============================================================================
@@ -13,7 +13,7 @@ T1, T2 = TypeVar('T1'), TypeVar('T2')
 
 class Grammar:
     def __init__(self, special_chars=None, functions=None):
-        self.special_chars = special_chars or SPECIAL_CHARS_DefaultGrammar
+        self.special_chars = special_chars or SPECIAL_CHARS_DEFAULT
         self.functions = functions or {}
         self.name_map = {}
     
@@ -103,12 +103,20 @@ class Grammar:
 
         return _wrap
     
-    def shuffle_bindings(self, bindings: list=None, seed=None):
-        random.seed(seed)
+    def shuffle_names(self, bindings: list=None):
         function_names = self.functions.keys()
         new_names = bindings or list(function_names)
         random.shuffle(new_names)
         self.name_map = dict(zip(new_names, function_names))
+    
+    def use_names(self, bindings: dict):
+        self.name_map = bindings.copy()
+    
+    def get_names(self):
+        return self.name_map.copy()
+    
+    def reset_names(self):
+        self.name_map = {}
     
     def __getitem__(self, name):
         name = self.name_map.get(name, name)
@@ -412,8 +420,6 @@ def flatten(xss: list) -> list:
     return result
 
 # higher-order functions
-# Note: Higher-order functions like map, filter, fold require closure support
-# from the evaluator. These are placeholders that demonstrate the interface.
 @DefaultGrammar
 def map(f: Callable[[T1], T2], xs: list[T1]) -> list[T2]:
     """Map function over list: (map f xs)"""
