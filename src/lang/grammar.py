@@ -48,7 +48,7 @@ class Grammar:
             'ret_type': ret_type
         }
     
-    def _make_evaluable(self, name: str, fn: Callable, arg_types) -> Callable:
+    def _make_evaluable(self, name: str, fn: Callable, arg_types: tuple) -> Callable:
         '''Make a function evaluable by the evaluator.'''
 
         # find the indices of the callable arguments in fn
@@ -176,7 +176,7 @@ def greater_than(x: int, y: int) -> bool:
     return x > y
 
 @DefaultGrammar(name='==')
-def equals(x: object, y: object) -> bool:
+def equals(x: T1, y: T1) -> bool:
     """Structural equality: (== x y)"""
     return x == y
 
@@ -209,72 +209,72 @@ def is_odd(n: int) -> bool:
 
 # list construction
 @DefaultGrammar
-def singleton(x: object) -> list:
+def singleton(x: T1) -> list[T1]:
     """Create single-element list: (singleton x)"""
     return [x]
 
 @DefaultGrammar
-def repeat(x: object, n: int) -> list:
+def repeat(x: T1, n: int) -> list[T1]:
     """Repeat element n times: (repeat x n)"""
     return [x] * n
 
 @DefaultGrammar(name='range')
-def range_fn(start: int, end: int, step: int) -> list:
+def range_fn(start: int, end: int, step: int) -> list[int]:
     """Range of numbers: (range i j n)"""
     return list(range(start, end + 1, step))
 
 @DefaultGrammar
-def cons(x: object, xs: list) -> list:
+def cons(x: T1, xs: list[T1]) -> list[T1]:
     """Prepend element: (cons x xs)"""
     return [x] + xs
 
 # list combination
 @DefaultGrammar
-def append(xs: list, x: object) -> list:
+def append(xs: list[T1], x: T1) -> list[T1]:
     """Append element: (append xs x)"""
     return xs + [x]
 
 @DefaultGrammar
-def concat(xs: list, ys: list) -> list:
+def concat(xs: list[T1], ys: list[T1]) -> list[T1]:
     """Concatenate lists: (concat xs ys)"""
     return xs + ys
 
 @DefaultGrammar(name='zip')
-def zip_fn(xs: list, ys: list) -> list:
+def zip_fn(xs: list[T1], ys: list[T1]) -> list[list[T1]]:
     """Zip two lists: (zip xs ys)"""
     return [[x, y] for x, y in zip(xs, ys)]
 
 # list access
 @DefaultGrammar
-def first(xs: list) -> object:
+def first(xs: list[T1]) -> T1:
     """First element: (first xs)"""
     if not xs:
         raise ValueError("first: empty list")
     return xs[0]
 
 @DefaultGrammar
-def second(xs: list) -> object:
+def second(xs: list[T1]) -> T1:
     """Second element: (second xs)"""
     if len(xs) < 2:
         raise ValueError("second: list too short")
     return xs[1]
 
 @DefaultGrammar
-def third(xs: list) -> object:
+def third(xs: list[T1]) -> T1:
     """Third element: (third xs)"""
     if len(xs) < 3:
         raise ValueError("third: list too short")
     return xs[2]
 
 @DefaultGrammar
-def last(xs: list) -> object:
+def last(xs: list[T1]) -> T1:
     """Last element: (last xs)"""
     if not xs:
         raise ValueError("last: empty list")
     return xs[-1]
 
 @DefaultGrammar
-def nth(i: int, xs: list) -> object:
+def nth(i: int, xs: list[T1]) -> T1:
     """Nth element: (nth i xs)"""
     if i < 0 or i >= len(xs):
         raise ValueError(f"nth: index {i} out of bounds")
@@ -282,14 +282,14 @@ def nth(i: int, xs: list) -> object:
 
 # list modification
 @DefaultGrammar
-def insert(x: object, i: int, xs: list) -> list:
+def insert(x: T1, i: int, xs: list[T1]) -> list[T1]:
     """Insert at index: (insert x i xs)"""
     result = xs.copy()
     result.insert(i, x)
     return result
 
 @DefaultGrammar
-def replace(i: int, x: object, xs: list) -> list:
+def replace(i: int, x: T1, xs: list[T1]) -> list[T1]:
     """Replace at index: (replace i x xs)"""
     if i < 0 or i >= len(xs):
         raise ValueError(f"replace: index {i} out of bounds")
@@ -298,7 +298,7 @@ def replace(i: int, x: object, xs: list) -> list:
     return result
 
 @DefaultGrammar
-def swap(i: int, j: int, xs: list) -> list:
+def swap(i: int, j: int, xs: list[T1]) -> list[T1]:
     """Swap elements: (swap i j xs)"""
     if i < 0 or i >= len(xs) or j < 0 or j >= len(xs):
         raise ValueError("swap: index out of bounds")
@@ -308,14 +308,14 @@ def swap(i: int, j: int, xs: list) -> list:
 
 # list removal
 @DefaultGrammar
-def cut_idx(i: int, xs: list) -> list:
+def cut_idx(i: int, xs: list[T1]) -> list[T1]:
     """Remove at index: (cut_idx i xs)"""
     if i < 0 or i >= len(xs):
         raise ValueError(f"cut_idx: index {i} out of bounds")
     return xs[:i] + xs[i+1:]
 
 @DefaultGrammar
-def cut_val(x: object, xs: list) -> list:
+def cut_val(x: T1, xs: list[T1]) -> list[T1]:
     """Remove first occurrence: (cut_val x xs)"""
     result = xs.copy()
     try:
@@ -325,17 +325,17 @@ def cut_val(x: object, xs: list) -> list:
     return result
 
 @DefaultGrammar
-def cut_vals(x: object, xs: list) -> list:
+def cut_vals(x: T1, xs: list[T1]) -> list[T1]:
     """Remove all occurrences: (cut_vals x xs)"""
     return [elem for elem in xs if elem != x]
 
 @DefaultGrammar
-def drop(n: int, xs: list) -> list:
+def drop(n: int, xs: list[T1]) -> list[T1]:
     """Drop first n elements: (drop n xs)"""
     return xs[n:]
 
 @DefaultGrammar
-def droplast(n: int, xs: list) -> list:
+def droplast(n: int, xs: list[T1]) -> list[T1]:
     """Drop last n elements: (droplast n xs)"""
     if n == 0:
         return xs
@@ -343,57 +343,57 @@ def droplast(n: int, xs: list) -> list:
 
 # list slicing
 @DefaultGrammar
-def take(n: int, xs: list) -> list:
+def take(n: int, xs: list[T1]) -> list[T1]:
     """Take first n elements: (take n xs)"""
     return xs[:n]
 
 @DefaultGrammar
-def takelast(n: int, xs: list) -> list:
+def takelast(n: int, xs: list[T1]) -> list[T1]:
     """Take last n elements: (takelast n xs)"""
     return xs[-n:] if n > 0 else []
 
 @DefaultGrammar(name='slice')
-def slice_fn(i: int, j: int, xs: list) -> list:
+def slice_fn(i: int, j: int, xs: list[T1]) -> list[T1]:
     """Slice from i to j: (slice i j xs)"""
     return xs[i:j]
 
 @DefaultGrammar
-def cut_slice(i: int, j: int, xs: list) -> list:
+def cut_slice(i: int, j: int, xs: list[T1]) -> list[T1]:
     """Remove slice: (cut_slice i j xs)"""
     return xs[:i] + xs[j:]
 
 @DefaultGrammar
-def splice(ys: list, i: int, xs: list) -> list:
+def splice(ys: list[T1], i: int, xs: list[T1]) -> list[T1]:
     """Insert list at index: (splice ys i xs)"""
     return xs[:i] + ys + xs[i:]
 
 # list queries
 @DefaultGrammar
-def is_in(xs: list, x: object) -> bool:
+def is_in(xs: list[T1], x: T1) -> bool:
     """Check membership: (is_in xs x)"""
     return x in xs
 
 @DefaultGrammar
-def length(xs: list) -> int:
+def length(xs: list[T1]) -> int:
     """Length of list: (length xs)"""
     return len(xs)
 
 @DefaultGrammar(name='max')
-def max_fn(xs: list) -> int:
+def max_fn(xs: list[int]) -> int:
     """Maximum element: (max xs)"""
     if not xs:
         raise ValueError("max: empty list")
     return max(xs)
 
 @DefaultGrammar(name='min')
-def min_fn(xs: list) -> int:
+def min_fn(xs: list[int]) -> int:
     """Minimum element: (min xs)"""
     if not xs:
         raise ValueError("min: empty list")
     return min(xs)
 
 @DefaultGrammar
-def product(xs: list) -> int:
+def product(xs: list[int]) -> int:
     """Product of elements: (product xs)"""
     result = 1
     for x in xs:
@@ -401,18 +401,18 @@ def product(xs: list) -> int:
     return result
 
 @DefaultGrammar(name='sum')
-def sum_fn(xs: list) -> int:
+def sum_fn(xs: list[int]) -> int:
     """Sum of elements: (sum xs)"""
     return sum(xs)
 
 # list transformation
 @DefaultGrammar(name='reverse')
-def reverse_fn(xs: list) -> list:
+def reverse_fn(xs: list[T1]) -> list[T1]:
     """Reverse list: (reverse xs)"""
     return list(reversed(xs))
 
 @DefaultGrammar
-def flatten(xss: list) -> list:
+def flatten(xss: list[list[T1]]) -> list[T1]:
     """Flatten list of lists: (flatten xss)"""
     result = []
     for xs in xss:
