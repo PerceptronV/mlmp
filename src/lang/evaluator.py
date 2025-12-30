@@ -32,7 +32,7 @@ class Evaluator:
     """
     
     def __init__(self, grammar: Grammar = DefaultGrammar):
-        """Initialize the evaluator with built-in functions."""
+        """Initialise the evaluator with built-in functions."""
         self.global_env = self._create_global_environment(grammar)
         self.grammar = grammar
     
@@ -116,36 +116,47 @@ class Evaluator:
         
         # User-defined function (closure)
         elif isinstance(func, Closure):
-            # Apply arguments one at a time (currying)
-            result = func
-            for arg in args:
-                if not isinstance(result, Closure):
-                    raise EvaluationError(f"Too many arguments to function")
-                
-                # Create new environment with parameter binding
-                new_env = result.env.extend(result.param, arg)
-                # Evaluate body in new environment
-                result = self.eval(result.body, new_env)
-            
-            return result
+            # Multi-parameter closures: bind all parameters at once
+            # Single-parameter closures with multiple args: apply via currying
+            if len(func.param) == len(args):
+                # Exact match: bind all parameters at once
+                new_env = func.env
+                for param, arg in zip(func.param, args):
+                    new_env = new_env.extend(param, arg)
+                return self.eval(func.body, new_env)
+            elif len(func.param) == 1 and len(args) > 1:
+                # Single-parameter closure with multiple args: curry
+                result = func
+                for arg in args:
+                    if not isinstance(result, Closure):
+                        raise EvaluationError(f"Too many arguments to function")
+                    # Bind the single parameter
+                    new_env = result.env.extend(result.param[0], arg)
+                    result = self.eval(result.body, new_env)
+                return result
+            else:
+                raise EvaluationError(
+                    f"Function expects {len(func.param)} arguments, got {len(args)}"
+                )
         
         else:
             raise EvaluationError(f"Cannot apply non-function: {type(func).__name__}")
 
 
-def evaluate(code: str) -> Any:
+def evaluate(code: str, grammar: Grammar = DefaultGrammar) -> Any:
     """
     Convenience function to parse and evaluate code.
     
     Args:
         code: Source code string
+        grammar: Grammar to use for evaluation
         
     Returns:
         Evaluation result
     """
     from .parser import parse
     ast = parse(code)
-    evaluator = Evaluator()
+    evaluator = Evaluator(grammar)
     return evaluator.eval(ast)
 
 

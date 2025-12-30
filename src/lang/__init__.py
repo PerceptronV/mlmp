@@ -30,32 +30,32 @@ from .ast_nodes import (
 )
 from .evaluator import Evaluator, evaluate, EvaluationError
 from .environment import Environment, Closure
-from .type_system import (
-    Type, TypeVar, IntType, BoolType, ListType, FunctionType,
-    TypeScheme, INT, BOOL, list_of, func
+from .type_checker import TypeChecker, type_check, format_type, TypeCheckError
+from .type_utils import (
+    analyse_function_types,
+    get_origin, CallableOrig, matchable,
+    SubstitutionTable,
 )
-from .type_checker import TypeChecker, type_check
+from .grammar import Grammar, DefaultGrammar
 
-# Re-export TypeError from types to avoid confusion
-from .type_system import TypeError as TypeSystemError
-
-__version__ = "2.0.0"
 __all__ = [
     # Lexer
-    "Lexer", "Token", "TokenType", "LexerError", "tokenize",
+    'Lexer', 'Token', 'TokenType', 'LexerError', 'tokenize',
     # Parser
-    "Parser", "parse", "ParseError",
+    'Parser', 'parse', 'ParseError',
     # AST Nodes
-    "ASTNode", "NumberNode", "BooleanNode", "VariableNode",
-    "LambdaNode", "ApplicationNode", "ListNode", "IfNode",
-    "Expression", "pretty_print",
+    'ASTNode', 'NumberNode', 'BooleanNode', 'VariableNode',
+    'LambdaNode', 'ApplicationNode', 'ListNode', 'IfNode',
+    'Expression', 'pretty_print',
     # Evaluator
-    "Evaluator", "evaluate", "EvaluationError",
+    'Evaluator', 'evaluate', 'EvaluationError',
     # Environment
-    "Environment", "Closure",
-    # Type System
-    "Type", "TypeVar", "IntType", "BoolType", "ListType", "FunctionType",
-    "TypeScheme", "INT", "BOOL", "list_of", "func",
+    'Environment', 'Closure',
     # Type Checker
-    "TypeChecker", "type_check", "TypeSystemError"
+    'TypeChecker', 'type_check', 'format_type', 'TypeCheckError',
+    # Type Utils
+    'analyse_function_types', 'get_origin', 'CallableOrig', 'matchable',
+    'SubstitutionTable',
+    # Grammar
+    'Grammar', 'DefaultGrammar',
 ]

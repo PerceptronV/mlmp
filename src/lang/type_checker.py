@@ -1,462 +1,390 @@
 """
-Type Checker for the Functional Programming Language
+Type Checker with Hindley-Milner Type Inference
 
-This module implements Hindley-Milner style type inference with
-meaningful error messages.
+This module implements type inference for the functional programming language.
+It uses Algorithm W to infer types for lambda expressions and check type
+consistency throughout the program.
 """
 
-from typing import Dict, Set, Optional
-from dataclasses import dataclass
+from typing import Optional
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode
 )
-from .type_system import (
-    Type, TypeVar, IntType, BoolType, ListType, FunctionType,
-    TypeScheme, TypeError, INT, BOOL, list_of, func
+from .grammar import Grammar, DefaultGrammar
+from .type_utils import (
+    TypeType, CallableOrig, SubstitutionTable,
+    substitute_type_vars, matchable, get_origin, get_args, isvariable
 )
+from typing import TypeVar
 
 
-class TypeEnvironment:
-    """Type environment for variable type bindings."""
-    
-    def __init__(self, parent: Optional['TypeEnvironment'] = None):
-        """
-        Initialize type environment.
-        
-        Args:
-            parent: Parent environment for nested scopes
-        """
-        self.bindings: Dict[str, TypeScheme] = {}
-        self.parent = parent
-    
-    def define(self, name: str, type_scheme: TypeScheme) -> None:
-        """Define a variable with its type scheme."""
-        self.bindings[name] = type_scheme
-    
-    def get(self, name: str) -> Optional[TypeScheme]:
-        """Look up a variable's type scheme."""
-        if name in self.bindings:
-            return self.bindings[name]
-        elif self.parent:
-            return self.parent.get(name)
-        return None
-    
-    def extend(self, name: str, type_scheme: TypeScheme) -> 'TypeEnvironment':
-        """Create new environment with additional binding."""
-        new_env = TypeEnvironment(parent=self)
-        new_env.define(name, type_scheme)
-        return new_env
+class TypeCheckError(Exception):
+    """Exception raised during type checking."""
+    pass
 
 
 class TypeChecker:
     """
     Type checker with Hindley-Milner type inference.
-    
-    Provides meaningful error messages for type errors.
+
+    Infers types for expressions including lambda functions using
+    Algorithm W with unification.
     """
-    
-    def __init__(self):
-        """Initialize the type checker."""
+
+    def __init__(self, grammar: Grammar = DefaultGrammar):
+        """Initialise the type checker with a grammar."""
+        self.grammar = grammar
         self.type_var_counter = 0
-        self.substitutions: Dict[TypeVar, Type] = {}
-        self.global_env = self._create_global_type_environment()
-    
+
     def _fresh_type_var(self) -> TypeVar:
         """Generate a fresh type variable."""
-        var = TypeVar(f"t{self.type_var_counter}")
+        name = f"T{self.type_var_counter}"
         self.type_var_counter += 1
-        return var
-    
-    def _create_global_type_environment(self) -> TypeEnvironment:
-        """Create the global type environment with built-in functions."""
-        env = TypeEnvironment()
-        
-        # Type variables for polymorphic functions
-        t1 = TypeVar("t1")
-        t2 = TypeVar("t2")
-        t3 = TypeVar("t3")
-        
-        # Arithmetic operators
-        binary_int_op = TypeScheme(set(), func(INT, func(INT, INT)))
-        env.define("+", binary_int_op)
-        env.define("-", binary_int_op)
-        env.define("*", binary_int_op)
-        env.define("/", binary_int_op)
-        env.define("%", binary_int_op)
-        
-        # Comparison operators
-        int_comparison = TypeScheme(set(), func(INT, func(INT, BOOL)))
-        env.define("<", int_comparison)
-        env.define(">", int_comparison)
-        
-        # Equality (polymorphic)
-        env.define("==", TypeScheme({t1}, func(t1, func(t1, BOOL))))
-        
-        # Boolean operators
-        binary_bool_op = TypeScheme(set(), func(BOOL, func(BOOL, BOOL)))
-        env.define("and", binary_bool_op)
-        env.define("or", binary_bool_op)
-        env.define("not", TypeScheme(set(), func(BOOL, BOOL)))
-        
-        # Number predicates
-        env.define("is_even", TypeScheme(set(), func(INT, BOOL)))
-        env.define("is_odd", TypeScheme(set(), func(INT, BOOL)))
-        
-        # List construction
-        env.define("singleton", TypeScheme({t1}, func(t1, list_of(t1))))
-        env.define("repeat", TypeScheme({t1}, func(t1, func(INT, list_of(t1)))))
-        env.define("range", TypeScheme(set(), func(INT, func(INT, func(INT, list_of(INT))))))
-        env.define("cons", TypeScheme({t1}, func(t1, func(list_of(t1), list_of(t1)))))
-        
-        # List combination
-        env.define("append", TypeScheme({t1}, func(list_of(t1), func(t1, list_of(t1)))))
-        env.define("concat", TypeScheme({t1}, func(list_of(t1), func(list_of(t1), list_of(t1)))))
-        env.define("zip", TypeScheme({t1}, func(list_of(t1), func(list_of(t1), list_of(list_of(t1))))))
-        
-        # List access
-        env.define("first", TypeScheme({t1}, func(list_of(t1), t1)))
-        env.define("second", TypeScheme({t1}, func(list_of(t1), t1)))
-        env.define("third", TypeScheme({t1}, func(list_of(t1), t1)))
-        env.define("last", TypeScheme({t1}, func(list_of(t1), t1)))
-        env.define("nth", TypeScheme({t1}, func(INT, func(list_of(t1), t1))))
-        
-        # List modification
-        env.define("insert", TypeScheme({t1}, func(t1, func(INT, func(list_of(t1), list_of(t1))))))
-        env.define("replace", TypeScheme({t1}, func(INT, func(t1, func(list_of(t1), list_of(t1))))))
-        env.define("swap", TypeScheme({t1}, func(INT, func(INT, func(list_of(t1), list_of(t1))))))
-        
-        # List removal
-        env.define("cut_idx", TypeScheme({t1}, func(INT, func(list_of(t1), list_of(t1)))))
-        env.define("cut_val", TypeScheme({t1}, func(t1, func(list_of(t1), list_of(t1)))))
-        env.define("cut_vals", TypeScheme({t1}, func(t1, func(list_of(t1), list_of(t1)))))
-        env.define("drop", TypeScheme({t1}, func(INT, func(list_of(t1), list_of(t1)))))
-        env.define("droplast", TypeScheme({t1}, func(INT, func(list_of(t1), list_of(t1)))))
-        
-        # List slicing
-        env.define("take", TypeScheme({t1}, func(INT, func(list_of(t1), list_of(t1)))))
-        env.define("takelast", TypeScheme({t1}, func(INT, func(list_of(t1), list_of(t1)))))
-        env.define("slice", TypeScheme({t1}, func(INT, func(INT, func(list_of(t1), list_of(t1))))))
-        env.define("cut_slice", TypeScheme({t1}, func(INT, func(INT, func(list_of(t1), list_of(t1))))))
-        env.define("splice", TypeScheme({t1}, func(list_of(t1), func(INT, func(list_of(t1), list_of(t1))))))
-        
-        # Higher-order functions
-        env.define("map", TypeScheme({t1, t2}, 
-            func(func(t1, t2), func(list_of(t1), list_of(t2)))))
-        env.define("mapi", TypeScheme({t1, t2},
-            func(func(t1, func(INT, t2)), func(list_of(t1), list_of(t2)))))
-        env.define("filter", TypeScheme({t1},
-            func(func(t1, BOOL), func(list_of(t1), list_of(t1)))))
-        env.define("filteri", TypeScheme({t1},
-            func(func(INT, func(t1, BOOL)), func(list_of(t1), list_of(t1)))))
-        env.define("fold", TypeScheme({t1, t2},
-            func(func(t2, func(t1, t2)), func(t2, func(list_of(t1), t2)))))
-        env.define("foldi", TypeScheme({t1, t2},
-            func(func(t2, func(t1, func(INT, t2))), func(t2, func(list_of(t1), t2)))))
-        
-        # List queries
-        env.define("is_in", TypeScheme({t1}, func(list_of(t1), func(t1, BOOL))))
-        env.define("count", TypeScheme({t1}, func(func(t1, BOOL), func(list_of(t1), INT))))
-        env.define("find", TypeScheme({t1}, func(func(t1, BOOL), func(list_of(t1), list_of(INT)))))
-        
-        # List aggregation
-        env.define("length", TypeScheme({t1}, func(list_of(t1), INT)))
-        env.define("max", TypeScheme(set(), func(list_of(INT), INT)))
-        env.define("min", TypeScheme(set(), func(list_of(INT), INT)))
-        env.define("product", TypeScheme(set(), func(list_of(INT), INT)))
-        env.define("sum", TypeScheme(set(), func(list_of(INT), INT)))
-        
-        # List transformation
-        env.define("unique", TypeScheme({t1}, func(list_of(t1), list_of(t1))))
-        env.define("sort", TypeScheme({t1}, func(func(t1, INT), func(list_of(t1), list_of(t1)))))
-        env.define("reverse", TypeScheme({t1}, func(list_of(t1), list_of(t1))))
-        env.define("flatten", TypeScheme({t1}, func(list_of(list_of(t1)), list_of(t1))))
-        env.define("group", TypeScheme({t1, t2}, func(func(t1, t2), func(list_of(t1), list_of(list_of(t1))))))
-        
-        return env
-    
-    def _apply_substitution(self, type_: Type) -> Type:
-        """Apply current substitutions to a type."""
-        return type_.substitute(self.substitutions)
-    
-    def _unify(self, type1: Type, type2: Type, context: str = "") -> None:
+        return TypeVar(name)
+
+    def _instantiate_type(self, type_: TypeType, mapping: dict[TypeVar, TypeVar] = None) -> TypeType:
         """
-        Unify two types, updating substitutions.
-        
+        Instantiate a type by replacing all type variables with fresh ones.
+
+        This is used to ensure polymorphic functions get fresh type variables
+        on each use.
+
         Args:
-            type1: First type
-            type2: Second type
-            context: Context for error messages
-            
-        Raises:
-            TypeError: If types cannot be unified
+            type_: The type to instantiate
+            mapping: Mapping from old type variables to new ones
+
+        Returns:
+            Type with fresh type variables
         """
-        # Apply existing substitutions
-        type1 = self._apply_substitution(type1)
-        type2 = self._apply_substitution(type2)
-        
-        # Same type
-        if type1 == type2:
-            return
-        
-        # Type variable unification
-        if isinstance(type1, TypeVar):
-            if type1.occurs_in(type2):
-                raise TypeError(
-                    f"Infinite type: {type1} occurs in {type2}",
-                    context
-                )
-            self.substitutions[type1] = type2
-            return
-        
-        if isinstance(type2, TypeVar):
-            if type2.occurs_in(type1):
-                raise TypeError(
-                    f"Infinite type: {type2} occurs in {type1}",
-                    context
-                )
-            self.substitutions[type2] = type1
-            return
-        
-        # List type unification
-        if isinstance(type1, ListType) and isinstance(type2, ListType):
-            self._unify(type1.elem_type, type2.elem_type, context)
-            return
-        
-        # Function type unification
-        if isinstance(type1, FunctionType) and isinstance(type2, FunctionType):
-            self._unify(type1.param_type, type2.param_type, context)
-            self._unify(type1.return_type, type2.return_type, context)
-            return
-        
-        # Type mismatch
-        raise TypeError(
-            f"Cannot unify {type1} with {type2}",
-            context
-        )
-    
-    def _instantiate(self, scheme: TypeScheme) -> Type:
-        """Instantiate a type scheme with fresh type variables."""
-        fresh_vars = {var: self._fresh_type_var() for var in scheme.quantified}
-        return scheme.instantiate(fresh_vars)
-    
-    def _generalize(self, type_: Type, env: TypeEnvironment) -> TypeScheme:
+        if mapping is None:
+            mapping = {}
+
+        # If it's a type variable, replace it with a fresh one
+        if isvariable(type_):
+            if type_ not in mapping:
+                mapping[type_] = self._fresh_type_var()
+            return mapping[type_]
+
+        origin = get_origin(type_)
+
+        # If no origin, it's a concrete type (int, bool, etc.)
+        if origin is None:
+            return type_
+
+        args = get_args(type_)
+
+        # Handle Callable specially
+        if origin == CallableOrig and isinstance(args[0], list):
+            param_types = [self._instantiate_type(p, mapping) for p in args[0]]
+            ret_type = self._instantiate_type(args[1], mapping)
+            return CallableOrig[param_types, ret_type]
+
+        # Handle other generic types
+        if args:
+            new_args = [self._instantiate_type(a, mapping) for a in args]
+            return origin[*new_args]
+
+        return type_
+
+    def infer(
+        self,
+        node: ASTNode,
+        context: dict[str, TypeType] = None,
+        substitutions: SubstitutionTable = None
+    ) -> tuple[TypeType, SubstitutionTable]:
         """
-        Generalize a type to a type scheme.
-        
-        Quantifies over type variables not free in the environment.
-        """
-        # Get free type variables in environment
-        env_free_vars: Set[TypeVar] = set()
-        for scheme in env.bindings.values():
-            env_free_vars |= scheme.type.free_type_vars() - scheme.quantified
-        
-        # Quantify over variables free in type but not in environment
-        type_ = self._apply_substitution(type_)
-        quantified = type_.free_type_vars() - env_free_vars
-        
-        return TypeScheme(quantified, type_)
-    
-    def check(self, node: ASTNode, env: TypeEnvironment = None) -> Type:
-        """
-        Type check an AST node and return its type.
-        
+        Infer the type of an AST node.
+
         Args:
             node: AST node to type check
-            env: Type environment
-            
+            context: Type environment mapping variables to types
+            substitutions: Current type variable substitutions
+
         Returns:
-            The type of the node
-            
-        Raises:
-            TypeError: If type checking fails
+            Tuple of (inferred_type, updated_substitutions)
         """
-        if env is None:
-            env = self.global_env
-        
-        try:
-            # Numbers have type Int
-            if isinstance(node, NumberNode):
-                return INT
-            
-            # Booleans have type Bool
-            elif isinstance(node, BooleanNode):
-                return BOOL
-            
-            # Variables: look up in environment
-            elif isinstance(node, VariableNode):
-                scheme = env.get(node.name)
-                if scheme is None:
-                    raise TypeError(
-                        f"Undefined variable '{node.name}'",
-                        f"variable {node.name}"
+        if context is None:
+            context = {}
+        if substitutions is None:
+            substitutions = SubstitutionTable()
+
+        # Numbers have type int
+        if isinstance(node, NumberNode):
+            return int, substitutions
+
+        # Booleans have type bool
+        elif isinstance(node, BooleanNode):
+            return bool, substitutions
+
+        # Variables: look up in context
+        elif isinstance(node, VariableNode):
+            if node.name not in context:
+                raise TypeCheckError(f"Undefined variable: {node.name}")
+            var_type = context[node.name]
+            # Instantiate only for polymorphic grammar functions (not lambda parameters)
+            if node.name in self.grammar.functions:
+                var_type = self._instantiate_type(var_type)
+            return var_type, substitutions
+
+        # Lists: infer element type and construct list[T]
+        elif isinstance(node, ListNode):
+            if not node.elements:
+                # Empty list has type list[T] where T is a fresh type variable
+                elem_type = self._fresh_type_var()
+                return list[elem_type], substitutions
+
+            # Infer type of first element
+            elem_type, subs = self.infer(node.elements[0], context, substitutions)
+
+            # Check all other elements have the same type
+            for elem in node.elements[1:]:
+                elem_t, subs = self.infer(elem, context, subs)
+                if not matchable(elem_type, elem_t, subs, strict=False):
+                    raise TypeCheckError(
+                        f"List elements have inconsistent types: {elem_type} vs {elem_t}"
                     )
-                return self._instantiate(scheme)
-            
-            # Lists: check all elements have same type
-            elif isinstance(node, ListNode):
-                if not node.elements:
-                    # Empty list has polymorphic type [t]
-                    return list_of(self._fresh_type_var())
-                
-                # Check first element
-                elem_type = self.check(node.elements[0], env)
-                
-                # Check remaining elements match
-                for i, elem in enumerate(node.elements[1:], 1):
-                    elem_i_type = self.check(elem, env)
-                    try:
-                        self._unify(elem_type, elem_i_type, f"list element {i}")
-                    except TypeError as e:
-                        raise TypeError(
-                            f"List elements have incompatible types: "
-                            f"element 0 has type {elem_type}, "
-                            f"but element {i} has type {elem_i_type}",
-                            f"list literal"
-                        )
-                
-                return list_of(self._apply_substitution(elem_type))
-            
-            # Lambda: create function type
-            elif isinstance(node, LambdaNode):
-                # Create fresh type variable for parameter
-                param_type = self._fresh_type_var()
-                
-                # Extend environment with parameter binding
-                param_scheme = TypeScheme(set(), param_type)
-                new_env = env.extend(node.param, param_scheme)
-                
-                # Check body
-                body_type = self.check(node.body, new_env)
-                
-                # Return function type
-                func_type = func(param_type, body_type)
-                return self._apply_substitution(func_type)
-            
-            # If: check condition is Bool, branches have same type
-            elif isinstance(node, IfNode):
-                cond_type = self.check(node.condition, env)
-                
-                # Condition must be Bool
-                try:
-                    self._unify(cond_type, BOOL, "if condition")
-                except TypeError:
-                    raise TypeError(
-                        f"If condition must have type Bool, but has type {cond_type}",
-                        "if expression"
-                    )
-                
-                # Check branches
-                then_type = self.check(node.then_expr, env)
-                else_type = self.check(node.else_expr, env)
-                
-                # Branches must have same type
-                try:
-                    self._unify(then_type, else_type, "if branches")
-                except TypeError:
-                    raise TypeError(
-                        f"If branches must have the same type: "
-                        f"then branch has type {then_type}, "
-                        f"but else branch has type {else_type}",
-                        "if expression"
-                    )
-                
-                return self._apply_substitution(then_type)
-            
-            # Application: check function and argument types
-            elif isinstance(node, ApplicationNode):
-                func_type = self.check(node.function, env)
-                
-                # Apply arguments one by one (currying)
-                result_type = func_type
-                for i, arg in enumerate(node.arguments):
-                    arg_type = self.check(arg, env)
-                    
-                    # Result type should be a function
-                    return_type = self._fresh_type_var()
-                    expected_func_type = func(arg_type, return_type)
-                    
-                    try:
-                        self._unify(result_type, expected_func_type, f"application argument {i}")
-                    except TypeError:
-                        result_type = self._apply_substitution(result_type)
-                        arg_type = self._apply_substitution(arg_type)
-                        
-                        if not isinstance(result_type, FunctionType):
-                            raise TypeError(
-                                f"Cannot apply non-function type {result_type}",
-                                f"application"
-                            )
-                        
-                        raise TypeError(
-                            f"Type mismatch in application: "
-                            f"function expects {result_type.param_type}, "
-                            f"but argument has type {arg_type}",
-                            f"application argument {i}"
-                        )
-                    
-                    result_type = return_type
-                
-                return self._apply_substitution(result_type)
-            
-            else:
-                raise TypeError(f"Unknown node type: {type(node).__name__}")
-        
-        except TypeError:
-            raise
-        except Exception as e:
-            raise TypeError(f"Internal type checking error: {e}")
-    
-    def check_program(self, node: ASTNode) -> Type:
+
+            return list[substitute_type_vars(elem_type, subs)], subs
+
+        # Lambda: introduce type variable(s) for parameter(s), infer body type
+        elif isinstance(node, LambdaNode):
+            # Params are always a list (even for single-parameter lambdas)
+            param_types = [self._fresh_type_var() for _ in node.param]
+            new_context = context.copy()
+            for param, param_type in zip(node.param, param_types):
+                new_context[param] = param_type
+
+            body_type, subs = self.infer(node.body, new_context, substitutions)
+
+            # Resolve all parameter types and body type through substitutions
+            resolved_params = [substitute_type_vars(pt, subs) for pt in param_types]
+            resolved_body = substitute_type_vars(body_type, subs)
+
+            # Return Callable[[param1_type, ...], body_type]
+            return CallableOrig[resolved_params, resolved_body], subs
+
+        # If: check condition is bool, branches have same type
+        elif isinstance(node, IfNode):
+            cond_type, subs = self.infer(node.condition, context, substitutions)
+
+            # Condition must be boolean
+            if not matchable(cond_type, bool, subs, strict=False):
+                raise TypeCheckError(
+                    f"If condition must be boolean, got {cond_type}"
+                )
+
+            # Infer types of both branches
+            then_type, subs = self.infer(node.then_expr, context, subs)
+            else_type, subs = self.infer(node.else_expr, context, subs)
+
+            # Branches must have same type
+            if not matchable(then_type, else_type, subs, strict=False):
+                raise TypeCheckError(
+                    f"If branches have different types: {then_type} vs {else_type}"
+                )
+
+            return substitute_type_vars(then_type, subs), subs
+
+        # Application: infer function type, check argument types
+        elif isinstance(node, ApplicationNode):
+            func_type, subs = self.infer(node.function, context, substitutions)
+
+            # Infer argument types
+            arg_types = []
+            for arg in node.arguments:
+                arg_t, subs = self.infer(arg, context, subs)
+                arg_types.append(arg_t)
+
+            # Apply function type to arguments
+            result_type = func_type
+            for arg_type in arg_types:
+                result_type, subs = self._apply_function_type(result_type, arg_type, subs)
+
+            return result_type, subs
+
+        else:
+            raise TypeCheckError(f"Unknown node type: {type(node).__name__}")
+
+    def _apply_function_type(
+        self,
+        func_type: TypeType,
+        arg_type: TypeType,
+        substitutions: SubstitutionTable
+    ) -> tuple[TypeType, SubstitutionTable]:
         """
-        Type check a complete program.
-        
+        Apply a function type to an argument type.
+
         Args:
-            node: Program AST
-            
+            func_type: Type of the function (should be Callable)
+            arg_type: Type of the argument
+            substitutions: Current substitutions
+
         Returns:
-            The type of the program
+            Tuple of (return_type, updated_substitutions)
         """
-        self.substitutions = {}
-        self.type_var_counter = 0
-        return self.check(node, self.global_env)
+        # Resolve function type through substitutions
+        func_type = substitute_type_vars(func_type, substitutions)
+
+        # Check if function type is callable
+        origin = get_origin(func_type)
+        if origin != CallableOrig:
+            # Maybe it's a type variable - create a fresh callable type
+            if isvariable(func_type):
+                ret_type = self._fresh_type_var()
+                expected_func_type = CallableOrig[[arg_type], ret_type]
+                if not matchable(func_type, expected_func_type, substitutions, strict=False):
+                    raise TypeCheckError(
+                        f"Cannot apply non-function type: {func_type}"
+                    )
+                return ret_type, substitutions
+            else:
+                raise TypeCheckError(
+                    f"Cannot apply non-function type: {func_type}"
+                )
+
+        # Extract parameter and return types
+        args = get_args(func_type)
+        if len(args) != 2:
+            raise TypeCheckError(f"Invalid function type: {func_type}")
+
+        param_types, ret_type = args
+        if not isinstance(param_types, list) or len(param_types) == 0:
+            raise TypeCheckError(f"Invalid function type: {func_type}")
+
+        # Match first parameter with argument
+        # Use strict=False to allow unifying type variables with parameterized types
+        expected_param = param_types[0]
+        if not matchable(expected_param, arg_type, substitutions, strict=False):
+            raise TypeCheckError(
+                f"Type mismatch: expected {expected_param}, got {arg_type}"
+            )
+
+        # If more parameters remain, return curried function
+        if len(param_types) > 1:
+            remaining_params = param_types[1:]
+            return CallableOrig[remaining_params, ret_type], substitutions
+        else:
+            # All parameters consumed, return result type
+            return substitute_type_vars(ret_type, substitutions), substitutions
+
+    def check(self, node: ASTNode) -> TypeType:
+        """
+        Type check an AST node and return its type.
+
+        Args:
+            node: AST node to type check
+
+        Returns:
+            The inferred type
+        """
+        # Add built-in functions to context
+        context = {}
+        for name, info in self.grammar.functions.items():
+            arg_types = list(info['arg_types'])
+            ret_type = info['ret_type']
+            if len(arg_types) > 0:
+                context[name] = CallableOrig[arg_types, ret_type]
+            else:
+                context[name] = ret_type
+
+        inferred_type, subs = self.infer(node, context)
+        return substitute_type_vars(inferred_type, subs)
 
 
-def type_check(code: str) -> Type:
+def format_type(type_: TypeType) -> str:
     """
-    Convenience function to type check a program.
-    
+    Format a type for display.
+
     Args:
-        code: Source code
-        
+        type_: Type to format
+
     Returns:
-        The type of the program
+        Human-readable type string
+    """
+    if type_ == int:
+        return "Int"
+    elif type_ == bool:
+        return "Bool"
+    elif isvariable(type_):
+        return str(type_)
+
+    origin = get_origin(type_)
+
+    # Check if the type itself is list or Callable origin
+    if type_ == list or origin == list:
+        args = get_args(type_)
+        if args:
+            elem_type = format_type(args[0])
+            return f"[{elem_type}]"
+        else:
+            return "[?]"
+
+    elif type_ == CallableOrig or origin == CallableOrig:
+        args = get_args(type_)
+        if len(args) == 2:
+            param_types, ret_type = args
+            if isinstance(param_types, list):
+                param_strs = [format_type(p) for p in param_types]
+                ret_str = format_type(ret_type)
+                # Add parentheses around callable parameters
+                formatted_params = []
+                for p_str, p_type in zip(param_strs, param_types):
+                    p_origin = get_origin(p_type)
+                    if p_type == CallableOrig or p_origin == CallableOrig:
+                        formatted_params.append(f"({p_str})")
+                    else:
+                        formatted_params.append(p_str)
+                return " → ".join(formatted_params + [ret_str])
+        return "Function"
+
+    else:
+        return str(type_)
+
+
+def type_check(code: str, grammar: Grammar = DefaultGrammar) -> str:
+    """
+    Type check a program and return its type as a string.
+
+    Args:
+        code: Source code string
+        grammar: Grammar to use for built-in functions
+
+    Returns:
+        Type string (e.g., "Int → Int")
+
+    Example:
+        >>> type_check("(λ x (+ x 1))")
+        "Int → Int"
     """
     from .parser import parse
+
     ast = parse(code)
-    checker = TypeChecker()
-    return checker.check_program(ast)
+    checker = TypeChecker(grammar)
+    inferred_type = checker.check(ast)
+    return format_type(inferred_type)
 
 
 if __name__ == "__main__":
+    # Example usage
     print("Type Checker Examples:")
     print("=" * 80)
-    
+
     examples = [
         ("Number", "42"),
         ("Boolean", "true"),
-        ("List", "[1 2 3]"),
         ("Identity", "(λ x x)"),
         ("Increment", "(λ x (+ x 1))"),
-        ("Map", "(map (λ x (* x 2)) [1 2 3])"),
+        ("Add", "(λ x (λ y (+ x y)))"),
         ("If", "(if true 1 2)"),
+        ("List", "[1 2 3]"),
+        ("Map", "(λ f (λ xs (map f xs)))"),
     ]
-    
+
     for name, code in examples:
         print(f"\n{name}: {code}")
         try:
-            type_ = type_check(code)
-            print(f"Type: {type_}")
-        except TypeError as e:
-            print(f"Type Error: {e}")
-
+            result = type_check(code)
+            print(f"Type: {result}")
+        except Exception as e:
+            print(f"Error: {e}")

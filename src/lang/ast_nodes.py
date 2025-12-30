@@ -49,16 +49,17 @@ class VariableNode(ASTNode):
 @dataclass
 class LambdaNode(ASTNode):
     """
-    Represents a lambda abstraction: (λ param body)
-    
-    Note: This language uses single-parameter lambdas.
-    Multi-parameter functions are represented via nested lambdas (currying).
+    Represents a lambda abstraction: (λ param body) or (λ param1 param2 ... body)
+
+    Parameters are always stored as a list of strings, even for single-parameter lambdas.
+    This provides a uniform representation for both curried and uncurried functions.
     """
-    param: str
+    param: List[str]  # List of parameter names (length 1 for single param)
     body: ASTNode
-    
+
     def __repr__(self) -> str:
-        return f"Lambda({self.param}, {self.body})"
+        params_str = " ".join(self.param)
+        return f"Lambda({params_str}, {self.body})"
 
 
 @dataclass
@@ -95,7 +96,7 @@ class IfNode(ASTNode):
     Represents a conditional expression: (if condition then_expr else_expr)
     
     Note: While 'if' could be treated as a regular function, we give it
-    special treatment for potential optimizations and clarity.
+    special treatment for potential optimisations and clarity.
     """
     condition: ASTNode
     then_expr: ASTNode
@@ -141,7 +142,8 @@ def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:
 
         elif isinstance(node, LambdaNode):
             body_str = pretty_print(node.body, 0, True)
-            return f"(λ {node.param} {body_str})"
+            params_str = " ".join(node.param)
+            return f"(λ ({params_str}) {body_str})"
 
         elif isinstance(node, ApplicationNode):
             func_str = pretty_print(node.function, 0, True)
@@ -180,7 +182,8 @@ def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:
             return result
 
         elif isinstance(node, LambdaNode):
-            result = f"{prefix}(λ {node.param}\n"
+            params_str = " ".join(node.param)
+            result = f"{prefix}(λ ({params_str})\n"
             result += pretty_print(node.body, indent + 1, False) + "\n"
             result += f"{prefix})"
             return result
@@ -203,6 +206,12 @@ def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:
 
         else:
             return f"{prefix}{repr(node)}"
+
+def to_program_string(node: ASTNode, *args, **kwargs) -> str:
+    """
+    Alias for pretty_print.
+    """
+    return pretty_print(node, *args, **kwargs)
 
 
 if __name__ == "__main__":

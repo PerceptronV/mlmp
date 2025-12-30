@@ -1,10 +1,19 @@
 from __future__ import annotations
 import inspect
 import random
-from typing import get_type_hints, get_origin, TypeVar, Callable
+from typing import TypeVar, Callable, Optional
+from .type_utils import (
+    CallableOrig,
+    TypeType,
+    isatomic,
+    get_origin,
+    analyse_function_types,
+    matchable,
+    SubstitutionTable,
+)
+from .lexer import SPECIAL_CHARS, IDENT_CHARS
 
 
-SPECIAL_CHARS_DEFAULT = ('λ', '(', ')', '[', ']', ' ')
 T1, T2 = TypeVar('T1'), TypeVar('T2')
 
 # ============================================================================
@@ -12,34 +21,24 @@ T1, T2 = TypeVar('T1'), TypeVar('T2')
 # ============================================================================
 
 class Grammar:
-    def __init__(self, special_chars=None, functions=None):
-        self.special_chars = special_chars or SPECIAL_CHARS_DEFAULT
+    def __init__(self, functions=None, special_chars=None, ident_chars=None):
         self.functions = functions or {}
+        self.special_chars = special_chars or SPECIAL_CHARS
+        self.ident_chars = ident_chars or IDENT_CHARS
         self.name_map = {}
     
     def __str__(self):
-        return f"Grammar[ {len(self.special_chars)} special char(s), {len(self.functions)} function(s) ]"
+        return f"""Grammar[ {len(self.special_chars)} special char(s), 
+         {len(self.ident_chars)} ident char(s),
+         {len(self.functions)} function(s) ]"""
 
     def __repr__(self):
-        return f"Grammar(special_chars={self.special_chars}, functions={tuple(self.functions.keys())})"
+        return f"""Grammar(special_chars={self.special_chars},
+        ident_chars={self.ident_chars},
+        functions={tuple(self.functions.keys())})"""
     
     def _analyse(self, name, fn):
-        var_types = get_type_hints(fn)
-        signature = inspect.signature(fn)
-        arg_names = tuple(p.name for p in signature.parameters.values())
-        
-        try:
-            arg_types = tuple(var_types[a] for a in arg_names)
-        except KeyError:
-            raise TypeError(f"Missing type hint for arguments ({
-                ', '.join(a for a in arg_names if a not in var_types)
-            }) of {fn.__name__}")
-        
-        try:
-            ret_type = var_types['return']
-        except KeyError:
-            raise TypeError(f"Missing type hint for return value of {fn.__name__}")
-        
+        arg_names, arg_types, ret_type = analyse_function_types(fn)
         return {
             'fn': fn,
             '__call__': self._make_evaluable(name, fn, arg_types),
@@ -52,10 +51,9 @@ class Grammar:
         '''Make a function evaluable by the evaluator.'''
 
         # find the indices of the callable arguments in fn
-        callable_orig = get_origin(Callable)
         callable_indices = [
             e for e, t in enumerate(arg_types)
-            if get_origin(t) == callable_orig
+            if get_origin(t) == CallableOrig
         ]
 
         # When fn is called, it will be called with the evaluator and the arguments.
@@ -83,7 +81,15 @@ class Grammar:
         _eval_fn.__name__ = name
         return _eval_fn
     
+    def valid_name(self, name: str) -> bool:
+        for char in name:
+            if not char.isalnum() and char not in self.ident_chars:
+                return False
+        return True
+    
     def add_function(self, name, fn):
+        if not self.valid_name(name):
+            raise ValueError(f"Invalid function name: {name}. Chars must be alphanumeric or one of {self.ident_chars}")
         self.functions[name] = self._analyse(name, fn)
     
     def load_from_module(self, module):
@@ -117,15 +123,71 @@ class Grammar:
     
     def reset_names(self):
         self.name_map = {}
+
+    @property
+    def names(self):
+        return tuple(self.name_map.keys() or self.functions.keys())
     
     def __getitem__(self, name):
         name = self.name_map.get(name, name)
         return self.functions[name]
     
+    def __len__(self):
+        return len(self.names)
+    
     def __iter__(self):
-        names = self.name_map.keys() or self.functions.keys()
-        for n in names:
+        for n in self.names:
             yield n, self[n]['__call__']
+    
+    def find_matching_functions(
+        self, /, *,
+        arg_types: Optional[list[TypeType]] = None,
+        ret_type: Optional[TypeType] = None,
+        substitutions: SubstitutionTable,
+    ) -> list[tuple[str, SubstitutionTable]]:
+        matches = []
+        for n in self.names:
+            sub = substitutions.copy()
+            if (arg_types is None or matchable(self[n]['arg_types'], arg_types, sub)) and \
+                (ret_type is None or matchable(self[n]['ret_type'], ret_type, sub)):
+                matches.append((n, sub))
+        return matches
+    
+    @property
+    def atomic_return_types(self):
+        artypes = set()
+        for n in self.names:
+            ret = self[n]['ret_type']
+            if isatomic(ret):
+                artypes.add(ret)
+        return artypes
+
+    def subset(self, function_names: set[str]) -> 'Grammar':
+        """
+        Create a new Grammar containing only the specified functions.
+
+        Args:
+            function_names: Set of function names to include
+
+        Returns:
+            A new Grammar with only the specified functions
+        """
+        # Filter to functions that exist in this grammar
+        available = function_names & set(self.names)
+
+        # Create new grammar with subset of functions
+        new_functions = {}
+        for name in available:
+            # Get the actual function name (handle name mapping)
+            actual_name = self.name_map.get(name, name)
+            if actual_name in self.functions:
+                new_functions[name] = self.functions[actual_name]
+
+        return Grammar(
+            functions=new_functions,
+            special_chars=self.special_chars,
+            ident_chars=self.ident_chars
+        )
 
 
 # ============================================================================
@@ -421,14 +483,14 @@ def flatten(xss: list[list[T1]]) -> list[T1]:
 
 # higher-order functions
 @DefaultGrammar
-def map(f: Callable[[T1], T2], xs: list[T1]) -> list[T2]:
+def map(f: Callable[[T1], T2], xs: list[T1]) -> list[T2]: # type: ignore
     """Map function over list: (map f xs)"""
     return [f(x) for x in xs]
 
 @DefaultGrammar
-def mapi(f: Callable[[T1, int], T2], xs: list[T1]) -> list[T2]:
+def mapi(f: Callable[[T1, int], T2], xs: list[T1]) -> list[T2]: # pyright: ignore[reportInvalidTypeForm]
     """Map with index: (mapi f xs)"""
-    result: list[T2] = []
+    result: list[T2] = [] # pyright: ignore[reportInvalidTypeForm]
     for i, x in enumerate(xs):
         result.append(f(x, i))
     return result
@@ -480,6 +542,11 @@ def find(p: Callable[[T1], bool], xs: list[T1]) -> list[int]:
     return [i for i, x in enumerate(xs) if p(x)]
 
 @DefaultGrammar
+def unique(xs: list[T1]) -> list[T1]:
+    """Unique elements: (unique xs)"""
+    return list(set(xs))
+
+@DefaultGrammar
 def sort(f: Callable[[T1], int], xs: list[T1]) -> list[T1]:
     """Sort by key function: (sort f xs)"""
     return sorted(xs, key=lambda x: f(x))
@@ -498,4 +565,10 @@ def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
 
 if __name__ == "__main__":
     print(DefaultGrammar)
-    print(DefaultGrammar['map'])
+    print('# functions:', len(DefaultGrammar))
+    print('map function:', DefaultGrammar['map'])
+
+    print('atomic return types:', DefaultGrammar.atomic_return_types, '\n')
+
+    print(DefaultGrammar.find_matching_functions(ret_type=int, substitutions=SubstitutionTable()))
+    print(DefaultGrammar.find_matching_functions(ret_type=list[int], substitutions=SubstitutionTable()))

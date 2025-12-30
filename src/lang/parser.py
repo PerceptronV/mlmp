@@ -49,7 +49,7 @@ class Parser:
     
     def __init__(self, input_text: str):
         """
-        Initialize the parser with input text.
+        Initialise the parser with input text.
         
         Args:
             input_text: The program source code to parse
@@ -214,32 +214,49 @@ class Parser:
     
     def parse_lambda(self) -> LambdaNode:
         """
-        Parse a lambda expression: (λ param body)
-        
+        Parse a lambda expression with flexible parameter syntax.
+
+        Supports both:
+            (λ (x y) body)  - bracketed parameters (preferred)
+            (λ x y body)    - unbracketed parameters (for backwards compatibility)
+
         Note: The opening paren has already been consumed.
-        Lambda expressions take a single parameter. For multiple parameters,
-        use nested lambdas: (λ x (λ y body))
-        
+        Parameters are always stored as a list, even for single-parameter lambdas.
+
         Returns:
-            A LambdaNode
+            A LambdaNode with param as a list of parameter names
         """
         self.expect(TokenType.LAMBDA)
-        
-        # Get parameter name
-        if not self.current_token or self.current_token.type != TokenType.IDENT:
-            self.error("Lambda requires a parameter name")
-        param = self.current_token.value
-        self.advance()
-        
+
+        # Check if parameters are bracketed
+        bracketed = False
+        if self.current_token and self.current_token.type == TokenType.LPAREN:
+            bracketed = True
+            self.advance()  # consume opening paren
+
+        # Collect parameter names
+        params = []
+        while self.current_token and self.current_token.type == TokenType.IDENT:
+            params.append(self.current_token.value)
+            self.advance()
+
+        if not params:
+            self.error("Lambda requires at least one parameter")
+
+        # If parameters were bracketed, expect closing paren
+        if bracketed:
+            self.expect(TokenType.RPAREN)
+
         # Parse body - exactly one expression
         if not self.current_token or self.current_token.type == TokenType.RPAREN:
             self.error("Lambda requires a body expression")
-        
+
         body = self.parse_expression()
-        
+
         self.expect(TokenType.RPAREN)
-        
-        return LambdaNode(param, body)
+
+        # Always store params as a list
+        return LambdaNode(params, body)
     
     def parse_if(self) -> IfNode:
         """

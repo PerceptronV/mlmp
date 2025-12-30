@@ -26,6 +26,10 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
+IDENT_CHARS = {'+', '-', '*', '/', '%', '<', '>', '=', '_', '?', '!', '$'}
+SPECIAL_CHARS = {'λ', '(', ')', '[', ']', ' ', '#'}
+
+
 class TokenType(Enum):
     """Token types for the functional programming language."""
     LAMBDA = auto()      # λ
@@ -65,7 +69,7 @@ class LexerError(Exception):
 
 class Lexer:
     """
-    Lexical analyzer for the functional programming language.
+    Lexical analyser for the functional programming language.
     
     Usage:
         lexer = Lexer("(λ x (+ x 1))")
@@ -74,7 +78,7 @@ class Lexer:
     
     def __init__(self, input_text: str):
         """
-        Initialize the lexer with input text.
+        Initialise the lexer with input text.
         
         Args:
             input_text: The expression to tokenize
@@ -126,38 +130,35 @@ class Lexer:
     def read_number(self) -> str:
         """
         Read a number (0-99).
-        
+
         Returns:
             The number as a string
         """
-        result = ""
+        chars = []
         while self.current_char is not None and self.current_char.isdigit():
-            result += self.current_char
+            chars.append(self.current_char)
             self.advance()
-        return result
+        return ''.join(chars)
     
     def read_identifier(self) -> str:
         """
         Read an identifier (variable name, function name, or keyword).
         Identifiers can contain letters, digits, underscores, and special characters like +, -, *, /, %, <, >, =, _, ?
-        
+
         Returns:
             The identifier string
         """
-        result = ""
-        
-        # Special operators that are valid identifiers
-        special_chars = {'+', '-', '*', '/', '%', '<', '>', '=', '_', '?', '!'}
-        
+        chars = []
+
         # Handle multi-character operators and identifiers
         while self.current_char is not None:
-            if self.current_char.isalnum() or self.current_char in special_chars:
-                result += self.current_char
+            if self.current_char.isalnum() or self.current_char in IDENT_CHARS:
+                chars.append(self.current_char)
                 self.advance()
             else:
                 break
-        
-        return result
+
+        return ''.join(chars)
     
     def get_next_token(self) -> Token:
         """
@@ -183,10 +184,26 @@ class Lexer:
             # Token position for error reporting
             token_pos = self.position
             
-            # Lambda symbol (λ)
+            # Lambda symbol (λ or lambda)
             if self.current_char == 'λ':
                 self.advance()
                 return Token(TokenType.LAMBDA, 'λ', token_pos)
+
+            # Check for 'lambda' keyword
+            if self.current_char == 'l':
+                # Look ahead for 'lambda'
+                saved_pos = self.position
+                word = ''
+                while self.current_char and self.current_char.isalpha():
+                    word += self.current_char
+                    self.advance()
+
+                if word == 'lambda':
+                    return Token(TokenType.LAMBDA, 'lambda', token_pos)
+                else:
+                    # Not lambda, reset and parse as identifier
+                    self.position = saved_pos
+                    self.current_char = self.input[self.position] if self.position < len(self.input) else None
             
             # Left parenthesis
             if self.current_char == '(':
@@ -214,8 +231,7 @@ class Lexer:
                 return Token(TokenType.NUMBER, number, token_pos)
             
             # Identifiers, keywords, and operators
-            if (self.current_char.isalpha() or self.current_char == '_' or 
-                self.current_char in {'+', '-', '*', '/', '%', '<', '>', '=', '?', '!'}):
+            if (self.current_char.isalpha() or self.current_char in IDENT_CHARS):
                 ident = self.read_identifier()
                 
                 # Check for boolean keywords
@@ -285,11 +301,11 @@ if __name__ == "__main__":
         "[1 2 3]",                              # List literal
         "[]",                                   # Empty list
         "(cons 1 [2 3])",                       # Cons operation
-        "(map (λ x (* x 2)) [1 2 3])",         # Map with lambda
-        "(filter (λ x (> x 5)) [3 7 2 9])",    # Filter
+        "(map (λ x (* x 2)) [1 2 3])",          # Map with lambda
+        "(filter (λ x (> x 5)) [3 7 2 9])",     # Filter
         "(fold (λ acc x (+ acc x)) 0 [1 2 3])", # Fold
         "true",                                 # Boolean
-        "(if (< x 5) true false)",             # Conditional
+        "(if (< x 5) true false)",              # Conditional
         "(== 1 1)",                             # Equality
     ]
     

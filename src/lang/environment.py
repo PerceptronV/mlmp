@@ -5,7 +5,7 @@ This module provides the Environment class which manages variable bindings
 and lexical scoping for the evaluator.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 
 class Environment:
@@ -13,12 +13,12 @@ class Environment:
     Environment for managing variable bindings with lexical scoping.
     
     Supports nested scopes via parent environments, enabling proper
-    closure behavior for lambda functions.
+    closure behaviour for lambda functions.
     """
     
     def __init__(self, parent: Optional['Environment'] = None):
         """
-        Initialize an environment.
+        Initialise an environment.
         
         Args:
             parent: Parent environment for nested scopes (None for global scope)
@@ -100,30 +100,31 @@ class Environment:
 class Closure:
     """
     Represents a closure (lambda function with captured environment).
-    
+
     A closure combines:
-    - Parameter name
+    - Parameter names - always a list of strings (even for single-parameter functions)
     - Function body (AST node)
     - Captured environment for free variables
     """
-    
-    def __init__(self, param: str, body: Any, env: Environment):
+
+    def __init__(self, param: List[str], body: Any, env: Environment):
         """
         Create a closure.
-        
+
         Args:
-            param: Parameter name
+            param: List of parameter names (length 1 for single-parameter functions)
             body: Function body (AST node)
             env: Captured environment
         """
         self.param = param
         self.body = body
         self.env = env
-    
+
     def __repr__(self) -> str:
         """String representation."""
-        return f"<closure λ{self.param}>"
-    
+        params_str = " ".join(self.param)
+        return f"<closure λ{params_str}>"
+
     def __str__(self) -> str:
         """String representation."""
         return self.__repr__()

@@ -1,10 +1,10 @@
 """
 Data Generation Module
 
-This module provides utilities for generating random typed programs
-for the functional programming language.
+This module provides utilities for generating datasets of
+program induction meta-learning episodes.
 """
 
-from .composer import sample_program
+from .generate import DatasetGenerator, MetaLearningEpisode
 
-__all__ = ['sample_program']
+__all__ = ['DatasetGenerator', 'MetaLearningEpisode']
