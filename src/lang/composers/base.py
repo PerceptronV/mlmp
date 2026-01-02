@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from ..grammar import Grammar
-from ..ast_nodes import ASTNode, NumberNode, BooleanNode, ListNode
+from ..ast_nodes import ASTNode, NumberNode, BooleanNode, ListNode, VariableNode, LambdaNode
 from ..type_utils import (
     get_args,
     get_base_type,

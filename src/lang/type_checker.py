@@ -13,7 +13,7 @@ from .ast_nodes import (
 )
 from .grammar import Grammar, DefaultGrammar
 from .type_utils import (
-    TypeType, CallableOrig, SubstitutionTable,
+    TypeType, Callable, CallableOrig, SubstitutionTable,
     substitute_type_vars, matchable, get_origin, get_args, isvariable
 )
 from typing import TypeVar
@@ -78,7 +78,7 @@ class TypeChecker:
         if origin == CallableOrig and isinstance(args[0], list):
             param_types = [self._instantiate_type(p, mapping) for p in args[0]]
             ret_type = self._instantiate_type(args[1], mapping)
-            return CallableOrig[param_types, ret_type]
+            return Callable[param_types, ret_type]
 
         # Handle other generic types
         if args:
@@ -162,7 +162,7 @@ class TypeChecker:
             resolved_body = substitute_type_vars(body_type, subs)
 
             # Return Callable[[param1_type, ...], body_type]
-            return CallableOrig[resolved_params, resolved_body], subs
+            return Callable[resolved_params, resolved_body], subs
 
         # If: check condition is bool, branches have same type
         elif isinstance(node, IfNode):
@@ -232,7 +232,7 @@ class TypeChecker:
             # Maybe it's a type variable - create a fresh callable type
             if isvariable(func_type):
                 ret_type = self._fresh_type_var()
-                expected_func_type = CallableOrig[[arg_type], ret_type]
+                expected_func_type = Callable[[arg_type], ret_type]
                 if not matchable(func_type, expected_func_type, substitutions, strict=False):
                     raise TypeCheckError(
                         f"Cannot apply non-function type: {func_type}"
@@ -263,7 +263,7 @@ class TypeChecker:
         # If more parameters remain, return curried function
         if len(param_types) > 1:
             remaining_params = param_types[1:]
-            return CallableOrig[remaining_params, ret_type], substitutions
+            return Callable[remaining_params, ret_type], substitutions
         else:
             # All parameters consumed, return result type
             return substitute_type_vars(ret_type, substitutions), substitutions
@@ -284,7 +284,7 @@ class TypeChecker:
             arg_types = list(info['arg_types'])
             ret_type = info['ret_type']
             if len(arg_types) > 0:
-                context[name] = CallableOrig[arg_types, ret_type]
+                context[name] = Callable[arg_types, ret_type]
             else:
                 context[name] = ret_type
 
@@ -373,7 +373,7 @@ if __name__ == "__main__":
     examples = [
         ("Number", "42"),
         ("Boolean", "true"),
-        ("Identity", "(λ x x)"),
+        ("Identity", "(λ x (x))"),
         ("Increment", "(λ x (+ x 1))"),
         ("Add", "(λ x (λ y (+ x y)))"),
         ("If", "(if true 1 2)"),

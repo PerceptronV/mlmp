@@ -13,11 +13,18 @@ learn patterns like "use the 2nd int variable" rather than just "use some variab
 """
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .base import Composer
+from .strategies import (
+    Strategy,
+    LiteralStrategy,
+    VariableStrategy,
+    LambdaStrategy,
+    IfStrategy,
+    ApplicationStrategy,
+)
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -35,59 +42,6 @@ from ..type_utils import (
     matchable,
     isvariable
 )
-
-
-# ============================================================================
-# Strategy Types
-# ============================================================================
-
-@dataclass(frozen=True)
-class Strategy:
-    """Base class for generation strategies."""
-    pass
-
-
-@dataclass(frozen=True)
-class LiteralStrategy(Strategy):
-    """Generate a literal value (number, boolean, or empty list)."""
-    literal_type: str  # 'int', 'bool', or 'list'
-
-    def __repr__(self) -> str:
-        return f"Literal({self.literal_type})"
-
-
-@dataclass(frozen=True)
-class VariableStrategy(Strategy):
-    """Use the variable at a specific position in context."""
-    position: int
-
-    def __repr__(self) -> str:
-        return f"Variable({self.position})"
-
-
-@dataclass(frozen=True)
-class LambdaStrategy(Strategy):
-    """Generate a lambda expression."""
-
-    def __repr__(self) -> str:
-        return "Lambda"
-
-
-@dataclass(frozen=True)
-class IfStrategy(Strategy):
-    """Generate an if expression."""
-
-    def __repr__(self) -> str:
-        return "If"
-
-
-@dataclass(frozen=True)
-class ApplicationStrategy(Strategy):
-    """Apply a specific function from the grammar."""
-    func_name: str
-
-    def __repr__(self) -> str:
-        return f"Apply({self.func_name})"
 
 
 # ============================================================================
@@ -141,7 +95,11 @@ def context_to_key(context_types: list[TypeType]) -> tuple[str, ...]:
     return tuple(type_to_key(t) for t in context_types)
 
 
-ContextKey = tuple[str, ...] | tuple[Optional[str], tuple[str, ...]]
+ContextKey = (
+    tuple[str, ...]  # Just context types
+    | tuple[Optional[str], tuple[str, ...]]  # (function_name, context_types)
+    | tuple[Optional[str], Optional[int], tuple[str, ...]]  # (function_name, arg_position, context_types)
+)
 
 
 # ============================================================================
@@ -153,14 +111,19 @@ class EmpiricalDistributions:
     Holds empirical distributions learned from example programs.
 
     Stores:
-    - P(strategy | return_type, context_signature[, function_name])
-    - P(context_signature[, function_name] | return_type)
+    - P(strategy | return_type, context_signature[, function_name][, arg_position])
+    - P(context_signature[, function_name][, arg_position] | return_type)
     - P(int_value | int_literal)
     - P(bool_value | bool_literal)
     """
 
-    def __init__(self, include_function_name_in_context: bool = False):
+    def __init__(
+        self,
+        include_function_name_in_context: bool = False,
+        include_arg_position_in_context: bool = False
+    ):
         self.include_function_name_in_context = include_function_name_in_context
+        self.include_arg_position_in_context = include_arg_position_in_context
 
         # Main distribution: counts of strategies for each (return_type, context) pair
         # Key: (return_type_key, context_key)
@@ -182,29 +145,46 @@ class EmpiricalDistributions:
     def _context_key(
         self,
         context_types: list[TypeType],
-        function_name: Optional[str]
+        function_name: Optional[str],
+        arg_position: Optional[int] = None
     ) -> ContextKey:
         types_key = context_to_key(context_types)
-        if self.include_function_name_in_context:
+        if self.include_arg_position_in_context:
+            # Include both function name and arg position
+            return (function_name, arg_position, types_key)
+        elif self.include_function_name_in_context:
             return (function_name, types_key)
         return types_key
 
-    def _split_context_key(self, ctx_key: ContextKey) -> tuple[Optional[str], tuple[str, ...]]:
-        if self.include_function_name_in_context:
+    def _split_context_key(
+        self,
+        ctx_key: ContextKey
+    ) -> tuple[Optional[str], Optional[int], tuple[str, ...]]:
+        """
+        Split a context key into its components.
+
+        Returns:
+            (function_name, arg_position, types_key)
+        """
+        if self.include_arg_position_in_context:
+            function_name, arg_position, types_key = ctx_key
+            return function_name, arg_position, types_key
+        elif self.include_function_name_in_context:
             function_name, types_key = ctx_key
-            return function_name, types_key
-        return None, ctx_key
+            return function_name, None, types_key
+        return None, None, ctx_key
 
     def record(
         self,
         return_type: TypeType,
         context_types: list[TypeType],
         strategy: Strategy,
-        function_name: Optional[str] = None
+        function_name: Optional[str] = None,
+        arg_position: Optional[int] = None
     ):
         """Record an observation of a strategy."""
         type_key = type_to_key(return_type)
-        ctx_key = self._context_key(context_types, function_name)
+        ctx_key = self._context_key(context_types, function_name, arg_position)
 
         self.strategy_counts[(type_key, ctx_key)][strategy] += 1
         self.context_counts[type_key][ctx_key] += 1
@@ -254,7 +234,8 @@ class EmpiricalDistributions:
         context_types: list[TypeType],
         available_strategies: list[Strategy],
         noise: float = 0.0,
-        function_name: Optional[str] = None
+        function_name: Optional[str] = None,
+        arg_position: Optional[int] = None
     ) -> list[float]:
         """
         Get weights for available strategies given return type and context.
@@ -268,6 +249,7 @@ class EmpiricalDistributions:
             available_strategies: List of valid strategies for this situation
             noise: Floor weight for compatible strategies with zero probability
             function_name: Optional function name to include in context
+            arg_position: Optional argument position to include in context
 
         Returns:
             List of weights (one per available strategy)
@@ -275,7 +257,7 @@ class EmpiricalDistributions:
         self.normalize()
 
         type_key = type_to_key(return_type)
-        ctx_key = self._context_key(context_types, function_name)
+        ctx_key = self._context_key(context_types, function_name, arg_position)
 
         weights = [0.0] * len(available_strategies)
 
@@ -325,10 +307,15 @@ class EmpiricalDistributions:
         Most strategies map directly. Variable strategies need position mapping
         based on type compatibility.
         """
-        from_fn, from_ctx_types = self._split_context_key(from_ctx)
-        to_fn, to_ctx_types = self._split_context_key(to_ctx)
+        from_fn, from_arg_pos, from_ctx_types = self._split_context_key(from_ctx)
+        to_fn, to_arg_pos, to_ctx_types = self._split_context_key(to_ctx)
 
+        # Must match on function name if enabled
         if self.include_function_name_in_context and from_fn != to_fn:
+            return None
+
+        # Must match on arg position if enabled
+        if self.include_arg_position_in_context and from_arg_pos != to_arg_pos:
             return None
 
         if isinstance(strategy, VariableStrategy):
@@ -550,7 +537,8 @@ class ASTAnalyser:
         node: ASTNode,
         context: list[tuple[str, TypeType]],  # [(name, type), ...] ordered by depth
         substitutions: SubstitutionTable,
-        function_name: Optional[str] = None
+        function_name: Optional[str] = None,
+        arg_position: Optional[int] = None
     ):
         """
         Walk the AST and record observations with fully resolved types.
@@ -560,6 +548,7 @@ class ASTAnalyser:
             context: Ordered list of (name, type) pairs for lambda-bound variables
             substitutions: Fully populated substitution table from type inference
             function_name: Optional function name to include in context
+            arg_position: Optional argument position (0-indexed) to include in context
         """
         context_names = {name: i for i, (name, _) in enumerate(context)}
 
@@ -567,11 +556,11 @@ class ASTAnalyser:
         resolved_context = [substitute_type_vars(t, substitutions) for _, t in context]
 
         if isinstance(node, NumberNode):
-            self.dists.record(int, resolved_context, LiteralStrategy('int'), function_name)
+            self.dists.record(int, resolved_context, LiteralStrategy('int'), function_name, arg_position)
             self.dists.record_int_constant(node.value)
 
         elif isinstance(node, BooleanNode):
-            self.dists.record(bool, resolved_context, LiteralStrategy('bool'), function_name)
+            self.dists.record(bool, resolved_context, LiteralStrategy('bool'), function_name, arg_position)
             self.dists.record_bool_constant(node.value)
 
         elif isinstance(node, ListNode):
@@ -579,13 +568,13 @@ class ASTAnalyser:
                 # Empty list - use cached type if available, otherwise generic list
                 node_type = self._get_node_type(node, substitutions)
                 if node_type is not None:
-                    self.dists.record(node_type, resolved_context, LiteralStrategy('list'), function_name)
+                    self.dists.record(node_type, resolved_context, LiteralStrategy('list'), function_name, arg_position)
                 else:
-                    self.dists.record(list, resolved_context, LiteralStrategy('list'), function_name)
+                    self.dists.record(list, resolved_context, LiteralStrategy('list'), function_name, arg_position)
             else:
                 # Record elements
                 for elem in node.elements:
-                    self._record_observations(elem, context, substitutions, function_name)
+                    self._record_observations(elem, context, substitutions, function_name, arg_position)
 
         elif isinstance(node, VariableNode):
             var_name = node.name
@@ -595,7 +584,7 @@ class ASTAnalyser:
                 position = context_names[var_name]
                 var_type = context[position][1]
                 resolved_type = substitute_type_vars(var_type, substitutions)
-                self.dists.record(resolved_type, resolved_context, VariableStrategy(position), function_name)
+                self.dists.record(resolved_type, resolved_context, VariableStrategy(position), function_name, arg_position)
 
         elif isinstance(node, LambdaNode):
             # Get param types from the node's inferred type
@@ -613,11 +602,11 @@ class ASTAnalyser:
                             for param_name, param_type in zip(node.param, param_types):
                                 new_context = new_context + [(param_name, param_type)]
 
-                            # Record body observations
-                            self._record_observations(node.body, new_context, substitutions, "lambda")
+                            # Record body observations (body is not a direct argument, so no arg_position)
+                            self._record_observations(node.body, new_context, substitutions, "lambda", None)
 
                             # Record this lambda
-                            self.dists.record(node_type, resolved_context, LambdaStrategy(), function_name)
+                            self.dists.record(node_type, resolved_context, LambdaStrategy(), function_name, arg_position)
                             return
 
             # Fallback: use fresh type vars for all parameters
@@ -626,18 +615,18 @@ class ASTAnalyser:
             for param_name in node.param:
                 param_type = TypeVar(f"_{param_name}")
                 new_context = new_context + [(param_name, param_type)]
-            self._record_observations(node.body, new_context, substitutions, "lambda")
+            self._record_observations(node.body, new_context, substitutions, "lambda", None)
 
         elif isinstance(node, IfNode):
-            # Record children
-            self._record_observations(node.condition, context, substitutions, "if")
-            self._record_observations(node.then_expr, context, substitutions, "if")
-            self._record_observations(node.else_expr, context, substitutions, "if")
+            # Record children (if condition/branches are not numbered arguments)
+            self._record_observations(node.condition, context, substitutions, "if", None)
+            self._record_observations(node.then_expr, context, substitutions, "if", None)
+            self._record_observations(node.else_expr, context, substitutions, "if", None)
 
             # Record this if
             node_type = self._get_node_type(node, substitutions)
             if node_type is not None:
-                self.dists.record(node_type, resolved_context, IfStrategy(), function_name)
+                self.dists.record(node_type, resolved_context, IfStrategy(), function_name, arg_position)
 
         elif isinstance(node, ApplicationNode):
             func = node.function
@@ -654,9 +643,9 @@ class ASTAnalyser:
 
             arg_function_name = call_function_name if call_function_name is not None else function_name
 
-            # Record argument observations
-            for arg in args:
-                self._record_observations(arg, context, substitutions, arg_function_name)
+            # Record argument observations with their position
+            for i, arg in enumerate(args):
+                self._record_observations(arg, context, substitutions, arg_function_name, i)
 
             if isinstance(func, VariableNode):
                 func_name = func.name
@@ -665,24 +654,25 @@ class ASTAnalyser:
                     # Grammar function application
                     node_type = self._get_node_type(node, substitutions)
                     if node_type is not None:
-                        self.dists.record(node_type, resolved_context, ApplicationStrategy(func_name), function_name)
+                        self.dists.record(node_type, resolved_context, ApplicationStrategy(func_name), function_name, arg_position)
 
                 elif func_name in context_names:
                     # Higher-order function application
                     position = context_names[func_name]
                     node_type = self._get_node_type(node, substitutions)
                     if node_type is not None:
-                        self.dists.record(node_type, resolved_context, ApplicationStrategy(f"@{position}"), function_name)
+                        self.dists.record(node_type, resolved_context, ApplicationStrategy(f"@{position}"), function_name, arg_position)
             else:
                 # Complex function expression
-                self._record_observations(func, context, substitutions, function_name)
+                self._record_observations(func, context, substitutions, function_name, arg_position)
 
 
 def load(
     txt_path: Path,
     grammar: Grammar,
     expected_type: TypeType = CallableOrig[[list[int]], list[int]],
-    include_function_name_in_context: bool = False
+    include_function_name_in_context: bool = False,
+    include_arg_position_in_context: bool = False
 ) -> EmpiricalDistributions:
     """
     Load and analyse programs from a text file.
@@ -694,12 +684,15 @@ def load(
                       Defaults to Callable[[list[int]], list[int]] for functions.txt.
         include_function_name_in_context: Whether to include function name in
             the empirical context signature.
+        include_arg_position_in_context: Whether to include argument position in
+            the empirical context signature.
 
     Returns:
         EmpiricalDistributions with learned distributions
     """
     dists = EmpiricalDistributions(
-        include_function_name_in_context=include_function_name_in_context
+        include_function_name_in_context=include_function_name_in_context,
+        include_arg_position_in_context=include_arg_position_in_context
     )
     analyser = ASTAnalyser(grammar, dists)
 
@@ -758,7 +751,7 @@ class EmpiricalComposer(Composer):
     Falls back to marginal distribution when exact context hasn't been seen.
     """
 
-    _cached_distributions: dict[tuple[str, int, bool], EmpiricalDistributions] = {}
+    _cached_distributions: dict[tuple[str, int, bool, bool], EmpiricalDistributions] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -770,7 +763,8 @@ class EmpiricalComposer(Composer):
         grammar: Grammar,
         functions_path: Optional[Path] = None,
         noise: float = 0.0,
-        include_function_name_in_context: bool = True
+        include_function_name_in_context: bool = True,
+        include_arg_position_in_context: bool = True
     ):
         """
         Initialise the empirical composer.
@@ -782,6 +776,8 @@ class EmpiricalComposer(Composer):
             noise: Floor weight for compatible strategies (0 = strict, >0 = exploration)
             include_function_name_in_context: Whether to include function name in
                 the empirical context signature.
+            include_arg_position_in_context: Whether to include argument position in
+                the empirical context signature.
         """
         super().__init__(seed, grammar)
         self.noise = noise
@@ -792,7 +788,8 @@ class EmpiricalComposer(Composer):
         cache_key = (
             str(functions_path.resolve()),
             id(grammar),
-            include_function_name_in_context
+            include_function_name_in_context,
+            include_arg_position_in_context
         )
         if cache_key not in EmpiricalComposer._cached_distributions:
             if functions_path.exists():
@@ -800,11 +797,13 @@ class EmpiricalComposer(Composer):
                     load(
                         functions_path,
                         grammar,
-                        include_function_name_in_context=include_function_name_in_context
+                        include_function_name_in_context=include_function_name_in_context,
+                        include_arg_position_in_context=include_arg_position_in_context
                     )
             else:
                 fallback = EmpiricalDistributions(
-                    include_function_name_in_context=include_function_name_in_context
+                    include_function_name_in_context=include_function_name_in_context,
+                    include_arg_position_in_context=include_arg_position_in_context
                 )
                 fallback.normalize()
                 EmpiricalComposer._cached_distributions[cache_key] = fallback
@@ -847,7 +846,8 @@ class EmpiricalComposer(Composer):
         depth: int,
         context: list[tuple[str, TypeType]],
         substitutions: SubstitutionTable,
-        function_name: Optional[str] = None
+        function_name: Optional[str] = None,
+        arg_position: Optional[int] = None
     ) -> ASTNode:
         """Internal generation with ordered context list."""
         target = substitute_type_vars(target_type, substitutions)
@@ -911,7 +911,8 @@ class EmpiricalComposer(Composer):
             context_types,
             strategies,
             self.noise,
-            function_name=function_name
+            function_name=function_name,
+            arg_position=arg_position
         )
 
         # Sample
@@ -1058,15 +1059,16 @@ class EmpiricalComposer(Composer):
 
         substitutions.update(func_subs)
 
-        # Generate arguments
+        # Generate arguments with their positions
         args = []
-        for arg_type in func_info['arg_types']:
+        for i, arg_type in enumerate(func_info['arg_types']):
             arg = self._generate_internal(
                 arg_type,
                 depth - 1,
                 context,
                 substitutions,
-                function_name=func_name
+                function_name=func_name,
+                arg_position=i
             )
             args.append(arg)
 

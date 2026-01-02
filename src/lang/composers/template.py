@@ -14,10 +14,18 @@ Key design:
 from typing import Optional
 
 from .base import Composer
+from .guard import (
+    guard_transform_weights,
+    guard_predicate_weights,
+    ApplicationContext,
+    StrategyGuard,
+    get_default_guard,
+    is_literal_node,
+)
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, IfNode
+    LambdaNode, ApplicationNode, IfNode, ListNode
 )
 from ..type_utils import (
     get_args,
@@ -243,57 +251,74 @@ class TemplateComposer(Composer):
     def _get_available_predicate_forms(
         self,
         elem_type: TypeType,
-        use_index: bool = False
+        use_index: bool = False,
+        must_be_meaningful: bool = True
     ) -> list[tuple[str, float]]:
         """
         Get available predicate forms based on grammar functions.
 
+        Args:
+            elem_type: Type of element being tested
+            use_index: Whether index is available
+            must_be_meaningful: If True, trivial predicates are blocked
+
         Returns:
             List of (form_name, weight) tuples
         """
-        forms = []
+        forms = {}
 
         if elem_type == int:
             # is_even_odd: needs at least one of is_even, is_odd
             if self._has_function('is_even') or self._has_function('is_odd'):
-                forms.append(('is_even_odd', 0.25))
+                forms['is_even_odd'] = 0.25
 
             # compare_const: needs at least one comparison operator
             if any(self._has_function(op) for op in ['<', '>', '==']):
-                forms.append(('compare_const', 0.30))
+                forms['compare_const'] = 0.30
 
             # modulo_check: needs % and ==
             if self._has_function('%') and self._has_function('=='):
-                forms.append(('modulo_check', 0.20))
+                forms['modulo_check'] = 0.20
 
             # compound: needs at least one combiner and a base predicate
             if (self._has_function('and') or self._has_function('or')) and forms:
-                forms.append(('compound', 0.15))
+                forms['compound'] = 0.15
 
             # index_based: needs comparisons or is_even/is_odd
             if use_index:
                 if any(self._has_function(op) for op in ['<', '>', '==', 'is_even', 'is_odd']):
-                    forms.append(('index_based', 0.10))
+                    forms['index_based'] = 0.10
         else:
             # For non-int, default to equality if available
             if self._has_function('=='):
-                forms.append(('equality', 1.0))
+                forms['equality'] = 1.0
 
         # If no forms available, fall back to a trivial predicate
         if not forms:
-            forms.append(('trivial', 1.0))
+            forms['trivial'] = 1.0
 
-        return forms
+        # Apply guard to block trivial predicates
+        forms = guard_predicate_weights(forms, must_be_meaningful=must_be_meaningful)
+
+        return [(name, weight) for name, weight in forms.items()]
 
     def _get_available_transform_forms(
         self,
         elem_type: TypeType,
         ret_type: TypeType,
         use_index: bool = False,
-        substitutions: SubstitutionTable | None = None
+        substitutions: SubstitutionTable | None = None,
+        allow_identity: bool = False
     ) -> list[tuple[str, float]]:
         """
         Get available transform forms based on grammar functions.
+
+        Args:
+            elem_type: Type of input element
+            ret_type: Expected return type
+            use_index: Whether index is available
+            substitutions: Type substitutions
+            allow_identity: If False, identity transforms are blocked (for map)
 
         Returns:
             List of (form_name, weight) tuples
@@ -304,41 +329,53 @@ class TemplateComposer(Composer):
         actual_elem = substitute_type_vars(elem_type, substitutions)
         actual_ret = substitute_type_vars(ret_type, substitutions)
 
-        forms = []
+        forms = {}
 
         # identity: always available if types match
         if matchable(actual_elem, actual_ret, substitutions.copy(), update=False):
-            forms.append(('identity', 0.10))
+            forms['identity'] = 0.10
 
         if actual_elem == int and actual_ret == int:
             # arithmetic: needs at least one arithmetic operator
             if any(self._has_function(op) for op in ['+', '-', '*']):
-                forms.append(('arithmetic', 0.40))
+                forms['arithmetic'] = 0.40
 
             # modulo: needs %
             if self._has_function('%'):
-                forms.append(('modulo', 0.15))
+                forms['modulo'] = 0.15
 
             # with_index: needs arithmetic ops
             if use_index and any(self._has_function(op) for op in ['+', '-', '*']):
-                forms.append(('with_index', 0.15))
+                forms['with_index'] = 0.15
 
         if actual_ret == int:
             # conditional: available if we have predicates
             pred_forms = self._get_available_predicate_forms(actual_elem)
             if pred_forms:
-                forms.append(('conditional', 0.15))
+                forms['conditional'] = 0.15
 
         if get_base_type(actual_ret) == list:
             # singleton: needs singleton function
             if self._has_function('singleton'):
-                forms.append(('singleton', 0.05))
+                forms['singleton'] = 0.05
 
         # If no forms available, default to identity
         if not forms:
-            forms.append(('identity', 1.0))
+            forms['identity'] = 1.0
 
-        return forms
+        # Apply guard to block identity transforms for map
+        forms = guard_transform_weights(forms, allow_identity=allow_identity)
+
+        # If guard zeroed all forms, add a fallback (never re-enable identity)
+        if not any(w > 0 for w in forms.values()):
+            if any(self._has_function(op) for op in ['+', '-', '*']):
+                forms['arithmetic'] = 1.0
+            elif self._has_function('%'):
+                forms['modulo'] = 1.0
+            else:
+                forms['conditional'] = 1.0
+
+        return [(name, weight) for name, weight in forms.items()]
 
     def _get_available_key_forms(self, elem_type: TypeType) -> list[tuple[str, float]]:
         """
@@ -373,6 +410,129 @@ class TemplateComposer(Composer):
         """Get available arithmetic operators (excluding division to avoid errors)."""
         ops = ['+', '-', '*']
         return [op for op in ops if self._has_function(op)]
+
+    # ========================================================================
+    # Guard Helpers
+    # ========================================================================
+
+    def _is_blocked_application(self, fn_name: str, arg: ASTNode) -> bool:
+        """
+        Check if an application (fn_name arg) would be blocked by guard rules.
+
+        This handles rules like:
+        - first_blocks_singleton: (first (singleton x)) is trivial
+        - reverse_no_reverse: (reverse (reverse x)) is trivial
+        - unique_no_unique: (unique (unique x)) is trivial
+        - flatten_no_singleton: (flatten (singleton x)) is trivial
+        - last_blocks_singleton: (last (singleton x)) is trivial
+        - length_no_empty_list: (length []) is trivial
+        - list_reducer_no_empty_literal: (sum []), (product []), etc. are trivial
+        """
+        guard = get_default_guard()
+
+        # Determine strategy type of the argument
+        if is_literal_node(arg):
+            strategy_type = StrategyGuard.LITERAL
+        elif isinstance(arg, ApplicationNode) and isinstance(arg.function, VariableNode):
+            strategy_type = f"apply:{arg.function.name}"
+        elif isinstance(arg, VariableNode):
+            strategy_type = StrategyGuard.VARIABLE
+        else:
+            strategy_type = 'unknown'
+
+        # Check if this strategy is blocked for this function
+        return guard.should_block_strategy(fn_name, 0, strategy_type, [])
+
+    def _generate_safe_list_arg(
+        self,
+        fn_name: str,
+        input_var: str,
+        input_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate a list argument for fn_name, ensuring it's not a blocked pattern.
+
+        This is used for functions like first, last, length, reverse, unique, etc.
+        where certain argument patterns are trivial.
+        """
+        # First try: just use the input variable (always safe)
+        input_node = VariableNode(input_var)
+        if not self._is_blocked_application(fn_name, input_node):
+            return input_node
+
+        # If even the variable is blocked (shouldn't happen), generate something else
+        # Try a simple transformation
+        if self._has_function('reverse') and fn_name != 'reverse':
+            return ApplicationNode(VariableNode('reverse'), [input_node])
+        if self._has_function('unique') and fn_name != 'unique':
+            return ApplicationNode(VariableNode('unique'), [input_node])
+
+        # Fallback to input
+        return input_node
+
+    def _generate_binary_op_args(
+        self,
+        op: str,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable,
+        left_type: TypeType = int,
+        right_type: TypeType = int
+    ) -> tuple[ASTNode, ASTNode]:
+        """
+        Generate arguments for a binary operator, ensuring at least one is non-literal.
+
+        This handles the binary_ops_need_nonliteral guard rule.
+        """
+        guard = get_default_guard()
+
+        # Try to find context variables first
+        int_vars = [name for name, t in context.items() if t == int]
+
+        # Strategy: generate left first, then right with context
+        if int_vars and self.rng.random() < 0.7:
+            # Use a variable for left
+            left = VariableNode(self.rng.choice(int_vars))
+            left_strategy = StrategyGuard.VARIABLE
+        else:
+            # Use a literal for left
+            left = NumberNode(self.rng.randint(0, 99))
+            left_strategy = StrategyGuard.LITERAL
+
+        # Create context for right arg
+        ctx = ApplicationContext.for_function(op, num_args=2, current_pos=1)
+        ctx = ctx.with_strategy(0, left_strategy)
+
+        # Check if we should block literal for right
+        block_right_literal = guard.should_block_with_context(ctx, StrategyGuard.LITERAL)
+
+        if block_right_literal:
+            # Must use non-literal for right
+            if int_vars:
+                right = VariableNode(self.rng.choice(int_vars))
+            else:
+                # Generate an arithmetic expression
+                if self._get_available_arithmetic_ops():
+                    inner_op = self.rng.choice(self._get_available_arithmetic_ops())
+                    right = ApplicationNode(
+                        VariableNode(inner_op),
+                        [NumberNode(self.rng.randint(0, 20)), NumberNode(self.rng.randint(1, 10))]
+                    )
+                else:
+                    # Last resort: use left again if it's a variable
+                    if left_strategy == StrategyGuard.VARIABLE:
+                        right = left
+                    else:
+                        # Can't avoid all literals, use literal anyway
+                        right = NumberNode(self.rng.randint(1, 99))
+        else:
+            # Can use literal for right
+            right = NumberNode(self.rng.randint(0, 99))
+
+        return left, right
 
     # ========================================================================
     # Predicate Generation (for filter, count, find)
@@ -504,13 +664,14 @@ class TemplateComposer(Composer):
         context: dict[str, TypeType],
         substitutions: SubstitutionTable,
         use_index: bool = False,
-        idx_var: str = None
+        idx_var: str = None,
+        allow_identity: bool = False
     ) -> ASTNode:
         """
         Generate a transform expression.
 
         Common patterns:
-        - x (identity)
+        - x (identity) - blocked by default for map
         - (+ x 1), (* x 2)
         - (% x 10)
 
@@ -521,9 +682,10 @@ class TemplateComposer(Composer):
 
         elem_node = VariableNode(elem_var)
 
-        # Get available transform forms
+        # Get available transform forms (identity blocked by guard unless allowed)
         available_forms = self._get_available_transform_forms(
-            elem_type, ret_type, use_index and idx_var is not None, substitutions
+            elem_type, ret_type, use_index and idx_var is not None, substitutions,
+            allow_identity=allow_identity
         )
 
         forms = [f[0] for f in available_forms]
@@ -551,7 +713,12 @@ class TemplateComposer(Composer):
             return ApplicationNode(VariableNode(op), [elem_node, idx_node])
 
         elif form == 'conditional':
-            pred = self._generate_simple_predicate(elem_var, actual_elem) if actual_elem == int else BooleanNode(True)
+            # Generate a non-trivial predicate (guard blocks boolean literals for if conditions)
+            if actual_elem == int:
+                pred = self._generate_simple_predicate(elem_var, actual_elem)
+            else:
+                # For non-int types, generate a comparison instead of literal True
+                pred = ApplicationNode(VariableNode('=='), [elem_node, elem_node])
             then_val = NumberNode(self.rng.randint(0, 10))
             else_val = NumberNode(self.rng.randint(0, 10))
             return IfNode(pred, then_val, else_val)
@@ -1123,12 +1290,35 @@ class TemplateComposer(Composer):
         target_type: TypeType,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
-        """Generate a list expression."""
+        """Generate a list expression.
+
+        Args:
+            target_type: The list type to generate
+            depth: Remaining depth
+            context: Variable bindings
+            substitutions: Type substitutions
+            app_context: If provided, used to check for blocked patterns (e.g., singleton for first/last)
+        """
         for var_name, var_type in context.items():
             if matchable(var_type, target_type, substitutions.copy(), update=False):
                 return VariableNode(var_name)
+
+        # Check if singleton would be blocked (e.g., for first, last, flatten)
+        if app_context is not None:
+            guard = get_default_guard()
+            singleton_blocked = guard.should_block_strategy(
+                app_context.fn_name, app_context.arg_pos, 'apply:singleton', []
+            )
+            if singleton_blocked:
+                # Try to find an alternative - use a list variable if available
+                for var_name, var_type in context.items():
+                    if get_base_type(var_type) == list:
+                        return VariableNode(var_name)
+                # No list variable, generate empty list (also might be blocked, but safer)
+                return ListNode([])
 
         return ApplicationNode(VariableNode('singleton'), [NumberNode(self.rng.randint(0, 99))])
 
@@ -1136,48 +1326,98 @@ class TemplateComposer(Composer):
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
-        """Generate an integer expression."""
-        if depth <= 0 or self.rng.random() < 0.5:
+        """Generate an integer expression.
+
+        Args:
+            depth: Remaining depth
+            context: Variable bindings
+            substitutions: Type substitutions
+            app_context: If provided, used to apply guards (e.g., block literals for binary ops)
+        """
+        guard = get_default_guard()
+
+        # Check if we should block literals (e.g., for binary ops when other arg is literal)
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
+        if not block_literal and (depth <= 0 or self.rng.random() < 0.5):
             return NumberNode(self.rng.randint(0, 99))
 
-        op = self.rng.choice(['+', '-', '*'])
-        left = NumberNode(self.rng.randint(0, 20))
-        right = NumberNode(self.rng.randint(1, 10))
-        return ApplicationNode(VariableNode(op), [left, right])
+        # Try to use a context variable if available
+        for var_name, var_type in context.items():
+            if var_type == int:
+                return VariableNode(var_name)
+
+        # Fall back to arithmetic expression with guard
+        available_ops = self._get_available_arithmetic_ops()
+        if available_ops:
+            op = self.rng.choice(available_ops)
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        # No arithmetic ops available, use literal
+        return NumberNode(self.rng.randint(0, 99))
 
     def _generate_bool_expression(
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
-        """Generate a boolean expression."""
-        if depth <= 0 or self.rng.random() < 0.3:
+        """Generate a boolean expression.
+
+        Args:
+            depth: Remaining depth
+            context: Variable bindings
+            substitutions: Type substitutions
+            app_context: If provided, used to apply guards (e.g., block literals for if conditions)
+        """
+        guard = get_default_guard()
+
+        # Check if we should block literals (e.g., for if condition)
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
+        if not block_literal and (depth <= 0 or self.rng.random() < 0.3):
             return BooleanNode(self.rng.choice([True, False]))
 
-        op = self.rng.choice(['<', '>', '=='])
-        left = NumberNode(self.rng.randint(0, 99))
-        right = NumberNode(self.rng.randint(0, 99))
-        return ApplicationNode(VariableNode(op), [left, right])
+        # Generate a comparison expression with guard
+        available_ops = self._get_available_comparison_ops()
+        if available_ops:
+            op = self.rng.choice(available_ops)
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        # No comparison ops available, use tautology
+        return ApplicationNode(VariableNode('=='), [NumberNode(0), NumberNode(0)])
 
     def _generate_expression_of_type(
         self,
         target_type: TypeType,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
-        """Generate an expression of the given type."""
+        """Generate an expression of the given type.
+
+        Args:
+            target_type: Type to generate
+            depth: Remaining depth
+            context: Variable bindings
+            substitutions: Type substitutions
+            app_context: If provided, used to apply guards
+        """
         base = get_base_type(target_type)
 
         if target_type == int:
-            return self._generate_int_expression(depth, context, substitutions)
+            return self._generate_int_expression(depth, context, substitutions, app_context)
         elif target_type == bool:
-            return self._generate_bool_expression(depth, context, substitutions)
+            return self._generate_bool_expression(depth, context, substitutions, app_context)
         elif base == list:
-            return self._generate_list_expression(target_type, depth, context, substitutions)
+            return self._generate_list_expression(target_type, depth, context, substitutions, app_context)
         elif base == CallableOrig:
             return self._generate_function(target_type, depth, context, substitutions)
 

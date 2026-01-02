@@ -17,6 +17,13 @@ from pathlib import Path
 from typing import Optional
 
 from .base import Composer
+from .guard import (
+    guard_transform_weights,
+    guard_predicate_weights,
+    ApplicationContext,
+    StrategyGuard,
+    get_default_guard,
+)
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -863,6 +870,9 @@ class HybridComposer(Composer):
         if not base_weights:
             return BooleanNode(True)
 
+        # Apply guard to block trivial predicates
+        base_weights = guard_predicate_weights(base_weights, must_be_meaningful=True)
+
         pattern_weights = TemplateDistributions.perturb_weights(base_weights, self.noise)
 
         patterns = list(pattern_weights.keys())
@@ -996,7 +1006,21 @@ class HybridComposer(Composer):
         if not base_weights:
             base_weights['identity'] = 1.0
 
+        # Apply guard to block identity transforms for map (lambda x x is trivial)
+        base_weights = guard_transform_weights(base_weights, allow_identity=False)
+
         pattern_weights = TemplateDistributions.perturb_weights(base_weights, self.noise)
+
+        # Handle case where all weights are zeroed after guard
+        if not any(w > 0 for w in pattern_weights.values()):
+            # Fall back to arithmetic if available (never re-enable identity)
+            if self._get_available_arithmetic_ops():
+                pattern_weights['arithmetic'] = 1.0
+            elif self._has_function('%'):
+                pattern_weights['modulo'] = 1.0
+            else:
+                # As last resort, use conditional which is non-trivial
+                pattern_weights['conditional'] = 1.0
 
         patterns = list(pattern_weights.keys())
         weights = [pattern_weights[p] for p in patterns]
@@ -1022,7 +1046,12 @@ class HybridComposer(Composer):
             return ApplicationNode(VariableNode(op), [elem_node, idx_node])
 
         elif pattern == 'conditional':
-            pred = self._generate_simple_predicate(elem_var, actual_elem) if actual_elem == int else BooleanNode(True)
+            # Generate a non-trivial predicate (guard blocks boolean literals for if conditions)
+            if actual_elem == int:
+                pred = self._generate_simple_predicate(elem_var, actual_elem)
+            else:
+                # For non-int types, generate a comparison instead of literal True
+                pred = ApplicationNode(VariableNode('=='), [elem_node, elem_node])
             then_val = NumberNode(self.rng.randint(0, 10))
             else_val = NumberNode(self.rng.randint(0, 10))
             return IfNode(pred, then_val, else_val)
@@ -1463,11 +1492,20 @@ class HybridComposer(Composer):
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an integer expression."""
-        if depth <= 0 or self.rng.random() < 0.5:
+        guard = get_default_guard()
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
+        if not block_literal and (depth <= 0 or self.rng.random() < 0.5):
             return NumberNode(self._sample_int_constant())
+
+        # Try to use a context variable if available
+        for var_name, var_type in context.items():
+            if var_type == int:
+                return VariableNode(var_name)
 
         op = self._sample_arithmetic_op()
         left = NumberNode(self.rng.randint(0, 20))
@@ -1478,10 +1516,14 @@ class HybridComposer(Composer):
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate a boolean expression."""
-        if depth <= 0 or self.rng.random() < 0.3:
+        guard = get_default_guard()
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
+        if not block_literal and (depth <= 0 or self.rng.random() < 0.3):
             return BooleanNode(self.rng.choice([True, False]))
 
         op = self._sample_comparison_op()
@@ -1494,15 +1536,16 @@ class HybridComposer(Composer):
         target_type: TypeType,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an expression of the given type."""
         base = get_base_type(target_type)
 
         if target_type == int:
-            return self._generate_int_expression(depth, context, substitutions)
+            return self._generate_int_expression(depth, context, substitutions, app_context)
         elif target_type == bool:
-            return self._generate_bool_expression(depth, context, substitutions)
+            return self._generate_bool_expression(depth, context, substitutions, app_context)
         elif base == list:
             return self._generate_list_expression(target_type, depth, context, substitutions)
         elif base == CallableOrig:

@@ -21,6 +21,29 @@ from .template import TemplateComposer
 from .empirical import EmpiricalComposer
 from .hybrid import HybridComposer
 from .hierarchical import HierarchicalComposer
+from .strategies import (
+    Strategy,
+    LiteralStrategy,
+    VariableStrategy,
+    LambdaStrategy,
+    IfStrategy,
+    ApplicationStrategy,
+    PredicatePattern,
+    TransformPattern,
+    KeyPattern,
+)
+from .guard import (
+    StrategyGuard,
+    ApplicationContext,
+    apply_guard,
+    get_default_guard,
+    is_identity_lambda,
+    is_literal_node,
+    is_trivial_application,
+    guard_predicate_weights,
+    guard_transform_weights,
+    guard_key_weights,
+)
 from ..grammar import Grammar
 
 # Registry of available composers
@@ -118,12 +141,29 @@ def list_composers() -> list[str]:
 
 
 __all__ = [
+    # Composers
     'Composer',
     'RandomComposer',
     'TemplateComposer',
     'EmpiricalComposer',
     'HybridComposer',
     'HierarchicalComposer',
+    # Strategies
+    'Strategy',
+    'LiteralStrategy',
+    'VariableStrategy',
+    'LambdaStrategy',
+    'IfStrategy',
+    'ApplicationStrategy',
+    'PredicatePattern',
+    'TransformPattern',
+    'KeyPattern',
+    # Guard
+    'StrategyGuard',
+    'ApplicationContext',
+    'apply_guard',
+    'get_default_guard',
+    # Utilities
     'get_composer',
     'list_composers',
     'COMPOSERS',

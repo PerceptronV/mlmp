@@ -28,6 +28,8 @@ from typing import Optional
 import hashlib
 
 from .base import Composer
+from .guard import ApplicationContext, StrategyGuard, get_default_guard
+from .strategies import PredicatePattern, TransformPattern, KeyPattern
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -77,33 +79,6 @@ class Skeleton:
 
     def __hash__(self) -> int:
         return hash(self.pattern)
-
-
-@dataclass(frozen=True)
-class PredicatePattern:
-    """Pattern for predicate expressions (used in filter, count, find)."""
-    pattern: str  # e.g., "is_even", "compare_const", "modulo_check", "compound"
-
-    def __repr__(self) -> str:
-        return f"Pred({self.pattern})"
-
-
-@dataclass(frozen=True)
-class TransformPattern:
-    """Pattern for transform expressions (used in map)."""
-    pattern: str  # e.g., "identity", "arithmetic", "modulo", "conditional"
-
-    def __repr__(self) -> str:
-        return f"Trans({self.pattern})"
-
-
-@dataclass(frozen=True)
-class KeyPattern:
-    """Pattern for key function expressions (used in sort, group)."""
-    pattern: str  # e.g., "identity", "negate", "modulo", "arithmetic"
-
-    def __repr__(self) -> str:
-        return f"Key({self.pattern})"
 
 
 # ============================================================================
@@ -1373,6 +1348,11 @@ class HierarchicalComposer(Composer):
         # Sample predicate pattern
         pred_pattern = self.dists.sample_predicate_pattern(fn_name, self.rng, self.noise)
 
+        # Apply guard: block trivial predicates (literal, variable)
+        if pred_pattern is not None and pred_pattern.is_trivial():
+            # Fall back to a meaningful predicate pattern
+            pred_pattern = PredicatePattern('compare_const')
+
         elem_var = self._fresh_var_name()
         idx_var = self._fresh_var_name() if use_index else None
 
@@ -1415,6 +1395,11 @@ class HierarchicalComposer(Composer):
 
         # Sample transform pattern
         trans_pattern = self.dists.sample_transform_pattern(fn_name, self.rng, self.noise)
+
+        # Apply guard: block identity transforms for map (lambda x x is trivial)
+        if trans_pattern is not None and trans_pattern.pattern == 'identity':
+            # Resample with identity blocked
+            trans_pattern = TransformPattern('arithmetic')  # Default to arithmetic
 
         output_args = get_args(output_type)
         output_elem_type = output_args[0] if output_args else int
@@ -1696,8 +1681,8 @@ class HierarchicalComposer(Composer):
                 op = self.rng.choice(comparison_ops)
                 const = self.dists.sample_comparison_const(self.rng, self.noise)
                 return ApplicationNode(VariableNode(op), [elem_node, NumberNode(const)])
-            # Fall back to literal true
-            return BooleanNode(True)
+            # Fall back to tautology (x == x) instead of literal
+            return ApplicationNode(VariableNode('=='), [elem_node, elem_node])
 
         elif pattern.pattern == 'modulo_check':
             has_mod = '%' in arithmetic_ops
@@ -1712,7 +1697,8 @@ class HierarchicalComposer(Composer):
                 op = self.rng.choice(comparison_ops)
                 const = self.dists.sample_comparison_const(self.rng, self.noise)
                 return ApplicationNode(VariableNode(op), [elem_node, NumberNode(const)])
-            return BooleanNode(True)
+            # Fall back to tautology (x == x) instead of literal
+            return ApplicationNode(VariableNode('=='), [elem_node, elem_node])
 
         elif pattern.pattern == 'compound':
             available_combiners = [c for c in ['and', 'or'] if self._has_function(c)]
@@ -1744,7 +1730,8 @@ class HierarchicalComposer(Composer):
                 op = self.rng.choice(comparison_ops)
                 const = self.dists.sample_comparison_const(self.rng, self.noise)
                 return ApplicationNode(VariableNode(op), [elem_node, NumberNode(const)])
-            return BooleanNode(True)
+            # Fall back to tautology (x == x) instead of literal
+            return ApplicationNode(VariableNode('=='), [elem_node, elem_node])
 
         else:
             # Default to comparison
@@ -1752,7 +1739,8 @@ class HierarchicalComposer(Composer):
                 op = self.rng.choice(comparison_ops)
                 const = self.dists.sample_comparison_const(self.rng, self.noise)
                 return ApplicationNode(VariableNode(op), [elem_node, NumberNode(const)])
-            return BooleanNode(True)
+            # Fall back to tautology (x == x) instead of literal
+            return ApplicationNode(VariableNode('=='), [elem_node, elem_node])
 
     def _generate_simple_predicate(self, elem_var: str, elem_type: TypeType) -> ASTNode:
         """Generate a simple predicate (for compound predicates)."""
@@ -1774,8 +1762,8 @@ class HierarchicalComposer(Composer):
             fn = self.rng.choice(available_parity)
             return ApplicationNode(VariableNode(fn), [elem_node])
         else:
-            # Nothing available, return literal
-            return BooleanNode(True)
+            # Nothing available, return a tautology (x == x) instead of literal
+            return ApplicationNode(VariableNode('=='), [elem_node, elem_node])
 
     def _generate_transform_from_pattern(
         self,
@@ -2036,52 +2024,73 @@ class HierarchicalComposer(Composer):
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an integer expression."""
+        guard = get_default_guard()
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
         arithmetic_ops = self._get_available_arithmetic_ops()
         # Filter to safe ops
         safe_ops = [op for op in arithmetic_ops if op in ['+', '-', '*']]
 
-        if depth <= 0 or not safe_ops or self.rng.random() < 0.5:
+        if not block_literal and (depth <= 0 or not safe_ops or self.rng.random() < 0.5):
             return NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
 
-        op = self.rng.choice(safe_ops)
-        left = NumberNode(self.rng.randint(0, 20))
-        right = NumberNode(self.rng.randint(1, 10))
-        return ApplicationNode(VariableNode(op), [left, right])
+        # Try to use a context variable if available
+        for var_name, var_type in context.items():
+            if var_type == int:
+                return VariableNode(var_name)
+
+        if safe_ops:
+            op = self.rng.choice(safe_ops)
+            left = NumberNode(self.rng.randint(0, 20))
+            right = NumberNode(self.rng.randint(1, 10))
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        return NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
 
     def _generate_bool_expression(
         self,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate a boolean expression."""
+        guard = get_default_guard()
+        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+
         comparison_ops = self._get_available_comparison_ops()
 
-        if depth <= 0 or not comparison_ops or self.rng.random() < 0.3:
+        if not block_literal and (depth <= 0 or not comparison_ops or self.rng.random() < 0.3):
             return BooleanNode(self.dists.sample_bool_constant(self.rng, self.noise))
 
-        op = self.rng.choice(comparison_ops)
-        left = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
-        right = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
-        return ApplicationNode(VariableNode(op), [left, right])
+        if comparison_ops:
+            op = self.rng.choice(comparison_ops)
+            left = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
+            right = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        # Fallback: generate a tautology if no comparison ops available
+        return ApplicationNode(VariableNode('=='), [NumberNode(0), NumberNode(0)])
 
     def _generate_expression_of_type(
         self,
         target_type: TypeType,
         depth: int,
         context: dict[str, TypeType],
-        substitutions: SubstitutionTable
+        substitutions: SubstitutionTable,
+        app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an expression of the given type."""
         base = get_base_type(target_type)
 
         if target_type == int:
-            return self._generate_int_expression(depth, context, substitutions)
+            return self._generate_int_expression(depth, context, substitutions, app_context)
         elif target_type == bool:
-            return self._generate_bool_expression(depth, context, substitutions)
+            return self._generate_bool_expression(depth, context, substitutions, app_context)
         elif base == list:
             return self._generate_list_expression(target_type, depth, context, substitutions)
         elif base == CallableOrig:

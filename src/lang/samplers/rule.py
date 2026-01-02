@@ -605,6 +605,13 @@ class RuleSampler(Sampler):
                 f"Try increasing depth, depth_variation, or max_attempts_multiplier."
             )
 
+        # Advance the composer's RNG so subsequent sample() calls produce
+        # different results. Without this, the RNG state restoration in the
+        # loop above causes every sample() call to generate identical programs.
+        self.composer.rng.seed(
+            hash((tuple(self.composer.rng.getstate()[1]), attempts, len(programs))) % (2**32)
+        )
+
         return programs
 
     def sample_batch(
