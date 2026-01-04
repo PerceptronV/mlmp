@@ -14,13 +14,12 @@ Key design:
 from typing import Optional
 
 from .base import Composer
-from .guard import (
+from .utils.strategies import StrategyType
+from .utils.guard import (
     guard_transform_weights,
     guard_predicate_weights,
     ApplicationContext,
-    StrategyGuard,
     get_default_guard,
-    is_literal_node,
 )
 from ..grammar import Grammar
 from ..ast_nodes import (
@@ -55,7 +54,7 @@ class TemplateComposer(Composer):
     def get_name(cls) -> str:
         return "template"
 
-    def __init__(self, seed: int, grammar: Grammar, noise: float = 0.0):
+    def __init__(self, seed: int, grammar: Grammar, noise: float = 0.0, guard = None):
         """
         Initialize the TemplateComposer.
 
@@ -66,6 +65,7 @@ class TemplateComposer(Composer):
         """
         super().__init__(seed, grammar)
         self.noise = noise
+        self.guard = guard or get_default_guard()
 
         # Higher-order functions that form meaningful templates
         self.ho_functions = {'map', 'mapi', 'filter', 'filteri', 'fold', 'foldi',
@@ -251,8 +251,7 @@ class TemplateComposer(Composer):
     def _get_available_predicate_forms(
         self,
         elem_type: TypeType,
-        use_index: bool = False,
-        must_be_meaningful: bool = True
+        use_index: bool = False
     ) -> list[tuple[str, float]]:
         """
         Get available predicate forms based on grammar functions.
@@ -297,9 +296,7 @@ class TemplateComposer(Composer):
         if not forms:
             forms['trivial'] = 1.0
 
-        # Apply guard to block trivial predicates
-        forms = guard_predicate_weights(forms, must_be_meaningful=must_be_meaningful)
-
+        # NOTE: Guards NOT applied here - caller applies after noise
         return [(name, weight) for name, weight in forms.items()]
 
     def _get_available_transform_forms(
@@ -313,6 +310,9 @@ class TemplateComposer(Composer):
         """
         Get available transform forms based on grammar functions.
 
+        Returns raw weights WITHOUT guards applied. Guards are applied after noise
+        in the calling function.
+
         Args:
             elem_type: Type of input element
             ret_type: Expected return type
@@ -321,7 +321,7 @@ class TemplateComposer(Composer):
             allow_identity: If False, identity transforms are blocked (for map)
 
         Returns:
-            List of (form_name, weight) tuples
+            List of (form_name, weight) tuples (without guards applied)
         """
         if substitutions is None:
             substitutions = SubstitutionTable()
@@ -363,18 +363,7 @@ class TemplateComposer(Composer):
         if not forms:
             forms['identity'] = 1.0
 
-        # Apply guard to block identity transforms for map
-        forms = guard_transform_weights(forms, allow_identity=allow_identity)
-
-        # If guard zeroed all forms, add a fallback (never re-enable identity)
-        if not any(w > 0 for w in forms.values()):
-            if any(self._has_function(op) for op in ['+', '-', '*']):
-                forms['arithmetic'] = 1.0
-            elif self._has_function('%'):
-                forms['modulo'] = 1.0
-            else:
-                forms['conditional'] = 1.0
-
+        # NOTE: Guards NOT applied here - caller applies after noise
         return [(name, weight) for name, weight in forms.items()]
 
     def _get_available_key_forms(self, elem_type: TypeType) -> list[tuple[str, float]]:
@@ -415,34 +404,6 @@ class TemplateComposer(Composer):
     # Guard Helpers
     # ========================================================================
 
-    def _is_blocked_application(self, fn_name: str, arg: ASTNode) -> bool:
-        """
-        Check if an application (fn_name arg) would be blocked by guard rules.
-
-        This handles rules like:
-        - first_blocks_singleton: (first (singleton x)) is trivial
-        - reverse_no_reverse: (reverse (reverse x)) is trivial
-        - unique_no_unique: (unique (unique x)) is trivial
-        - flatten_no_singleton: (flatten (singleton x)) is trivial
-        - last_blocks_singleton: (last (singleton x)) is trivial
-        - length_no_empty_list: (length []) is trivial
-        - list_reducer_no_empty_literal: (sum []), (product []), etc. are trivial
-        """
-        guard = get_default_guard()
-
-        # Determine strategy type of the argument
-        if is_literal_node(arg):
-            strategy_type = StrategyGuard.LITERAL
-        elif isinstance(arg, ApplicationNode) and isinstance(arg.function, VariableNode):
-            strategy_type = f"apply:{arg.function.name}"
-        elif isinstance(arg, VariableNode):
-            strategy_type = StrategyGuard.VARIABLE
-        else:
-            strategy_type = 'unknown'
-
-        # Check if this strategy is blocked for this function
-        return guard.should_block_strategy(fn_name, 0, strategy_type, [])
-
     def _generate_safe_list_arg(
         self,
         fn_name: str,
@@ -460,7 +421,7 @@ class TemplateComposer(Composer):
         """
         # First try: just use the input variable (always safe)
         input_node = VariableNode(input_var)
-        if not self._is_blocked_application(fn_name, input_node):
+        if not self.guard.should_block_strategy(fn_name, 0, StrategyType.VARIABLE, []):
             return input_node
 
         # If even the variable is blocked (shouldn't happen), generate something else
@@ -486,53 +447,58 @@ class TemplateComposer(Composer):
         Generate arguments for a binary operator, ensuring at least one is non-literal.
 
         This handles the binary_ops_need_nonliteral guard rule.
+        Shuffles generation order to avoid bias.
         """
-        guard = get_default_guard()
-
         # Try to find context variables first
         int_vars = [name for name, t in context.items() if t == int]
 
-        # Strategy: generate left first, then right with context
+        # Shuffle generation order to avoid bias
+        # first_pos is which position (0=left, 1=right) we generate first
+        first_pos = self.rng.choice([0, 1])
+        second_pos = 1 - first_pos
+
+        results: list[Optional[ASTNode]] = [None, None]
+        strategies: list[Optional[StrategyType]] = [None, None]
+
+        # Generate first argument
         if int_vars and self.rng.random() < 0.7:
-            # Use a variable for left
-            left = VariableNode(self.rng.choice(int_vars))
-            left_strategy = StrategyGuard.VARIABLE
+            results[first_pos] = VariableNode(self.rng.choice(int_vars))
+            strategies[first_pos] = StrategyType.VARIABLE
         else:
-            # Use a literal for left
-            left = NumberNode(self.rng.randint(0, 99))
-            left_strategy = StrategyGuard.LITERAL
+            results[first_pos] = NumberNode(self.rng.randint(0, 99))
+            strategies[first_pos] = StrategyType.LITERAL
 
-        # Create context for right arg
-        ctx = ApplicationContext.for_function(op, num_args=2, current_pos=1)
-        ctx = ctx.with_strategy(0, left_strategy)
+        # Create context for second arg
+        ctx = ApplicationContext.for_function(op, num_args=2, current_pos=second_pos)
+        ctx = ctx.with_strategy(first_pos, strategies[first_pos])
 
-        # Check if we should block literal for right
-        block_right_literal = guard.should_block_with_context(ctx, StrategyGuard.LITERAL)
+        # Check if we should block literal for second arg
+        block_literal = self.guard.should_block_with_context(ctx, StrategyType.LITERAL)
 
-        if block_right_literal:
-            # Must use non-literal for right
+        if block_literal:
+            # Must use non-literal for second arg
             if int_vars:
-                right = VariableNode(self.rng.choice(int_vars))
+                results[second_pos] = VariableNode(self.rng.choice(int_vars))
             else:
                 # Generate an arithmetic expression
                 if self._get_available_arithmetic_ops():
                     inner_op = self.rng.choice(self._get_available_arithmetic_ops())
-                    right = ApplicationNode(
+                    results[second_pos] = ApplicationNode(
                         VariableNode(inner_op),
                         [NumberNode(self.rng.randint(0, 20)), NumberNode(self.rng.randint(1, 10))]
                     )
                 else:
-                    # Last resort: use left again if it's a variable
-                    if left_strategy == StrategyGuard.VARIABLE:
-                        right = left
+                    # Last resort: use first again if it's a variable
+                    if strategies[first_pos] == StrategyType.VARIABLE:
+                        results[second_pos] = results[first_pos]
                     else:
                         # Can't avoid all literals, use literal anyway
-                        right = NumberNode(self.rng.randint(1, 99))
+                        results[second_pos] = NumberNode(self.rng.randint(1, 99))
         else:
-            # Can use literal for right
-            right = NumberNode(self.rng.randint(0, 99))
+            # Can use literal for second arg
+            results[second_pos] = NumberNode(self.rng.randint(0, 99))
 
-        return left, right
+        return results[0], results[1]
 
     # ========================================================================
     # Predicate Generation (for filter, count, find)
@@ -560,16 +526,35 @@ class TemplateComposer(Composer):
         actual_type = substitute_type_vars(elem_type, substitutions)
         elem_node = VariableNode(elem_var)
 
-        # Get available predicate forms
+        # Get available predicate forms (raw weights, no guards yet)
         available_forms = self._get_available_predicate_forms(actual_type, use_index and idx_var is not None)
 
         if not available_forms:
             # No predicate functions available - return True literal
             return BooleanNode(True)
 
-        forms = [f[0] for f in available_forms]
-        weights = self._perturb_weights([f[1] for f in available_forms])
+        # Extract forms and weights, apply noise first
+        forms_dict = {f[0]: f[1] for f in available_forms}
+        forms = list(forms_dict.keys())
+        weights = self._perturb_weights(list(forms_dict.values()))
 
+        # Apply guards AFTER noise (block trivial predicates)
+        perturbed_dict = dict(zip(forms, weights))
+        guarded_dict = guard_predicate_weights(perturbed_dict, must_be_meaningful=True)
+
+        # If guard zeroed all forms, fall back to a simple predicate
+        if not any(w > 0 for w in guarded_dict.values()):
+            if actual_type == int and self._has_function('is_even'):
+                guarded_dict['is_even_odd'] = 1.0
+            elif actual_type == int and any(self._has_function(op) for op in ['<', '>', '==']):
+                guarded_dict['compare_const'] = 1.0
+            else:
+                # Last resort - return True literal
+                return BooleanNode(True)
+
+        # Sample from guarded distribution
+        forms = list(guarded_dict.keys())
+        weights = list(guarded_dict.values())
         form = self.rng.choices(forms, weights=weights, k=1)[0]
 
         if form == 'is_even_odd':
@@ -682,15 +667,33 @@ class TemplateComposer(Composer):
 
         elem_node = VariableNode(elem_var)
 
-        # Get available transform forms (identity blocked by guard unless allowed)
+        # Get available transform forms (raw weights, no guards yet)
         available_forms = self._get_available_transform_forms(
             elem_type, ret_type, use_index and idx_var is not None, substitutions,
             allow_identity=allow_identity
         )
 
-        forms = [f[0] for f in available_forms]
-        weights = self._perturb_weights([f[1] for f in available_forms])
+        # Extract forms and weights, apply noise first
+        forms_dict = {f[0]: f[1] for f in available_forms}
+        forms = list(forms_dict.keys())
+        weights = self._perturb_weights(list(forms_dict.values()))
 
+        # Apply guards AFTER noise
+        perturbed_dict = dict(zip(forms, weights))
+        guarded_dict = guard_transform_weights(perturbed_dict, allow_identity=allow_identity)
+
+        # If guard zeroed all forms, add a fallback (never re-enable identity)
+        if not any(w > 0 for w in guarded_dict.values()):
+            if any(self._has_function(op) for op in ['+', '-', '*']):
+                guarded_dict['arithmetic'] = 1.0
+            elif self._has_function('%'):
+                guarded_dict['modulo'] = 1.0
+            else:
+                guarded_dict['conditional'] = 1.0
+
+        # Sample from guarded distribution
+        forms = list(guarded_dict.keys())
+        weights = list(guarded_dict.values())
         form = self.rng.choices(forms, weights=weights, k=1)[0]
 
         if form == 'identity':
@@ -746,12 +749,22 @@ class TemplateComposer(Composer):
         if actual_type != int:
             return elem_node
 
-        # Get available key forms
+        # Get available key forms (raw weights, no guards yet)
         available_forms = self._get_available_key_forms(actual_type)
 
-        forms = [f[0] for f in available_forms]
-        weights = self._perturb_weights([f[1] for f in available_forms])
+        # Extract forms and weights, apply noise first
+        forms_dict = {f[0]: f[1] for f in available_forms}
+        forms = list(forms_dict.keys())
+        weights = self._perturb_weights(list(forms_dict.values()))
 
+        # Apply guards AFTER noise (for sort, identity is usually allowed)
+        from .utils.guard import guard_key_weights
+        perturbed_dict = dict(zip(forms, weights))
+        guarded_dict = guard_key_weights(perturbed_dict, allow_identity=True)
+
+        # Sample from guarded distribution
+        forms = list(guarded_dict.keys())
+        weights = list(guarded_dict.values())
         form = self.rng.choices(forms, weights=weights, k=1)[0]
 
         if form == 'identity':
@@ -1308,8 +1321,7 @@ class TemplateComposer(Composer):
 
         # Check if singleton would be blocked (e.g., for first, last, flatten)
         if app_context is not None:
-            guard = get_default_guard()
-            singleton_blocked = guard.should_block_strategy(
+            singleton_blocked = self.guard.should_block_strategy(
                 app_context.fn_name, app_context.arg_pos, 'apply:singleton', []
             )
             if singleton_blocked:
@@ -1337,10 +1349,8 @@ class TemplateComposer(Composer):
             substitutions: Type substitutions
             app_context: If provided, used to apply guards (e.g., block literals for binary ops)
         """
-        guard = get_default_guard()
-
         # Check if we should block literals (e.g., for binary ops when other arg is literal)
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         if not block_literal and (depth <= 0 or self.rng.random() < 0.5):
             return NumberNode(self.rng.randint(0, 99))
@@ -1375,10 +1385,9 @@ class TemplateComposer(Composer):
             substitutions: Type substitutions
             app_context: If provided, used to apply guards (e.g., block literals for if conditions)
         """
-        guard = get_default_guard()
 
         # Check if we should block literals (e.g., for if condition)
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         if not block_literal and (depth <= 0 or self.rng.random() < 0.3):
             return BooleanNode(self.rng.choice([True, False]))

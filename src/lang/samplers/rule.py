@@ -18,11 +18,11 @@ Key features:
 """
 
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Callable, Optional
 import random
 
 from .base import Sampler
+from .uniqueness import UniquenessMode
 
 
 def _fast_variance(values: list[int | float]) -> float:
@@ -43,12 +43,6 @@ from ..ast_nodes import ASTNode, LambdaNode, VariableNode, pretty_print
 from ..type_utils import TypeType, SubstitutionTable
 from ..evaluator import Evaluator, EvaluationError
 from ..environment import Closure
-
-
-class UniquenessMode(Enum):
-    """Mode for checking program uniqueness."""
-    STRING = "string"           # Simple: program string uniqueness
-    BEHAVIORAL = "behavioral"   # Compute-heavy: unique behaviour on held-out inputs
 
 
 @dataclass
@@ -91,7 +85,7 @@ class RuleSampler(Sampler):
         min_list_length: int = 0,
         max_list_length: int = 15,
         min_element_value: int = 0,
-        max_element_value: int = 9,
+        max_element_value: int = 100,
         num_held_out_inputs: int = 100,
         depth_variation: int = 2,
         max_attempts_multiplier: int = 100,
@@ -132,6 +126,11 @@ class RuleSampler(Sampler):
         self.max_attempts_multiplier = max_attempts_multiplier
         self.min_quality_score = min_quality_score
 
+        # Execution cache: maps (program_str, input_tuple) -> output or None
+        self._execution_cache: dict[tuple[str, tuple[int, ...]], Optional[list[int]]] = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
+
         # Generate held-out inputs for behavioural uniqueness checking
         self._generate_held_out_inputs()
 
@@ -152,6 +151,42 @@ class RuleSampler(Sampler):
                 for _ in range(length)
             ]
             self.held_out_inputs.append(input_list)
+
+    def generate_io_pairs_for_program(
+        self,
+        program: ASTNode,
+        rng: Optional[random.Random] = None
+    ) -> Optional[list[tuple[list[int], list[int]]]]:
+        """
+        Generate I/O pairs for a given program using Rule's methodology.
+
+        This is a public method that can be used to generate I/O pairs for
+        programs not created by this sampler (e.g., from a file).
+
+        Args:
+            program: The program AST (should be a lambda)
+            rng: Random number generator (uses internal RNG if None)
+
+        Returns:
+            List of (input, output) tuples, or None if generation fails
+        """
+        if rng is None:
+            rng = self.composer.rng
+
+        # Generate candidate inputs
+        candidate_inputs = self._generate_candidate_inputs(rng)
+
+        # Compute all I/O pairs
+        all_io_pairs = self._compute_io_pairs(program, candidate_inputs)
+
+        # Need at least num_io_pairs valid pairs
+        if len(all_io_pairs) < self.num_io_pairs:
+            return None
+
+        # Select best pairs
+        selected = self._select_best_io_pairs(all_io_pairs, self.num_io_pairs, rng)
+
+        return selected
 
     def _generate_candidate_inputs(self, rng: random.Random) -> list[list[int]]:
         """
@@ -178,43 +213,64 @@ class RuleSampler(Sampler):
     def _execute_program(
         self,
         program: ASTNode,
-        input_list: list[int]
+        input_list: list[int],
+        program_str: Optional[str] = None
     ) -> Optional[list[int]]:
         """
-        Execute a program on an input list.
+        Execute a program on an input list with caching.
 
         Args:
             program: The program AST (should be a lambda)
             input_list: Input list
+            program_str: Optional program string for cache key (computed if None)
 
         Returns:
             Output list, or None if execution fails
         """
+        # Create cache key
+        if program_str is None:
+            from ..ast_nodes import pretty_print
+            program_str = pretty_print(program)
+        cache_key = (program_str, tuple(input_list))
+
+        # Check cache
+        if cache_key in self._execution_cache:
+            self._cache_hits += 1
+            cached_result = self._execution_cache[cache_key]
+            # Return a copy to avoid mutations affecting the cache
+            return cached_result.copy() if cached_result is not None else None
+
+        self._cache_misses += 1
+
+        # Execute program
         try:
             # Evaluate the lambda to get a closure
             closure = self.evaluator.eval(program)
 
-            if not isinstance(closure, Closure):
-                return None
+            if type(closure) is not Closure:
+                result = None
+            else:
+                # Apply the closure to the input
+                env = closure.env.extend(closure.param[0], input_list)
+                output = self.evaluator.eval(closure.body, env)
 
-            # Apply the closure to the input
-            env = closure.env.extend(closure.param[0], input_list)
-            result = self.evaluator.eval(closure.body, env)
-
-            # Verify result is a list of integers
-            if not isinstance(result, list):
-                return None
-            if not all(isinstance(x, int) for x in result):
-                return None
-
-            # Check output length constraint
-            if len(result) > self.max_list_length:
-                return None
-
-            return result
+                # Verify result is a list of integers
+                if type(output) is not list:
+                    result = None
+                elif not all(type(x) is int for x in output):
+                    result = None
+                elif len(output) > self.max_list_length:
+                    result = None
+                else:
+                    result = output
 
         except (EvaluationError, NameError, TypeError, ZeroDivisionError):
-            return None
+            result = None
+
+        # Cache the result
+        self._execution_cache[cache_key] = result
+        # Return a copy to avoid mutations affecting the cache
+        return result.copy() if result is not None else None
 
     def _compute_io_pairs(
         self,
@@ -634,6 +690,34 @@ class RuleSampler(Sampler):
             List of SampledProgram objects
         """
         return self.sample(target_type, batch_size, depth, context)
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """
+        Get execution cache statistics.
+
+        Returns:
+            Dictionary with cache hits, misses, hit rate, and cache size
+        """
+        total = self._cache_hits + self._cache_misses
+        hit_rate = self._cache_hits / total if total > 0 else 0.0
+        return {
+            'hits': self._cache_hits,
+            'misses': self._cache_misses,
+            'total': total,
+            'hit_rate': hit_rate,
+            'cache_size': len(self._execution_cache)
+        }
+
+    def reset_cache_stats(self) -> None:
+        """Reset cache statistics counters."""
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    def clear_cache(self) -> None:
+        """Clear the execution cache and reset statistics."""
+        self._execution_cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
 
 
 def create_list_to_list_type():

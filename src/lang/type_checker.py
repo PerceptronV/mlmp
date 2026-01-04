@@ -82,8 +82,9 @@ class TypeChecker:
 
         # Handle other generic types
         if args:
-            new_args = [self._instantiate_type(a, mapping) for a in args]
-            return origin[*new_args]
+            new_args = tuple(self._instantiate_type(a, mapping) for a in args)
+            # Python 3.10 compatible: use __getitem__ with tuple
+            return origin[new_args]
 
         return type_
 

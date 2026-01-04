@@ -4,7 +4,8 @@ from typing import TypeVar, Callable, Union, Optional
 
 
 CallableOrig = get_origin(Callable)
-type TypeType = Union[TypeVar, type]
+# Type alias for either a TypeVar or a concrete type
+TypeType = Union[TypeVar, type]
 
 def analyse_function_types(
     fn: Callable
@@ -17,9 +18,8 @@ def analyse_function_types(
     try:
         arg_types = tuple(var_types[a] for a in arg_names)
     except KeyError:
-        raise TypeError(f"Missing type hint for arguments ({
-            ', '.join(a for a in arg_names if a not in var_types)
-        }) of {fn.__name__}")
+        missing = ', '.join(a for a in arg_names if a not in var_types)
+        raise TypeError(f"Missing type hint for arguments ({missing}) of {fn.__name__}")
 
     try:
         ret_type = var_types['return']
@@ -139,10 +139,12 @@ def substitute_type_vars(
         if base_type == CallableOrig and isinstance(args[0], list):
             param_types = [substitute_type_vars(a, substitutions) for a in args[0]]
             return_type = substitute_type_vars(args[1], substitutions)
-            return base_type[[*param_types], return_type]
+            # Python 3.10 compatible: can't use [*param_types]
+            return base_type[param_types, return_type]
         else:
-            new_args = [substitute_type_vars(a, substitutions) for a in args]
-            return base_type[*new_args]
+            new_args = tuple(substitute_type_vars(a, substitutions) for a in args)
+            # Python 3.10 compatible: use __getitem__ with tuple
+            return base_type[new_args]
     else:
         return base_type
 

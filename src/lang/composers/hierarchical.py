@@ -28,8 +28,8 @@ from typing import Optional
 import hashlib
 
 from .base import Composer
-from .guard import ApplicationContext, StrategyGuard, get_default_guard
-from .strategies import PredicatePattern, TransformPattern, KeyPattern
+from .utils.guard import ApplicationContext, StrategyGuard, get_default_guard
+from .utils.strategies import PredicatePattern, TransformPattern, KeyPattern, StrategyType
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -893,7 +893,8 @@ class HierarchicalComposer(Composer):
         functions_path: Optional[Path] = None,
         noise: float = 0.1,
         skeleton_depth: int = 2,
-        ho_bias: float = 0.5
+        ho_bias: float = 0.5,
+        guard: Optional[StrategyGuard] = None
     ):
         """
         Initialise the hierarchical composer.
@@ -911,6 +912,7 @@ class HierarchicalComposer(Composer):
         """
         super().__init__(seed, grammar)
         self.noise = noise
+        self.guard = guard or get_default_guard()
         self.skeleton_depth = skeleton_depth
         self.ho_bias = ho_bias
 
@@ -995,6 +997,63 @@ class HierarchicalComposer(Composer):
         all_ops = ['+', '-', '*', '/', '%']
         self._available_arithmetic_ops_cache = [op for op in all_ops if self._has_function(op)]
         return self._available_arithmetic_ops_cache
+
+    def _generate_binary_op_args(
+        self,
+        op: str,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable,
+    ) -> tuple[ASTNode, ASTNode]:
+        """
+        Generate arguments for a binary operator, ensuring at least one is non-literal.
+
+        Shuffles generation order to avoid bias.
+        """
+        int_vars = [name for name, t in context.items() if t == int]
+
+        # Shuffle generation order to avoid bias
+        first_pos = self.rng.choice([0, 1])
+        second_pos = 1 - first_pos
+
+        results: list[Optional[ASTNode]] = [None, None]
+        strategies: list[Optional[StrategyType]] = [None, None]
+
+        # Generate first argument
+        if int_vars and self.rng.random() < 0.7:
+            results[first_pos] = VariableNode(self.rng.choice(int_vars))
+            strategies[first_pos] = StrategyType.VARIABLE
+        else:
+            results[first_pos] = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
+            strategies[first_pos] = StrategyType.LITERAL
+
+        # Create context for second arg
+        ctx = ApplicationContext.for_function(op, num_args=2, current_pos=second_pos)
+        ctx = ctx.with_strategy(first_pos, strategies[first_pos])
+
+        # Check if we should block literal for second arg
+        block_literal = self.guard.should_block_with_context(ctx, StrategyType.LITERAL)
+
+        if block_literal:
+            if int_vars:
+                results[second_pos] = VariableNode(self.rng.choice(int_vars))
+            else:
+                # Generate an arithmetic expression
+                safe_ops = [o for o in self._get_available_arithmetic_ops() if o in ['+', '-', '*']]
+                if safe_ops:
+                    inner_op = self.rng.choice(safe_ops)
+                    results[second_pos] = ApplicationNode(
+                        VariableNode(inner_op),
+                        [NumberNode(self.rng.randint(0, 20)), NumberNode(self.rng.randint(1, 10))]
+                    )
+                elif strategies[first_pos] == StrategyType.VARIABLE:
+                    results[second_pos] = results[first_pos]
+                else:
+                    results[second_pos] = NumberNode(self.rng.randint(1, 99))
+        else:
+            results[second_pos] = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
+
+        return results[0], results[1]
 
     def _is_strategy_available(self, strategy: str) -> bool:
         """Check if a strategy can be used based on function availability."""
@@ -2028,8 +2087,7 @@ class HierarchicalComposer(Composer):
         app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an integer expression."""
-        guard = get_default_guard()
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         arithmetic_ops = self._get_available_arithmetic_ops()
         # Filter to safe ops
@@ -2043,10 +2101,10 @@ class HierarchicalComposer(Composer):
             if var_type == int:
                 return VariableNode(var_name)
 
+        # Fall back to arithmetic expression with guard
         if safe_ops:
             op = self.rng.choice(safe_ops)
-            left = NumberNode(self.rng.randint(0, 20))
-            right = NumberNode(self.rng.randint(1, 10))
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
             return ApplicationNode(VariableNode(op), [left, right])
 
         return NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
@@ -2059,18 +2117,17 @@ class HierarchicalComposer(Composer):
         app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate a boolean expression."""
-        guard = get_default_guard()
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         comparison_ops = self._get_available_comparison_ops()
 
         if not block_literal and (depth <= 0 or not comparison_ops or self.rng.random() < 0.3):
             return BooleanNode(self.dists.sample_bool_constant(self.rng, self.noise))
 
+        # Generate comparison with guard
         if comparison_ops:
             op = self.rng.choice(comparison_ops)
-            left = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
-            right = NumberNode(self.dists.sample_int_constant(self.rng, self.noise))
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
             return ApplicationNode(VariableNode(op), [left, right])
 
         # Fallback: generate a tautology if no comparison ops available

@@ -21,7 +21,7 @@ from .template import TemplateComposer
 from .empirical import EmpiricalComposer
 from .hybrid import HybridComposer
 from .hierarchical import HierarchicalComposer
-from .strategies import (
+from .utils.strategies import (
     Strategy,
     LiteralStrategy,
     VariableStrategy,
@@ -32,17 +32,11 @@ from .strategies import (
     TransformPattern,
     KeyPattern,
 )
-from .guard import (
+from .utils.guard import (
     StrategyGuard,
     ApplicationContext,
     apply_guard,
     get_default_guard,
-    is_identity_lambda,
-    is_literal_node,
-    is_trivial_application,
-    guard_predicate_weights,
-    guard_transform_weights,
-    guard_key_weights,
 )
 from ..grammar import Grammar
 

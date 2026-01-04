@@ -48,74 +48,73 @@ class Evaluator:
     def eval(self, node: ASTNode, env: Environment = None) -> Any:
         """
         Evaluate an AST node.
-        
+
         Args:
             node: AST node to evaluate
             env: Environment for variable lookups (uses global if None)
-            
+
         Returns:
             The result of evaluation
         """
         if env is None:
             env = self.global_env
-        
+
+        # Use type() instead of isinstance() for faster type checking
+        node_type = type(node)
+
         # Numbers evaluate to themselves
-        if isinstance(node, NumberNode):
+        if node_type is NumberNode:
             return node.value
-        
+
         # Booleans evaluate to themselves
-        elif isinstance(node, BooleanNode):
+        elif node_type is BooleanNode:
             return node.value
-        
+
         # Variables: look up in environment
-        elif isinstance(node, VariableNode):
+        elif node_type is VariableNode:
             return env.get(node.name)
-        
+
         # Lists: evaluate all elements
-        elif isinstance(node, ListNode):
+        elif node_type is ListNode:
             return [self.eval(elem, env) for elem in node.elements]
-        
+
         # Lambda: create closure
-        elif isinstance(node, LambdaNode):
+        elif node_type is LambdaNode:
             return Closure(node.param, node.body, env)
-        
+
         # If: evaluate condition, then appropriate branch
-        elif isinstance(node, IfNode):
+        elif node_type is IfNode:
             condition = self.eval(node.condition, env)
-            if not isinstance(condition, bool):
+            if type(condition) is not bool:
                 raise EvaluationError(f"If condition must be boolean, got {type(condition).__name__}")
             if condition:
                 return self.eval(node.then_expr, env)
             else:
                 return self.eval(node.else_expr, env)
-        
+
         # Application: apply function to arguments
-        elif isinstance(node, ApplicationNode):
+        elif node_type is ApplicationNode:
             func = self.eval(node.function, env)
             args = [self.eval(arg, env) for arg in node.arguments]
             return self._apply(func, args, env)
-        
+
         else:
-            raise EvaluationError(f"Unknown node type: {type(node).__name__}")
+            raise EvaluationError(f"Unknown node type: {node_type.__name__}")
     
     def _apply(self, func: Any, args: List[Any], env: Environment) -> Any:
         """
         Apply a function to arguments.
-        
+
         Args:
             func: Function (Closure or built-in)
             args: List of evaluated arguments
             env: Current environment
-            
+
         Returns:
             Result of application
         """
-        # Built-in function
-        if callable(func) and not isinstance(func, Closure):
-            return func(self, *args)
-        
-        # User-defined function (closure)
-        elif isinstance(func, Closure):
+        # User-defined function (closure) - check this first as it's more common
+        if type(func) is Closure:
             # Multi-parameter closures: bind all parameters at once
             # Single-parameter closures with multiple args: apply via currying
             if len(func.param) == len(args):
@@ -128,7 +127,7 @@ class Evaluator:
                 # Single-parameter closure with multiple args: curry
                 result = func
                 for arg in args:
-                    if not isinstance(result, Closure):
+                    if type(result) is not Closure:
                         raise EvaluationError(f"Too many arguments to function")
                     # Bind the single parameter
                     new_env = result.env.extend(result.param[0], arg)
@@ -138,7 +137,11 @@ class Evaluator:
                 raise EvaluationError(
                     f"Function expects {len(func.param)} arguments, got {len(args)}"
                 )
-        
+
+        # Built-in function
+        elif callable(func):
+            return func(self, *args)
+
         else:
             raise EvaluationError(f"Cannot apply non-function: {type(func).__name__}")
 

@@ -15,7 +15,13 @@ from typing import Type
 
 from .base import Sampler
 from .default import DefaultSampler
-from .rule import RuleSampler, SampledProgram, UniquenessMode, create_list_to_list_type
+from .rule import RuleSampler, SampledProgram, create_list_to_list_type
+from .uniqueness import (
+    UniquenessMode,
+    UniquenessChecker,
+    BehaviorSignature,
+    create_uniqueness_checker,
+)
 
 # Registry of available samplers
 SAMPLERS: dict[str, Type[Sampler]] = {
@@ -59,4 +65,7 @@ __all__ = [
     'get_sampler',
     'list_samplers',
     'SAMPLERS',
+    'UniquenessChecker',
+    'BehaviorSignature',
+    'create_uniqueness_checker',
 ]

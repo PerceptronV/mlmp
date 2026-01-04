@@ -13,19 +13,43 @@ Strategy Categories:
 - Application: Apply a function from the grammar
 """
 
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Optional
+from enum import Enum, auto
+
+
+class LiteralType(Enum):
+    INT = auto()
+    BOOL = auto()
+    LIST = auto()
+    UNKNOWN = auto()
+
+class StrategyType(Enum):
+    LITERAL = auto()
+    VARIABLE = auto()
+    LAMBDA = auto()
+    IF = auto()
+    APPLY = auto()
+    IDENTITY = auto()
+    PREDICATE = auto()
+    TRANSFORM = auto()
+    KEY = auto()
+    UNKNOWN = auto()
 
 
 # ============================================================================
 # Base Strategy Class
 # ============================================================================
 
-@dataclass(frozen=True)
 class Strategy:
     """Base class for generation strategies."""
-    pass
+    name: StrategyType = StrategyType.UNKNOWN
 
+    @abstractmethod
+    def __call__(self) -> 'ASTNode':
+        """Execute the strategy and return the resulting AST node."""
+        raise NotImplementedError("Strategy subclasses must implement __call__")
 
 # ============================================================================
 # Core Strategy Types
@@ -37,21 +61,22 @@ class LiteralStrategy(Strategy):
     Generate a literal value (number, boolean, or empty list).
 
     Attributes:
-        literal_type: One of 'int', 'bool', or 'list'
+        literal_type: LiteralType
     """
-    literal_type: str  # 'int', 'bool', or 'list'
+    literal_type: LiteralType
+    name: StrategyType = StrategyType.LITERAL
 
     def __repr__(self) -> str:
-        return f"Literal({self.literal_type})"
+        return f"Literal({self.literal_type.name})"
 
     def is_int(self) -> bool:
-        return self.literal_type == 'int'
+        return self.literal_type == LiteralType.INT
 
     def is_bool(self) -> bool:
-        return self.literal_type == 'bool'
+        return self.literal_type == LiteralType.BOOL
 
     def is_list(self) -> bool:
-        return self.literal_type == 'list'
+        return self.literal_type == LiteralType.LIST
 
 
 @dataclass(frozen=True)
@@ -63,6 +88,7 @@ class VariableStrategy(Strategy):
         position: Index of the variable in the context (0-indexed)
     """
     position: int
+    name: StrategyType = StrategyType.VARIABLE
 
     def __repr__(self) -> str:
         return f"Variable({self.position})"
@@ -76,6 +102,7 @@ class LambdaStrategy(Strategy):
     The lambda body will be generated recursively based on the
     expected return type.
     """
+    name: StrategyType = StrategyType.LAMBDA
 
     def __repr__(self) -> str:
         return "Lambda"
@@ -88,6 +115,7 @@ class IfStrategy(Strategy):
 
     Generates: (if condition then_expr else_expr)
     """
+    name: StrategyType = StrategyType.IF
 
     def __repr__(self) -> str:
         return "If"
@@ -103,6 +131,7 @@ class ApplicationStrategy(Strategy):
                    the Nth variable in context (for higher-order usage)
     """
     func_name: str
+    name: StrategyType = StrategyType.APPLY
 
     def __repr__(self) -> str:
         return f"Apply({self.func_name})"
@@ -116,6 +145,10 @@ class ApplicationStrategy(Strategy):
         if self.is_variable_application():
             return int(self.func_name[1:])
         return None
+
+def serialise_application_strategy(strategy: ApplicationStrategy) -> str:
+    """Serialise an application strategy to a string."""
+    return f"apply:{strategy.func_name}"
 
 
 # ============================================================================
@@ -138,6 +171,7 @@ class PredicatePattern:
     - 'variable': Return a variable directly
     """
     pattern: str
+    name: StrategyType = StrategyType.PREDICATE
 
     def __repr__(self) -> str:
         return f"Pred({self.pattern})"
@@ -165,6 +199,7 @@ class TransformPattern:
     - 'constant': Return a constant (ignores input)
     """
     pattern: str
+    name: StrategyType = StrategyType.TRANSFORM
 
     def __repr__(self) -> str:
         return f"Trans({self.pattern})"
@@ -190,6 +225,7 @@ class KeyPattern:
     - 'arithmetic': Apply arithmetic (+ x 1)
     """
     pattern: str
+    name: StrategyType = StrategyType.KEY
 
     def __repr__(self) -> str:
         return f"Key({self.pattern})"
@@ -206,30 +242,22 @@ class KeyPattern:
 
 def is_literal_strategy(strategy: Strategy) -> bool:
     """Check if a strategy produces a literal value."""
-    return isinstance(strategy, LiteralStrategy)
+    return strategy.name == StrategyType.LITERAL
 
 
 def is_variable_strategy(strategy: Strategy) -> bool:
     """Check if a strategy uses a context variable."""
-    return isinstance(strategy, VariableStrategy)
+    return strategy.name == StrategyType.VARIABLE
 
 
 def is_application_strategy(strategy: Strategy) -> bool:
     """Check if a strategy applies a function."""
-    return isinstance(strategy, ApplicationStrategy)
+    return strategy.name == StrategyType.APPLY
 
 
 def get_strategy_type(strategy: Strategy) -> str:
     """Get a string identifier for the strategy type."""
-    if isinstance(strategy, LiteralStrategy):
-        return 'literal'
-    elif isinstance(strategy, VariableStrategy):
-        return 'variable'
-    elif isinstance(strategy, LambdaStrategy):
-        return 'lambda'
-    elif isinstance(strategy, IfStrategy):
-        return 'if'
-    elif isinstance(strategy, ApplicationStrategy):
-        return 'apply'
-    else:
-        return 'unknown'
+    try:
+        return strategy.name
+    except AttributeError:
+        return StrategyType.UNKNOWN

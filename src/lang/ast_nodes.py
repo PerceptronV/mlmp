@@ -6,7 +6,7 @@ parsed programs in the functional programming language.
 """
 
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, Set, Optional
 from abc import ABC, abstractmethod
 
 
@@ -18,6 +18,19 @@ class ASTNode(ABC):
         """Return a string representation of the AST node."""
         pass
 
+    @abstractmethod
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        """Return a pretty-printed string representation of the AST node."""
+        return "(*ASTNode*) {self.__class__.__name__}"
+
+    @abstractmethod
+    def function_names(self) -> Set[str]:
+        """Return a set of function names used in the AST node or its children."""
+        pass
+    
+    def __str__(self) -> str:
+        return self.pretty_print(0, True)
+
 
 @dataclass
 class NumberNode(ASTNode):
@@ -26,6 +39,15 @@ class NumberNode(ASTNode):
     
     def __repr__(self) -> str:
         return f"Number({self.value})"
+
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            return str(self.value)
+        else:
+            return f"  " * indent + str(self.value)
+    
+    def function_names(self) -> Set[str]:
+        return set()
 
 
 @dataclass
@@ -36,6 +58,14 @@ class BooleanNode(ASTNode):
     def __repr__(self) -> str:
         return f"Boolean({self.value})"
 
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            return str(self.value).lower()
+        else:
+            return f"  " * indent + str(self.value).lower()
+
+    def function_names(self) -> Set[str]:
+        return set()
 
 @dataclass
 class VariableNode(ASTNode):
@@ -45,6 +75,14 @@ class VariableNode(ASTNode):
     def __repr__(self) -> str:
         return f"Var({self.name})"
 
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            return self.name
+        else:
+            return f"  " * indent + self.name
+
+    def function_names(self) -> Set[str]:
+        return {self.name}
 
 @dataclass
 class LambdaNode(ASTNode):
@@ -60,7 +98,20 @@ class LambdaNode(ASTNode):
     def __repr__(self) -> str:
         params_str = " ".join(self.param)
         return f"Lambda({params_str}, {self.body})"
-
+    
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        params_str = " ".join(self.param)
+        if inline:
+            body_str = self.body.pretty_print(0, True)
+            return f"(λ ({params_str}) {body_str})"
+        else:
+            result = f"  " * indent + f"(λ ({params_str})\n"
+            result += self.body.pretty_print(indent + 1, False) + "\n"
+            result += f"  " * indent + ")"
+            return result
+    
+    def function_names(self) -> Set[str]:
+        return self.body.function_names()
 
 @dataclass
 class ApplicationNode(ASTNode):
@@ -76,6 +127,25 @@ class ApplicationNode(ASTNode):
     def __repr__(self) -> str:
         args_str = ", ".join(repr(arg) for arg in self.arguments)
         return f"App({self.function}, [{args_str}])"
+    
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            func_str = self.function.pretty_print(0, True)
+            args_str = " ".join(arg.pretty_print(0, True) for arg in self.arguments)
+            return f"({func_str} {args_str})"
+        else:
+            result = f"  " * indent + f"(\n"
+            result += self.function.pretty_print(indent + 1, False) + "\n"
+            for arg in self.arguments:
+                result += arg.pretty_print(indent + 1, False) + "\n"
+            result += f"  " * indent + ")"
+            return result
+    
+    def function_names(self) -> Set[str]:
+        fn = self.function.function_names()
+        for arg in self.arguments:
+            fn.update(arg.function_names())
+        return fn
 
 
 @dataclass
@@ -88,7 +158,27 @@ class ListNode(ASTNode):
             return "List([])"
         elems_str = ", ".join(repr(elem) for elem in self.elements)
         return f"List([{elems_str}])"
-
+    
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            if not self.elements:
+                return "[]"
+            elems_str = " ".join(elem.pretty_print(0, True) for elem in self.elements)
+            return f"[{elems_str}]"
+        else:
+            if not self.elements:
+                return f"  " * indent + "[]"
+            result = f"  " * indent + f"[\n"
+            for elem in self.elements:
+                result += elem.pretty_print(indent + 1, False) + "\n"
+            result += f"  " * indent + "]"
+            return result
+    
+    def function_names(self) -> Set[str]:
+        fn = set()
+        for elem in self.elements:
+            fn.update(elem.function_names())
+        return fn
 
 @dataclass
 class IfNode(ASTNode):
@@ -104,6 +194,27 @@ class IfNode(ASTNode):
     
     def __repr__(self) -> str:
         return f"If({self.condition}, {self.then_expr}, {self.else_expr})"
+    
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        if inline:
+            cond_str = self.condition.pretty_print(0, True)
+            then_str = self.then_expr.pretty_print(0, True)
+            else_str = self.else_expr.pretty_print(0, True)
+            return f"(if {cond_str} {then_str} {else_str})"
+        else:
+            result = f"  " * indent + f"(if\n"
+            result += self.condition.pretty_print(indent + 1, False) + "\n"
+            result += self.then_expr.pretty_print(indent + 1, False) + "\n"
+            result += self.else_expr.pretty_print(indent + 1, False) + "\n"
+            result += f"  " * indent + ")"
+            return result
+    
+    def function_names(self) -> Set[str]:
+        fn = set()
+        fn.update(self.condition.function_names())
+        fn.update(self.then_expr.function_names())
+        fn.update(self.else_expr.function_names())
+        return fn
 
 
 # Type alias for any AST expression
@@ -123,95 +234,24 @@ def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:
     Returns:
         Formatted string representation of the AST
     """
-    if inline:
-        # Inline formatting - single line, no indentation
-        if isinstance(node, NumberNode):
-            return str(node.value)
+    return node.pretty_print(indent, inline)
 
-        elif isinstance(node, BooleanNode):
-            return str(node.value).lower()
 
-        elif isinstance(node, VariableNode):
-            return node.name
-
-        elif isinstance(node, ListNode):
-            if not node.elements:
-                return "[]"
-            elems_str = " ".join(pretty_print(elem, 0, True) for elem in node.elements)
-            return f"[{elems_str}]"
-
-        elif isinstance(node, LambdaNode):
-            body_str = pretty_print(node.body, 0, True)
-            params_str = " ".join(node.param)
-            return f"(λ ({params_str}) {body_str})"
-
-        elif isinstance(node, ApplicationNode):
-            func_str = pretty_print(node.function, 0, True)
-            args_str = " ".join(pretty_print(arg, 0, True) for arg in node.arguments)
-            return f"({func_str} {args_str})"
-
-        elif isinstance(node, IfNode):
-            cond_str = pretty_print(node.condition, 0, True)
-            then_str = pretty_print(node.then_expr, 0, True)
-            else_str = pretty_print(node.else_expr, 0, True)
-            return f"(if {cond_str} {then_str} {else_str})"
-
-        else:
-            return repr(node)
-
-    else:
-        # Multi-line formatting with indentation
-        prefix = "  " * indent
-
-        if isinstance(node, NumberNode):
-            return f"{prefix}{node.value}"
-
-        elif isinstance(node, BooleanNode):
-            return f"{prefix}{str(node.value).lower()}"
-
-        elif isinstance(node, VariableNode):
-            return f"{prefix}{node.name}"
-
-        elif isinstance(node, ListNode):
-            if not node.elements:
-                return f"{prefix}[]"
-            result = f"{prefix}[\n"
-            for elem in node.elements:
-                result += pretty_print(elem, indent + 1, False) + "\n"
-            result += f"{prefix}]"
-            return result
-
-        elif isinstance(node, LambdaNode):
-            params_str = " ".join(node.param)
-            result = f"{prefix}(λ ({params_str})\n"
-            result += pretty_print(node.body, indent + 1, False) + "\n"
-            result += f"{prefix})"
-            return result
-
-        elif isinstance(node, ApplicationNode):
-            result = f"{prefix}(\n"
-            result += pretty_print(node.function, indent + 1, False) + "\n"
-            for arg in node.arguments:
-                result += pretty_print(arg, indent + 1, False) + "\n"
-            result += f"{prefix})"
-            return result
-
-        elif isinstance(node, IfNode):
-            result = f"{prefix}(if\n"
-            result += pretty_print(node.condition, indent + 1, False) + "\n"
-            result += pretty_print(node.then_expr, indent + 1, False) + "\n"
-            result += pretty_print(node.else_expr, indent + 1, False) + "\n"
-            result += f"{prefix})"
-            return result
-
-        else:
-            return f"{prefix}{repr(node)}"
-
-def to_program_string(node: ASTNode, *args, **kwargs) -> str:
+def extract_function_names(node: ASTNode, grammar_names: Optional[Set[str]] = None) -> Set[str]:
     """
-    Alias for pretty_print.
+    Extract all function names used in an AST.
+    
+    Args:
+        node: The AST node to analyse
+        grammar_names: Set of valid grammar function names
+    
+    Returns:
+        Set of function names from the grammar that appear in the AST
     """
-    return pretty_print(node, *args, **kwargs)
+    fn = node.function_names()
+    if grammar_names is None:
+        return fn
+    return fn.intersection(grammar_names)
 
 
 if __name__ == "__main__":

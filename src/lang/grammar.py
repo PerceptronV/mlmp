@@ -37,8 +37,11 @@ class Grammar:
         ident_chars={self.ident_chars},
         functions={tuple(self.functions.keys())})"""
     
-    def _analyse(self, name, fn):
-        arg_names, arg_types, ret_type = analyse_function_types(fn)
+    def _analyse(self, name, fn, arg_names=None, arg_types=None, ret_type=None):
+        if arg_names is None or arg_types is None or ret_type is None:
+            arg_names, arg_types, ret_type = analyse_function_types(fn)
+        else:
+            assert len(arg_names) == len(arg_types), f"Number of argument names ({len(arg_names)}) does not match number of argument types ({len(arg_types)})"
         return {
             'fn': fn,
             '__call__': self._make_evaluable(name, fn, arg_types),
@@ -87,10 +90,10 @@ class Grammar:
                 return False
         return True
     
-    def add_function(self, name, fn):
+    def add_function(self, name, fn, arg_names=None, arg_types=None, ret_type=None):
         if not self.valid_name(name):
             raise ValueError(f"Invalid function name: {name}. Chars must be alphanumeric or one of {self.ident_chars}")
-        self.functions[name] = self._analyse(name, fn)
+        self.functions[name] = self._analyse(name, fn, arg_names, arg_types, ret_type)
     
     def load_from_module(self, module):
         for name, fn in inspect.getmembers(module, inspect.isfunction):

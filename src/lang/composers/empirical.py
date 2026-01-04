@@ -17,14 +17,16 @@ from pathlib import Path
 from typing import Optional
 
 from .base import Composer
-from .strategies import (
+from .utils.strategies import (
     Strategy,
     LiteralStrategy,
     VariableStrategy,
     LambdaStrategy,
     IfStrategy,
     ApplicationStrategy,
+    StrategyType,
 )
+from .utils.guard import get_default_guard
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -764,7 +766,8 @@ class EmpiricalComposer(Composer):
         functions_path: Optional[Path] = None,
         noise: float = 0.0,
         include_function_name_in_context: bool = True,
-        include_arg_position_in_context: bool = True
+        include_arg_position_in_context: bool = True,
+        guard = None
     ):
         """
         Initialise the empirical composer.
@@ -781,9 +784,10 @@ class EmpiricalComposer(Composer):
         """
         super().__init__(seed, grammar)
         self.noise = noise
+        self.guard = guard or get_default_guard()
 
         if functions_path is None:
-            functions_path = Path(__file__).parent / 'data' / 'functions.txt'
+            functions_path = Path(__file__).parent.parent.parent / 'data' / 'rule' / 'functions.txt'
 
         cache_key = (
             str(functions_path.resolve()),
@@ -838,7 +842,8 @@ class EmpiricalComposer(Composer):
         # We use insertion order (Python 3.7+ dicts maintain order)
         context_list = [(name, typ) for name, typ in context.items()]
 
-        return self._generate_internal(target_type, depth, context_list, substitutions)
+        node, _ = self._generate_internal(target_type, depth, context_list, substitutions)
+        return node
 
     def _generate_internal(
         self,
@@ -847,9 +852,10 @@ class EmpiricalComposer(Composer):
         context: list[tuple[str, TypeType]],
         substitutions: SubstitutionTable,
         function_name: Optional[str] = None,
-        arg_position: Optional[int] = None
-    ) -> ASTNode:
-        """Internal generation with ordered context list."""
+        arg_position: Optional[int] = None,
+        other_strategies: Optional[list[Optional[Strategy]]] = None
+    ) -> tuple[ASTNode, Strategy]:
+        """Internal generation with ordered context list. Returns (node, chosen_strategy)."""
         target = substitute_type_vars(target_type, substitutions)
         base_type = get_base_type(target)
         context_types = [t for _, t in context]
@@ -915,37 +921,62 @@ class EmpiricalComposer(Composer):
             arg_position=arg_position
         )
 
+        # Apply guard to prevent trivial patterns
+        if function_name is not None and arg_position is not None:
+            # Use provided other_strategies or create default
+            if other_strategies is None:
+                # Determine number of args for this function
+                if function_name in self.grammar.functions:
+                    num_args = len(self.grammar[function_name]['arg_types'])
+                elif function_name == "if":
+                    num_args = 3  # condition, then, else
+                elif function_name == "lambda":
+                    num_args = 1  # just the body
+                else:
+                    num_args = 1
+                other_strategies = [None] * num_args
+
+            guarded_pairs = self.guard.apply_to_strategies(
+                function_name,
+                arg_position,
+                list(zip(strategies, weights)),
+                other_strategies
+            )
+            guarded_weights = [w for _, w in guarded_pairs]
+
+            # Use guarded weights if at least one is non-zero
+            if sum(guarded_weights) > 0:
+                weights = guarded_weights
+
         # Sample
         idx = self.rng.choices(range(len(strategies)), weights=weights, k=1)[0]
         strategy = strategies[idx]
         data = strategy_data[idx]
 
         # Execute strategy
-        if isinstance(strategy, LiteralStrategy):
-            return self._sample_literal_empirical(target, substitutions)
-
-        elif isinstance(strategy, VariableStrategy):
-            var_name, new_subs = data
-            substitutions.update(new_subs)
-            return VariableNode(var_name)
-
-        elif isinstance(strategy, LambdaStrategy):
-            return self._generate_lambda(target, depth, context, substitutions)
-
-        elif isinstance(strategy, IfStrategy):
-            return self._generate_if(target, depth, context, substitutions, function_name)
-
-        elif isinstance(strategy, ApplicationStrategy):
-            func_name, func_subs = data
-            return self._generate_application(
-                func_name,
-                func_subs,
-                depth,
-                context,
-                substitutions
-            )
-
-        raise ValueError(f"Unknown strategy: {strategy}")
+        match strategy.name:
+            case StrategyType.LITERAL:
+                return self._sample_literal_empirical(target, substitutions), strategy
+            case StrategyType.VARIABLE:
+                var_name, new_subs = data
+                substitutions.update(new_subs)
+                return VariableNode(var_name), strategy
+            case StrategyType.LAMBDA:
+                return self._generate_lambda(target, depth, context, substitutions), strategy
+            case StrategyType.IF:
+                return self._generate_if(target, depth, context, substitutions, function_name), strategy
+            case StrategyType.APPLY:
+                func_name, func_subs = data
+                node = self._generate_application(
+                    func_name,
+                    func_subs,
+                    depth,
+                    context,
+                    substitutions
+                )
+                return node, strategy
+            case _:
+                raise ValueError(f"Unknown strategy: {strategy.name}")
 
     def _sample_literal_empirical(
         self,
@@ -995,12 +1026,13 @@ class EmpiricalComposer(Composer):
             new_context.append((param_name, param_type))
 
         # Generate body
-        body = self._generate_internal(
+        body, _ = self._generate_internal(
             ret_type,
             depth - 1,
             new_context,
             substitutions,
-            function_name="lambda"
+            function_name="lambda",
+            arg_position=0  # lambda body
         )
 
         # Wrap in lambdas
@@ -1018,26 +1050,29 @@ class EmpiricalComposer(Composer):
         function_name: Optional[str]
     ) -> ASTNode:
         """Generate an if expression."""
-        condition = self._generate_internal(
+        condition, _ = self._generate_internal(
             bool,
             depth - 1,
             context,
             substitutions,
-            function_name="if"
+            function_name="if",
+            arg_position=0  # condition
         )
-        then_expr = self._generate_internal(
+        then_expr, _ = self._generate_internal(
             target_type,
             depth - 1,
             context,
             substitutions,
-            function_name="if"
+            function_name="if",
+            arg_position=1  # then branch
         )
-        else_expr = self._generate_internal(
+        else_expr, _ = self._generate_internal(
             target_type,
             depth - 1,
             context,
             substitutions,
-            function_name="if"
+            function_name="if",
+            arg_position=2  # else branch
         )
         return IfNode(condition, then_expr, else_expr)
 
@@ -1059,17 +1094,29 @@ class EmpiricalComposer(Composer):
 
         substitutions.update(func_subs)
 
-        # Generate arguments with their positions
-        args = []
-        for i, arg_type in enumerate(func_info['arg_types']):
-            arg = self._generate_internal(
+        # Generate arguments with their positions, tracking strategies for guard
+        # Shuffle the generation order to avoid bias from the guard
+        # (first-generated args always get first pick of strategies)
+        num_args = len(func_info['arg_types'])
+        arg_strategies: list[Optional[Strategy]] = [None] * num_args
+        args: list[Optional[ASTNode]] = [None] * num_args
+
+        # Create shuffled indices for generation order
+        indices = list(range(num_args))
+        self.rng.shuffle(indices)
+
+        for i in indices:
+            arg_type = func_info['arg_types'][i]
+            arg, strategy = self._generate_internal(
                 arg_type,
                 depth - 1,
                 context,
                 substitutions,
                 function_name=func_name,
-                arg_position=i
+                arg_position=i,
+                other_strategies=arg_strategies
             )
-            args.append(arg)
+            args[i] = arg
+            arg_strategies[i] = strategy  # Track for subsequent args
 
         return ApplicationNode(VariableNode(func_name), args)

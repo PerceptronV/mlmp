@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Optional
 
 from .base import Composer
-from .guard import (
+from .utils.strategies import StrategyType
+from .utils.guard import (
     guard_transform_weights,
     guard_predicate_weights,
     ApplicationContext,
@@ -509,8 +510,9 @@ class HybridComposer(Composer):
         seed: int,
         grammar: Grammar,
         functions_path: Optional[Path] = None,
-        noise: float = 0.1
-    ):
+        noise: float = 0.1,
+        guard = None
+    ) -> None:
         """
         Initialize the hybrid composer.
 
@@ -523,7 +525,7 @@ class HybridComposer(Composer):
         """
         super().__init__(seed, grammar)
         self.noise = noise
-
+        self.guard = guard or get_default_guard()
         if functions_path is None:
             functions_path = Path(__file__).parent / 'data' / 'functions.txt'
 
@@ -609,6 +611,63 @@ class HybridComposer(Composer):
         elif template == 'conditional':
             return self._has_function('length') and self._has_function('==')
         return True
+
+    def _generate_binary_op_args(
+        self,
+        op: str,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable,
+    ) -> tuple[ASTNode, ASTNode]:
+        """
+        Generate arguments for a binary operator, ensuring at least one is non-literal.
+
+        Shuffles generation order to avoid bias.
+        """
+        int_vars = [name for name, t in context.items() if t == int]
+
+        # Shuffle generation order to avoid bias
+        first_pos = self.rng.choice([0, 1])
+        second_pos = 1 - first_pos
+
+        results: list[Optional[ASTNode]] = [None, None]
+        strategies: list[Optional[StrategyType]] = [None, None]
+
+        # Generate first argument
+        if int_vars and self.rng.random() < 0.7:
+            results[first_pos] = VariableNode(self.rng.choice(int_vars))
+            strategies[first_pos] = StrategyType.VARIABLE
+        else:
+            results[first_pos] = NumberNode(self._sample_int_constant())
+            strategies[first_pos] = StrategyType.LITERAL
+
+        # Create context for second arg
+        ctx = ApplicationContext.for_function(op, num_args=2, current_pos=second_pos)
+        ctx = ctx.with_strategy(first_pos, strategies[first_pos])
+
+        # Check if we should block literal for second arg
+        block_literal = self.guard.should_block_with_context(ctx, StrategyType.LITERAL)
+
+        if block_literal:
+            if int_vars:
+                results[second_pos] = VariableNode(self.rng.choice(int_vars))
+            else:
+                # Generate an arithmetic expression
+                available_ops = self._get_available_arithmetic_ops()
+                if available_ops:
+                    inner_op = self.rng.choice(available_ops)
+                    results[second_pos] = ApplicationNode(
+                        VariableNode(inner_op),
+                        [NumberNode(self.rng.randint(0, 20)), NumberNode(self.rng.randint(1, 10))]
+                    )
+                elif strategies[first_pos] == StrategyType.VARIABLE:
+                    results[second_pos] = results[first_pos]
+                else:
+                    results[second_pos] = NumberNode(self.rng.randint(1, 99))
+        else:
+            results[second_pos] = NumberNode(self._sample_int_constant())
+
+        return results[0], results[1]
 
     def generate(
         self,
@@ -1496,8 +1555,7 @@ class HybridComposer(Composer):
         app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate an integer expression."""
-        guard = get_default_guard()
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         if not block_literal and (depth <= 0 or self.rng.random() < 0.5):
             return NumberNode(self._sample_int_constant())
@@ -1507,10 +1565,14 @@ class HybridComposer(Composer):
             if var_type == int:
                 return VariableNode(var_name)
 
-        op = self._sample_arithmetic_op()
-        left = NumberNode(self.rng.randint(0, 20))
-        right = NumberNode(self.rng.randint(1, 10))
-        return ApplicationNode(VariableNode(op), [left, right])
+        # Fall back to arithmetic expression with guard
+        available_ops = self._get_available_arithmetic_ops()
+        if available_ops:
+            op = self.rng.choice(available_ops)
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        return NumberNode(self._sample_int_constant())
 
     def _generate_bool_expression(
         self,
@@ -1520,16 +1582,20 @@ class HybridComposer(Composer):
         app_context: Optional[ApplicationContext] = None
     ) -> ASTNode:
         """Generate a boolean expression."""
-        guard = get_default_guard()
-        block_literal = guard.should_block_with_context(app_context, StrategyGuard.LITERAL)
+        block_literal = self.guard.should_block_with_context(app_context, StrategyType.LITERAL)
 
         if not block_literal and (depth <= 0 or self.rng.random() < 0.3):
             return BooleanNode(self.rng.choice([True, False]))
 
-        op = self._sample_comparison_op()
-        left = NumberNode(self._sample_int_constant())
-        right = NumberNode(self._sample_int_constant())
-        return ApplicationNode(VariableNode(op), [left, right])
+        # Generate comparison with guard
+        available_ops = self._get_available_comparison_ops()
+        if available_ops:
+            op = self.rng.choice(available_ops)
+            left, right = self._generate_binary_op_args(op, depth, context, substitutions)
+            return ApplicationNode(VariableNode(op), [left, right])
+
+        # Fallback: tautology
+        return ApplicationNode(VariableNode('=='), [NumberNode(0), NumberNode(0)])
 
     def _generate_expression_of_type(
         self,
