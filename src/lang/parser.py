@@ -55,7 +55,7 @@ class Parser:
             input_text: The program source code to parse
         """
         self.lexer = Lexer(input_text)
-        self.tokens = self.lexer.tokenize()
+        self.tokens = self.lexer.tokenise()
         self.position = 0
         self.current_token = self.tokens[0] if self.tokens else None
     

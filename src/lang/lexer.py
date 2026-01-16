@@ -16,7 +16,7 @@ Supported syntax:
 
 Example:
     >>> lexer = Lexer("(λ x (+ x 1))")
-    >>> tokens = lexer.tokenize()
+    >>> tokens = lexer.tokenise()
     >>> [str(t) for t in tokens]
     ['LPAREN', 'LAMBDA', 'IDENT(x)', 'LPAREN', 'IDENT(+)', 'IDENT(x)', 'NUMBER(1)', 'RPAREN', 'RPAREN', 'EOF']
 """
@@ -28,6 +28,7 @@ from typing import List, Optional
 
 IDENT_CHARS = {'+', '-', '*', '/', '%', '<', '>', '=', '_', '?', '!', '$'}
 SPECIAL_CHARS = {'λ', '(', ')', '[', ']', ' ', '#'}
+KEYWORDS = {'true', 'false', 'if'}
 
 
 class TokenType(Enum):
@@ -73,7 +74,7 @@ class Lexer:
     
     Usage:
         lexer = Lexer("(λ x (+ x 1))")
-        tokens = lexer.tokenize()
+        tokens = lexer.tokenise()
     """
     
     def __init__(self, input_text: str):
@@ -81,7 +82,7 @@ class Lexer:
         Initialise the lexer with input text.
         
         Args:
-            input_text: The expression to tokenize
+            input_text: The expression to tokenise
         """
         self.input = input_text
         self.position = 0
@@ -246,7 +247,7 @@ class Lexer:
         # End of input
         return Token(TokenType.EOF, None, self.position)
     
-    def tokenize(self) -> List[Token]:
+    def tokenise(self) -> List[Token]:
         """
         Tokenize the entire input and return a list of tokens.
         
@@ -273,23 +274,23 @@ class Lexer:
                 break
 
 
-def tokenize(input_text: str) -> List[Token]:
+def tokenise(input_text: str) -> List[Token]:
     """
-    Convenience function to tokenize an expression.
+    Convenience function to tokenise an expression.
     
     Args:
-        input_text: The expression to tokenize
+        input_text: The expression to tokenise
         
     Returns:
         List of tokens
         
     Example:
-        >>> tokens = tokenize("(λ x (+ x 1))")
+        >>> tokens = tokenise("(λ x (+ x 1))")
         >>> [str(t) for t in tokens]
         ['LPAREN', 'LAMBDA', 'IDENT(x)', 'LPAREN', 'IDENT(+)', 'IDENT(x)', 'NUMBER(1)', 'RPAREN', 'RPAREN', 'EOF']
     """
     lexer = Lexer(input_text)
-    return lexer.tokenize()
+    return lexer.tokenise()
 
 
 if __name__ == "__main__":
@@ -315,7 +316,7 @@ if __name__ == "__main__":
     for example in examples:
         print(f"\nInput: {example}")
         try:
-            tokens = tokenize(example)
+            tokens = tokenise(example)
             print(f"Tokens: {' '.join(str(t) for t in tokens)}")
         except LexerError as e:
             print(f"Error: {e}")

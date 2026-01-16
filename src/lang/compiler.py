@@ -141,8 +141,16 @@ class JITCompiler:
         code, _ = self._generate(node, set())
         
         # Create the function source
+        # Use *args, **kwargs to allow calling the result if it's a callable
+        # This handles cases like (if cond lambda1 lambda2) where the result
+        # is a function that should be called with arguments
         func_name = self._fresh_var("_compiled_expr")
-        source = f"def {func_name}():\n    return {code}\n"
+        source = f"""def {func_name}(*args, **kwargs):
+    result = {code}
+    if args or kwargs:
+        return result(*args, **kwargs)
+    return result
+"""
         
         # Compile and execute
         namespace = {"_builtins": self._builtins}

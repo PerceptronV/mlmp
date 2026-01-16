@@ -40,41 +40,6 @@ from ..lang.evaluator import Evaluator
 # AST Utilities
 # ============================================================================
 
-def extract_function_names(node: ASTNode, grammar_names: Set[str]) -> Set[str]:
-    """
-    Extract all grammar function names used in an AST.
-
-    Args:
-        node: The AST node to analyse
-        grammar_names: Set of valid grammar function names
-
-    Returns:
-        Set of function names from the grammar that appear in the AST
-    """
-    functions: Set[str] = set()
-
-    def visit(n: ASTNode):
-        if isinstance(n, VariableNode):
-            if n.name in grammar_names:
-                functions.add(n.name)
-        elif isinstance(n, LambdaNode):
-            visit(n.body)
-        elif isinstance(n, ApplicationNode):
-            visit(n.function)
-            for arg in n.arguments:
-                visit(arg)
-        elif isinstance(n, ListNode):
-            for elem in n.elements:
-                visit(elem)
-        elif isinstance(n, IfNode):
-            visit(n.condition)
-            visit(n.then_expr)
-            visit(n.else_expr)
-        # NumberNode, BooleanNode have no children
-
-    visit(node)
-    return functions
-
 
 def apply_symbol_mapping(program_str: str, mapping: Dict[str, str]) -> str:
     """
@@ -161,6 +126,8 @@ class MetaLearningEpisode:
     """
     episode_id: int
     symbol_mapping: Dict[str, str]  # canonical_name -> shuffled_name
+    support_functions: Set[str]  # functions used in the episode
+    support_functions_count: int  # number of support functions
     support_examples: List[PIExample]
     query: PIExample
 
@@ -168,6 +135,8 @@ class MetaLearningEpisode:
         return {
             'episode_id': self.episode_id,
             'symbol_mapping': self.symbol_mapping,
+            'support_functions': list(self.support_functions),
+            'support_functions_count': self.support_functions_count,
             'support_examples': [ex.to_dict() for ex in self.support_examples],
             'query': self.query.to_dict()
         }
@@ -353,7 +322,7 @@ class DatasetGenerator:
         program_shuffled = apply_symbol_mapping(program_canonical, symbol_mapping)
 
         # Extract functions used
-        functions_used = extract_function_names(sampled.program, self.grammar_names)
+        functions_used = sampled.program.function_names() & self.grammar_names
 
         return PIExample(
             io_pairs=io_pairs,
@@ -476,6 +445,8 @@ class DatasetGenerator:
             return MetaLearningEpisode(
                 episode_id=episode_id,
                 symbol_mapping=symbol_mapping,
+                support_functions=support_functions,
+                support_functions_count=len(support_functions),
                 support_examples=support_examples,
                 query=query_example
             )
@@ -567,7 +538,7 @@ def main():
     parser.add_argument(
         '--n-support',
         type=int,
-        default=4,
+        default=30,
         help='Number of support examples per episode (default: 4)'
     )
     parser.add_argument(

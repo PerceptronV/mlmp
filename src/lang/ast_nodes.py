@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 
 class ASTNode(ABC):
     """Base class for all AST nodes."""
+
+    ast_type: str
     
     @abstractmethod
     def __repr__(self) -> str:
@@ -36,6 +38,7 @@ class ASTNode(ABC):
 class NumberNode(ASTNode):
     """Represents a number literal."""
     value: int
+    ast_type: str = "Number"
     
     def __repr__(self) -> str:
         return f"Number({self.value})"
@@ -54,6 +57,7 @@ class NumberNode(ASTNode):
 class BooleanNode(ASTNode):
     """Represents a boolean literal (true/false)."""
     value: bool
+    ast_type: str = "Boolean"
     
     def __repr__(self) -> str:
         return f"Boolean({self.value})"
@@ -71,6 +75,7 @@ class BooleanNode(ASTNode):
 class VariableNode(ASTNode):
     """Represents a variable reference."""
     name: str
+    ast_type: str = "Variable"
     
     def __repr__(self) -> str:
         return f"Var({self.name})"
@@ -94,6 +99,7 @@ class LambdaNode(ASTNode):
     """
     param: List[str]  # List of parameter names (length 1 for single param)
     body: ASTNode
+    ast_type: str = "Lambda"
 
     def __repr__(self) -> str:
         params_str = " ".join(self.param)
@@ -123,6 +129,7 @@ class ApplicationNode(ASTNode):
     """
     function: ASTNode
     arguments: List[ASTNode]
+    ast_type: str = "Application"
     
     def __repr__(self) -> str:
         args_str = ", ".join(repr(arg) for arg in self.arguments)
@@ -152,6 +159,7 @@ class ApplicationNode(ASTNode):
 class ListNode(ASTNode):
     """Represents a list literal: [elem1 elem2 ...]"""
     elements: List[ASTNode]
+    ast_type: str = "List"
     
     def __repr__(self) -> str:
         if not self.elements:
@@ -191,7 +199,8 @@ class IfNode(ASTNode):
     condition: ASTNode
     then_expr: ASTNode
     else_expr: ASTNode
-    
+    ast_type: str = "If"
+        
     def __repr__(self) -> str:
         return f"If({self.condition}, {self.then_expr}, {self.else_expr})"
     

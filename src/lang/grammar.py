@@ -11,7 +11,7 @@ from .type_utils import (
     matchable,
     SubstitutionTable,
 )
-from .lexer import SPECIAL_CHARS, IDENT_CHARS
+from .lexer import SPECIAL_CHARS, IDENT_CHARS, KEYWORDS
 
 
 T1, T2 = TypeVar('T1'), TypeVar('T2')
@@ -21,10 +21,11 @@ T1, T2 = TypeVar('T1'), TypeVar('T2')
 # ============================================================================
 
 class Grammar:
-    def __init__(self, functions=None, special_chars=None, ident_chars=None):
+    def __init__(self, functions=None, special_chars=None, ident_chars=None, keywords=None):
         self.functions = functions or {}
         self.special_chars = special_chars or SPECIAL_CHARS
         self.ident_chars = ident_chars or IDENT_CHARS
+        self.keywords = keywords or KEYWORDS
         self.name_map = {}
     
     def __str__(self):
@@ -35,6 +36,7 @@ class Grammar:
     def __repr__(self):
         return f"""Grammar(special_chars={self.special_chars},
         ident_chars={self.ident_chars},
+        keywords={self.keywords},
         functions={tuple(self.functions.keys())})"""
     
     def _analyse(self, name, fn, arg_names=None, arg_types=None, ret_type=None):
@@ -130,6 +132,25 @@ class Grammar:
     @property
     def names(self):
         return tuple(self.name_map.keys() or self.functions.keys())
+    
+    @property
+    def arg_types(self):
+        return tuple(
+            self[n]['arg_types'] for n in self.names
+        )
+    
+    @property
+    def return_types(self):
+        return tuple(
+            self[n]['ret_type'] for n in self.names
+        )
+    
+    @property
+    def function_types(self):
+        return tuple(
+            CallableOrig[self[n]['arg_types'], self[n]['ret_type']]
+            for n in self.names
+        )
     
     def __getitem__(self, name):
         name = self.name_map.get(name, name)
