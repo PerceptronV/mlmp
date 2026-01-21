@@ -247,6 +247,14 @@ def _make_add_templates() -> List[VariationTemplate]:
             parameters={'k': IntParam(min_val=0, max_val=3, exclude=(1,))},
             **base
         ),
+        # Scale both: k1*x + k2*y
+        VariationTemplate(
+            template_id='add_scale_both',
+            description_template='{k}*x + {k}*y',
+            program_template='(λ (x y) (+ (* {k} x) (* {k} y)))',
+            parameters={'k': IntParam(min_val=2, max_val=3)},
+            **base
+        ),
         # Replace with binary op
         VariationTemplate(
             template_id='add_replace_op',
@@ -261,6 +269,14 @@ def _make_add_templates() -> List[VariationTemplate]:
             description_template='(x + y) mod {m}',
             program_template='(λ (x y) (% (+ x y) {m}))',
             parameters={'m': IntParam(min_val=2, max_val=10)},
+            **base
+        ),
+        # Squared sum
+        VariationTemplate(
+            template_id='add_squared',
+            description_template='(x + y) * (x + y)',
+            program_template='(λ (x y) (* (+ x y) (+ x y)))',
+            parameters={},
             **base
         ),
     ]
@@ -305,10 +321,24 @@ def _make_sub_templates() -> List[VariationTemplate]:
             **base
         ),
         VariationTemplate(
+            template_id='sub_scaled_second',
+            description_template='x - {k}*y',
+            program_template='(λ (x y) (- x (* {k} y)))',
+            parameters={'k': IntParam(min_val=0, max_val=3, exclude=(1,))},
+            **base
+        ),
+        VariationTemplate(
             template_id='sub_replace_op',
             description_template='{op}(x, y)',
             program_template='(λ (x y) ({op} x y))',
             parameters={'op': ChoiceParam(choices=['+', '*'])},
+            **base
+        ),
+        VariationTemplate(
+            template_id='sub_abs_diff',
+            description_template='x - y (if x > y else y - x)',
+            program_template='(λ (x y) (if (> x y) (- x y) (- y x)))',
+            parameters={},
             **base
         ),
     ]
@@ -473,10 +503,24 @@ def _make_less_than_templates() -> List[VariationTemplate]:
             **base
         ),
         VariationTemplate(
+            template_id='lt_offset_second',
+            description_template='x < y + {k}',
+            program_template='(λ (x y) (< x (+ y {k})))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
             template_id='lt_replace_op',
             description_template='x {op} y',
             program_template='(λ (x y) ({op} x y))',
             parameters={'op': ChoiceParam(choices=['>', '=='])},
+            **base
+        ),
+        VariationTemplate(
+            template_id='lt_negated',
+            description_template='not (x < y)',
+            program_template='(λ (x y) (not (< x y)))',
+            parameters={},
             **base
         ),
     ]
@@ -507,10 +551,24 @@ def _make_greater_than_templates() -> List[VariationTemplate]:
             **base
         ),
         VariationTemplate(
+            template_id='gt_offset_second',
+            description_template='x > y + {k}',
+            program_template='(λ (x y) (> x (+ y {k})))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
             template_id='gt_replace_op',
             description_template='x {op} y',
             program_template='(λ (x y) ({op} x y))',
             parameters={'op': ChoiceParam(choices=['<', '=='])},
+            **base
+        ),
+        VariationTemplate(
+            template_id='gt_negated',
+            description_template='not (x > y)',
+            program_template='(λ (x y) (not (> x y)))',
+            parameters={},
             **base
         ),
     ]
@@ -537,6 +595,20 @@ def _make_equals_templates() -> List[VariationTemplate]:
             template_id='eq_negated',
             description_template='not (x == y)',
             program_template='(λ (x y) (not (== x y)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='eq_always_true',
+            description_template='true (ignore comparison)',
+            program_template='(λ (x y) true)',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='eq_always_false',
+            description_template='false (ignore comparison)',
+            program_template='(λ (x y) false)',
             parameters={},
             **base
         ),
@@ -585,6 +657,20 @@ def _make_and_templates() -> List[VariationTemplate]:
             parameters={},
             **base
         ),
+        VariationTemplate(
+            template_id='and_first_only',
+            description_template='x (ignore y)',
+            program_template='(λ (x y) x)',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='and_second_only',
+            description_template='y (ignore x)',
+            program_template='(λ (x y) y)',
+            parameters={},
+            **base
+        ),
     ]
 
 
@@ -616,6 +702,27 @@ def _make_or_templates() -> List[VariationTemplate]:
             template_id='or_nor',
             description_template='not (x or y)',
             program_template='(λ (x y) (not (or x y)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='or_first_only',
+            description_template='x (ignore y)',
+            program_template='(λ (x y) x)',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='or_second_only',
+            description_template='y (ignore x)',
+            program_template='(λ (x y) y)',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='or_xor',
+            description_template='(x or y) and not (x and y)',
+            program_template='(λ (x y) (and (or x y) (not (and x y))))',
             parameters={},
             **base
         ),
@@ -681,7 +788,7 @@ def _make_is_even_templates() -> List[VariationTemplate]:
             template_id='is_even_divisible_by',
             description_template='n % {k} == 0',
             program_template='(λ (n) (== (% n {k}) 0))',
-            parameters={'k': IntParam(min_val=2, max_val=5)},
+            parameters={'k': IntParam(min_val=3, max_val=5)},
             **base
         ),
         VariationTemplate(
@@ -696,6 +803,13 @@ def _make_is_even_templates() -> List[VariationTemplate]:
             description_template='n {op} 0',
             program_template='(λ (n) ({op} n 0))',
             parameters={'op': ChoiceParam(choices=['>', '<', '=='])},
+            **base
+        ),
+        VariationTemplate(
+            template_id='is_even_offset',
+            description_template='(n + {k}) % 2 == 0',
+            program_template='(λ (n) (== (% (+ n {k}) 2) 0))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
             **base
         ),
     ]
@@ -732,6 +846,20 @@ def _make_is_odd_templates() -> List[VariationTemplate]:
             parameters={},
             **base
         ),
+        VariationTemplate(
+            template_id='is_odd_offset',
+            description_template='(n + {k}) % 2 == 1',
+            program_template='(λ (n) (== (% (+ n {k}) 2) 1))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='is_odd_comparison',
+            description_template='n {op} 0',
+            program_template='(λ (n) ({op} n 0))',
+            parameters={'op': ChoiceParam(choices=['>', '<'])},
+            **base
+        ),
     ]
 
 
@@ -760,7 +888,14 @@ def _make_singleton_templates() -> List[VariationTemplate]:
             template_id='singleton_repeat',
             description_template='repeat x {n} times',
             program_template='(λ (x) (repeat x {n}))',
-            parameters={'n': IntParam(min_val=1, max_val=4)},
+            parameters={'n': IntParam(min_val=2, max_val=4)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='singleton_empty',
+            description_template='[] (empty list)',
+            program_template='(λ (x) (take 0 (singleton x)))',
+            parameters={},
             **base
         ),
     ]
@@ -800,6 +935,54 @@ def _make_repeat_templates() -> List[VariationTemplate]:
     ]
 
 
+def _make_range_templates() -> List[VariationTemplate]:
+    """Templates for range variations."""
+    base = {
+        'name': 'range',
+        'arg_names': ('start', 'end', 'step'),
+        'arg_types': (int, int, int),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='range_canonical',
+            description_template='range from start to end by step',
+            program_template='(λ (start end step) (range start end step))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='range_offset_start',
+            description_template='range from start + {k} to end by step',
+            program_template='(λ (start end step) (range (+ start {k}) end step))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='range_offset_end',
+            description_template='range from start to end + {k} by step',
+            program_template='(λ (start end step) (range start (+ end {k}) step))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='range_scaled_step',
+            description_template='range from start to end by step * {k}',
+            program_template='(λ (start end step) (range start end (* step {k})))',
+            parameters={'k': IntParam(min_val=2, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='range_reversed',
+            description_template='reverse of range from start to end by step',
+            program_template='(λ (start end step) (reverse (range start end step)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
 def _make_cons_templates() -> List[VariationTemplate]:
     """Templates for cons (prepend) variations."""
     base = {
@@ -828,6 +1011,20 @@ def _make_cons_templates() -> List[VariationTemplate]:
             template_id='cons_double',
             description_template='prepend x twice',
             program_template='(λ (x xs) (cons x (cons x xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cons_reversed',
+            description_template='prepend x to reversed xs',
+            program_template='(λ (x xs) (cons x (reverse xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cons_singleton',
+            description_template='[x] (ignore xs)',
+            program_template='(λ (x xs) (singleton x))',
             parameters={},
             **base
         ),
@@ -862,6 +1059,20 @@ def _make_append_templates() -> List[VariationTemplate]:
             template_id='append_double',
             description_template='append x twice',
             program_template='(λ (xs x) (append (append xs x) x))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='append_reversed',
+            description_template='append x to reversed xs',
+            program_template='(λ (xs x) (append (reverse xs) x))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='append_singleton',
+            description_template='[x] (ignore xs)',
+            program_template='(λ (xs x) (singleton x))',
             parameters={},
             **base
         ),
@@ -906,6 +1117,61 @@ def _make_concat_templates() -> List[VariationTemplate]:
             parameters={},
             **base
         ),
+        VariationTemplate(
+            template_id='concat_both_reversed',
+            description_template='reverse(xs) ++ reverse(ys)',
+            program_template='(λ (xs ys) (concat (reverse xs) (reverse ys)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='concat_then_reverse',
+            description_template='reverse(xs ++ ys)',
+            program_template='(λ (xs ys) (reverse (concat xs ys)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_zip_templates() -> List[VariationTemplate]:
+    """Templates for zip variations."""
+    base = {
+        'name': 'zip',
+        'arg_names': ('xs', 'ys'),
+        'arg_types': (list, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='zip_canonical',
+            description_template='zip xs with ys',
+            program_template='(λ (xs ys) (zip xs ys))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='zip_reversed',
+            description_template='zip ys with xs',
+            program_template='(λ (xs ys) (zip ys xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='zip_then_reverse',
+            description_template='reverse(zip xs ys)',
+            program_template='(λ (xs ys) (reverse (zip xs ys)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='zip_reversed_inputs',
+            description_template='zip (reverse xs) (reverse ys)',
+            program_template='(λ (xs ys) (zip (reverse xs) (reverse ys)))',
+            parameters={},
+            **base
+        ),
     ]
 
 
@@ -942,6 +1208,95 @@ def _make_first_templates() -> List[VariationTemplate]:
             description_template='element at index {n}',
             program_template='(λ (xs) (nth {n} xs))',
             parameters={'n': IntParam(min_val=0, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='first_second',
+            description_template='second element',
+            program_template='(λ (xs) (second xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_second_templates() -> List[VariationTemplate]:
+    """Templates for second variations."""
+    base = {
+        'name': 'second',
+        'arg_names': ('xs',),
+        'arg_types': (list,),
+        'ret_type': T1
+    }
+
+    return [
+        VariationTemplate(
+            template_id='second_canonical',
+            description_template='second element',
+            program_template='(λ (xs) (second xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='second_first',
+            description_template='first element',
+            program_template='(λ (xs) (first xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='second_third',
+            description_template='third element',
+            program_template='(λ (xs) (third xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='second_nth',
+            description_template='element at index {n}',
+            program_template='(λ (xs) (nth {n} xs))',
+            parameters={'n': IntParam(min_val=0, max_val=3)},
+            **base
+        ),
+    ]
+
+
+def _make_third_templates() -> List[VariationTemplate]:
+    """Templates for third variations."""
+    base = {
+        'name': 'third',
+        'arg_names': ('xs',),
+        'arg_types': (list,),
+        'ret_type': T1
+    }
+
+    return [
+        VariationTemplate(
+            template_id='third_canonical',
+            description_template='third element',
+            program_template='(λ (xs) (third xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='third_first',
+            description_template='first element',
+            program_template='(λ (xs) (first xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='third_second',
+            description_template='second element',
+            program_template='(λ (xs) (second xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='third_last',
+            description_template='last element',
+            program_template='(λ (xs) (last xs))',
+            parameters={},
             **base
         ),
     ]
@@ -1004,6 +1359,218 @@ def _make_nth_templates() -> List[VariationTemplate]:
 
 
 # =============================================================================
+# LIST MODIFICATION TEMPLATES
+# =============================================================================
+
+def _make_insert_templates() -> List[VariationTemplate]:
+    """Templates for insert variations."""
+    base = {
+        'name': 'insert',
+        'arg_names': ('x', 'i', 'xs'),
+        'arg_types': (T1, int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='insert_canonical',
+            description_template='insert x at index i',
+            program_template='(λ (x i xs) (insert x i xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='insert_offset',
+            description_template='insert x at index i + {k}',
+            program_template='(λ (x i xs) (insert x (+ i {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='insert_prepend',
+            description_template='prepend x (ignore i)',
+            program_template='(λ (x i xs) (cons x xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='insert_append',
+            description_template='append x (ignore i)',
+            program_template='(λ (x i xs) (append xs x))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_replace_templates() -> List[VariationTemplate]:
+    """Templates for replace variations."""
+    base = {
+        'name': 'replace',
+        'arg_names': ('i', 'x', 'xs'),
+        'arg_types': (int, T1, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='replace_canonical',
+            description_template='replace element at i with x',
+            program_template='(λ (i x xs) (replace i x xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='replace_offset',
+            description_template='replace element at i + {k} with x',
+            program_template='(λ (i x xs) (replace (+ i {k}) x xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='replace_insert',
+            description_template='insert x at i instead of replace',
+            program_template='(λ (i x xs) (insert x i xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_swap_templates() -> List[VariationTemplate]:
+    """Templates for swap variations."""
+    base = {
+        'name': 'swap',
+        'arg_names': ('i', 'j', 'xs'),
+        'arg_types': (int, int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='swap_canonical',
+            description_template='swap elements at i and j',
+            program_template='(λ (i j xs) (swap i j xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='swap_reversed',
+            description_template='swap elements at j and i',
+            program_template='(λ (i j xs) (swap j i xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='swap_offset_first',
+            description_template='swap elements at i + {k} and j',
+            program_template='(λ (i j xs) (swap (+ i {k}) j xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='swap_offset_both',
+            description_template='swap elements at i + {k} and j + {k}',
+            program_template='(λ (i j xs) (swap (+ i {k}) (+ j {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+    ]
+
+
+# =============================================================================
+# LIST REMOVAL TEMPLATES
+# =============================================================================
+
+def _make_cut_idx_templates() -> List[VariationTemplate]:
+    """Templates for cut_idx variations."""
+    base = {
+        'name': 'cut_idx',
+        'arg_names': ('i', 'xs'),
+        'arg_types': (int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='cut_idx_canonical',
+            description_template='remove element at index i',
+            program_template='(λ (i xs) (cut_idx i xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_idx_offset',
+            description_template='remove element at index i + {k}',
+            program_template='(λ (i xs) (cut_idx (+ i {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_idx_from_end',
+            description_template='remove element at index (length - 1 - i)',
+            program_template='(λ (i xs) (cut_idx (- (- (length xs) 1) i) xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_cut_val_templates() -> List[VariationTemplate]:
+    """Templates for cut_val variations."""
+    base = {
+        'name': 'cut_val',
+        'arg_names': ('x', 'xs'),
+        'arg_types': (T1, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='cut_val_canonical',
+            description_template='remove first occurrence of x',
+            program_template='(λ (x xs) (cut_val x xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_val_all',
+            description_template='remove all occurrences of x',
+            program_template='(λ (x xs) (cut_vals x xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_cut_vals_templates() -> List[VariationTemplate]:
+    """Templates for cut_vals variations."""
+    base = {
+        'name': 'cut_vals',
+        'arg_names': ('x', 'xs'),
+        'arg_types': (T1, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='cut_vals_canonical',
+            description_template='remove all occurrences of x',
+            program_template='(λ (x xs) (cut_vals x xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_vals_first_only',
+            description_template='remove first occurrence of x',
+            program_template='(λ (x xs) (cut_val x xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+# =============================================================================
 # LIST SLICING TEMPLATES
 # =============================================================================
 
@@ -1038,6 +1605,54 @@ def _make_take_templates() -> List[VariationTemplate]:
             parameters={},
             **base
         ),
+        VariationTemplate(
+            template_id='take_reversed',
+            description_template='reverse(take first n elements)',
+            program_template='(λ (n xs) (reverse (take n xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_takelast_templates() -> List[VariationTemplate]:
+    """Templates for takelast variations."""
+    base = {
+        'name': 'takelast',
+        'arg_names': ('n', 'xs'),
+        'arg_types': (int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='takelast_canonical',
+            description_template='take last n elements',
+            program_template='(λ (n xs) (takelast n xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='takelast_offset',
+            description_template='take last n + {k} elements',
+            program_template='(λ (n xs) (takelast (+ n {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='takelast_first',
+            description_template='take first n elements',
+            program_template='(λ (n xs) (take n xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='takelast_reversed',
+            description_template='reverse(take last n elements)',
+            program_template='(λ (n xs) (reverse (takelast n xs)))',
+            parameters={},
+            **base
+        ),
     ]
 
 
@@ -1069,6 +1684,40 @@ def _make_drop_templates() -> List[VariationTemplate]:
             template_id='drop_last',
             description_template='drop last n elements',
             program_template='(λ (n xs) (droplast n xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_droplast_templates() -> List[VariationTemplate]:
+    """Templates for droplast variations."""
+    base = {
+        'name': 'droplast',
+        'arg_names': ('n', 'xs'),
+        'arg_types': (int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='droplast_canonical',
+            description_template='drop last n elements',
+            program_template='(λ (n xs) (droplast n xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='droplast_offset',
+            description_template='drop last n + {k} elements',
+            program_template='(λ (n xs) (droplast (+ n {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='droplast_first',
+            description_template='drop first n elements',
+            program_template='(λ (n xs) (drop n xs))',
             parameters={},
             **base
         ),
@@ -1116,9 +1765,111 @@ def _make_slice_templates() -> List[VariationTemplate]:
     ]
 
 
+def _make_cut_slice_templates() -> List[VariationTemplate]:
+    """Templates for cut_slice variations."""
+    base = {
+        'name': 'cut_slice',
+        'arg_names': ('i', 'j', 'xs'),
+        'arg_types': (int, int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='cut_slice_canonical',
+            description_template='remove slice from i to j',
+            program_template='(λ (i j xs) (cut_slice i j xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_slice_offset_start',
+            description_template='remove slice from i + {k} to j',
+            program_template='(λ (i j xs) (cut_slice (+ i {k}) j xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='cut_slice_offset_end',
+            description_template='remove slice from i to j + {k}',
+            program_template='(λ (i j xs) (cut_slice i (+ j {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+    ]
+
+
+def _make_splice_templates() -> List[VariationTemplate]:
+    """Templates for splice variations."""
+    base = {
+        'name': 'splice',
+        'arg_names': ('ys', 'i', 'xs'),
+        'arg_types': (list, int, list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='splice_canonical',
+            description_template='insert ys at index i in xs',
+            program_template='(λ (ys i xs) (splice ys i xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='splice_offset',
+            description_template='insert ys at index i + {k} in xs',
+            program_template='(λ (ys i xs) (splice ys (+ i {k}) xs))',
+            parameters={'k': IntParam(min_val=1, max_val=2)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='splice_reversed',
+            description_template='insert reverse(ys) at index i in xs',
+            program_template='(λ (ys i xs) (splice (reverse ys) i xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='splice_at_start',
+            description_template='prepend ys to xs (ignore i)',
+            program_template='(λ (ys i xs) (concat ys xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
 # =============================================================================
 # LIST QUERY TEMPLATES
 # =============================================================================
+
+def _make_is_in_templates() -> List[VariationTemplate]:
+    """Templates for is_in variations."""
+    base = {
+        'name': 'is_in',
+        'arg_names': ('xs', 'x'),
+        'arg_types': (list, T1),
+        'ret_type': bool
+    }
+
+    return [
+        VariationTemplate(
+            template_id='is_in_canonical',
+            description_template='x in xs',
+            program_template='(λ (xs x) (is_in xs x))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='is_in_negated',
+            description_template='x not in xs',
+            program_template='(λ (xs x) (not (is_in xs x)))',
+            parameters={},
+            **base
+        ),
+    ]
+
 
 def _make_length_templates() -> List[VariationTemplate]:
     """Templates for length variations."""
@@ -1349,6 +2100,40 @@ def _make_reverse_templates() -> List[VariationTemplate]:
     ]
 
 
+def _make_flatten_templates() -> List[VariationTemplate]:
+    """Templates for flatten variations."""
+    base = {
+        'name': 'flatten',
+        'arg_names': ('xss',),
+        'arg_types': (list,),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='flatten_canonical',
+            description_template='flatten list of lists',
+            program_template='(λ (xss) (flatten xss))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='flatten_reversed',
+            description_template='flatten then reverse',
+            program_template='(λ (xss) (reverse (flatten xss)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='flatten_reverse_each',
+            description_template='flatten (reverse each sublist)',
+            program_template='(λ (xss) (flatten (map (λ (xs) (reverse xs)) xss)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
 # =============================================================================
 # HIGHER-ORDER FUNCTION TEMPLATES
 # =============================================================================
@@ -1389,6 +2174,42 @@ def _make_map_templates() -> List[VariationTemplate]:
     ]
 
 
+def _make_mapi_templates() -> List[VariationTemplate]:
+    """Templates for mapi variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'mapi',
+        'arg_names': ('f', 'xs'),
+        'arg_types': (CallableOrig[[T1, int], T2], list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='mapi_canonical',
+            description_template='map f with index over xs',
+            program_template='(λ (f xs) (mapi f xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='mapi_reversed',
+            description_template='mapi f over reversed xs',
+            program_template='(λ (f xs) (mapi f (reverse xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='mapi_then_reverse',
+            description_template='reverse(mapi f xs)',
+            program_template='(λ (f xs) (reverse (mapi f xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
 def _make_filter_templates() -> List[VariationTemplate]:
     """Templates for filter variations."""
     from .type_utils import CallableOrig
@@ -1422,6 +2243,49 @@ def _make_filter_templates() -> List[VariationTemplate]:
             parameters={},
             **base
         ),
+        VariationTemplate(
+            template_id='filter_negated',
+            description_template='filter xs by not p',
+            program_template='(λ (p xs) (filter (λ (x) (not (p x))) xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_filteri_templates() -> List[VariationTemplate]:
+    """Templates for filteri variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'filteri',
+        'arg_names': ('p', 'xs'),
+        'arg_types': (CallableOrig[[int, T1], bool], list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='filteri_canonical',
+            description_template='filter xs by p with index',
+            program_template='(λ (p xs) (filteri p xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='filteri_reversed',
+            description_template='filteri p over reversed xs',
+            program_template='(λ (p xs) (filteri p (reverse xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='filteri_then_reverse',
+            description_template='reverse(filteri p xs)',
+            program_template='(λ (p xs) (reverse (filteri p xs)))',
+            parameters={},
+            **base
+        ),
     ]
 
 
@@ -1448,6 +2312,220 @@ def _make_fold_templates() -> List[VariationTemplate]:
             template_id='fold_reversed',
             description_template='fold f acc (reverse xs)',
             program_template='(λ (f acc xs) (fold f acc (reverse xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_foldi_templates() -> List[VariationTemplate]:
+    """Templates for foldi variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'foldi',
+        'arg_names': ('f', 'acc', 'xs'),
+        'arg_types': (CallableOrig[[T2, T1, int], T2], T2, list),
+        'ret_type': T2
+    }
+
+    return [
+        VariationTemplate(
+            template_id='foldi_canonical',
+            description_template='fold f acc xs with index',
+            program_template='(λ (f acc xs) (foldi f acc xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='foldi_reversed',
+            description_template='foldi f acc (reverse xs)',
+            program_template='(λ (f acc xs) (foldi f acc (reverse xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_count_templates() -> List[VariationTemplate]:
+    """Templates for count variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'count',
+        'arg_names': ('p', 'xs'),
+        'arg_types': (CallableOrig[[T1], bool], list),
+        'ret_type': int
+    }
+
+    return [
+        VariationTemplate(
+            template_id='count_canonical',
+            description_template='count elements matching p',
+            program_template='(λ (p xs) (count p xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='count_negated',
+            description_template='count elements not matching p',
+            program_template='(λ (p xs) (count (λ (x) (not (p x))) xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='count_offset',
+            description_template='count + {k}',
+            program_template='(λ (p xs) (+ (count p xs) {k}))',
+            parameters={'k': IntParam(min_val=1, max_val=3)},
+            **base
+        ),
+        VariationTemplate(
+            template_id='count_length',
+            description_template='length instead of count',
+            program_template='(λ (p xs) (length xs))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_find_templates() -> List[VariationTemplate]:
+    """Templates for find variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'find',
+        'arg_names': ('p', 'xs'),
+        'arg_types': (CallableOrig[[T1], bool], list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='find_canonical',
+            description_template='find indices where p is true',
+            program_template='(λ (p xs) (find p xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='find_negated',
+            description_template='find indices where p is false',
+            program_template='(λ (p xs) (find (λ (x) (not (p x))) xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='find_reversed',
+            description_template='reverse(find indices where p is true)',
+            program_template='(λ (p xs) (reverse (find p xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_unique_templates() -> List[VariationTemplate]:
+    """Templates for unique variations."""
+    base = {
+        'name': 'unique',
+        'arg_names': ('xs',),
+        'arg_types': (list,),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='unique_canonical',
+            description_template='unique elements',
+            program_template='(λ (xs) (unique xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='unique_identity',
+            description_template='xs (no unique)',
+            program_template='(λ (xs) xs)',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='unique_reversed',
+            description_template='reverse(unique elements)',
+            program_template='(λ (xs) (reverse (unique xs)))',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_sort_templates() -> List[VariationTemplate]:
+    """Templates for sort variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'sort',
+        'arg_names': ('f', 'xs'),
+        'arg_types': (CallableOrig[[T1], int], list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='sort_canonical',
+            description_template='sort xs by f',
+            program_template='(λ (f xs) (sort f xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='sort_reversed',
+            description_template='reverse(sort xs by f)',
+            program_template='(λ (f xs) (reverse (sort f xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='sort_identity',
+            description_template='xs (no sort)',
+            program_template='(λ (f xs) xs)',
+            parameters={},
+            **base
+        ),
+    ]
+
+
+def _make_group_templates() -> List[VariationTemplate]:
+    """Templates for group variations."""
+    from .type_utils import CallableOrig
+
+    base = {
+        'name': 'group',
+        'arg_names': ('f', 'xs'),
+        'arg_types': (CallableOrig[[T1], T2], list),
+        'ret_type': list
+    }
+
+    return [
+        VariationTemplate(
+            template_id='group_canonical',
+            description_template='group xs by f',
+            program_template='(λ (f xs) (group f xs))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='group_reversed',
+            description_template='reverse(group xs by f)',
+            program_template='(λ (f xs) (reverse (group f xs)))',
+            parameters={},
+            **base
+        ),
+        VariationTemplate(
+            template_id='group_reverse_each',
+            description_template='reverse each group in (group xs by f)',
+            program_template='(λ (f xs) (map (λ (g) (reverse g)) (group f xs)))',
             parameters={},
             **base
         ),
@@ -1499,18 +2577,35 @@ class TemplateVariationRegistry:
             # List construction
             _make_singleton_templates,
             _make_repeat_templates,
+            _make_range_templates,
             _make_cons_templates,
             _make_append_templates,
             _make_concat_templates,
+            _make_zip_templates,
             # List access
             _make_first_templates,
+            _make_second_templates,
+            _make_third_templates,
             _make_last_templates,
             _make_nth_templates,
+            # List modification
+            _make_insert_templates,
+            _make_replace_templates,
+            _make_swap_templates,
+            # List removal
+            _make_cut_idx_templates,
+            _make_cut_val_templates,
+            _make_cut_vals_templates,
+            _make_drop_templates,
+            _make_droplast_templates,
             # List slicing
             _make_take_templates,
-            _make_drop_templates,
+            _make_takelast_templates,
             _make_slice_templates,
+            _make_cut_slice_templates,
+            _make_splice_templates,
             # List queries
+            _make_is_in_templates,
             _make_length_templates,
             _make_sum_templates,
             _make_product_templates,
@@ -1518,10 +2613,19 @@ class TemplateVariationRegistry:
             _make_min_templates,
             # List transformation
             _make_reverse_templates,
+            _make_flatten_templates,
             # Higher-order
             _make_map_templates,
+            _make_mapi_templates,
             _make_filter_templates,
+            _make_filteri_templates,
             _make_fold_templates,
+            _make_foldi_templates,
+            _make_count_templates,
+            _make_find_templates,
+            _make_unique_templates,
+            _make_sort_templates,
+            _make_group_templates,
         ]
 
         for maker in template_makers:

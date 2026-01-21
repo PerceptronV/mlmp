@@ -47,6 +47,65 @@ from ..type_utils import (
     substitute_type_vars,
     matchable
 )
+from pathlib import Path
+
+
+def load_target_distribution(grammar_names: set[str]) -> dict[str, float]:
+    """
+    Load target function distribution from reference functions.txt.
+
+    Returns a dict mapping function name -> target frequency (0-1).
+    Functions not in the reference get a small baseline frequency.
+
+    Args:
+        grammar_names: Set of valid grammar function names to filter by
+
+    Returns:
+        Dict of function -> target frequency (sums to ~1)
+    """
+    from ..parser import parse
+
+    # Find functions.txt relative to this file
+    this_dir = Path(__file__).parent
+    functions_path = this_dir.parent.parent / 'data' / 'rule' / 'functions.txt'
+
+    if not functions_path.exists():
+        # Fall back to uniform distribution
+        n = len(grammar_names)
+        return {fn: 1.0 / n for fn in grammar_names}
+
+    # Count function occurrences in reference
+    fn_counts: Counter[str] = Counter()
+    with open(functions_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ast = parse(line)
+                fns = ast.function_names() & grammar_names
+                fn_counts.update(fns)
+            except Exception:
+                pass
+
+    # Convert to frequencies
+    total = sum(fn_counts.values())
+    if total == 0:
+        n = len(grammar_names)
+        return {fn: 1.0 / n for fn in grammar_names}
+
+    # Compute target frequencies with smoothing for missing functions
+    # Use Laplace smoothing: (count + alpha) / (total + alpha * n_functions)
+    alpha = 0.5  # Smoothing parameter
+    n_fns = len(grammar_names)
+    smoothed_total = total + alpha * n_fns
+
+    target_dist = {}
+    for fn in grammar_names:
+        count = fn_counts.get(fn, 0)
+        target_dist[fn] = (count + alpha) / smoothed_total
+
+    return target_dist
 
 
 def build_function_to_templates_mapping() -> dict[str, list[str]]:
@@ -136,44 +195,67 @@ class CoverageGuidedComposer(TemplateComposer):
         noise: float = 0.0,
         guard=None,
         coverage_strength: float = 2.0,
-        shared_coverage: Optional[tuple[Counter[str], threading.Lock]] = None
+        shared_coverage: Optional[tuple] = None,  # (Counter, Lock) or (Counter, Lock, [cycle])
+        target_distribution: Optional[dict[str, float]] = None
     ):
         """
         Initialize the coverage-guided composer.
-        
+
         Args:
             seed: Random seed for reproducibility
             grammar: Grammar defining available functions
             noise: Noise parameter (0 = default weights, higher = more uniform)
             guard: Strategy guard for blocking trivial patterns
-            coverage_strength: How strongly to bias toward uncovered functions.
-                             Higher values = stronger preference for uncovered.
+            coverage_strength: How strongly to bias toward target distribution.
+                             Higher values = stronger preference for under-represented.
                              0 = no coverage bias (behaves like regular TemplateComposer)
             shared_coverage: Optional tuple of (Counter, Lock) for shared coverage tracking
                             across multiple composer instances (for multithreading)
+            target_distribution: Optional dict of function -> target frequency.
+                               If provided, bias toward this distribution instead of uniform.
+                               Use load_target_distribution() to load from functions.txt.
         """
         super().__init__(seed, grammar, noise, guard)
         self.coverage_strength = coverage_strength
-        
+
+        # Target distribution (if None, use uniform)
+        if target_distribution is not None:
+            self._target_distribution = target_distribution
+        else:
+            # Default to uniform distribution
+            n = len(grammar.names)
+            self._target_distribution = {fn: 1.0 / n for fn in grammar.names}
+
         # Track function usage across generations (thread-safe)
+        # shared_coverage can be:
+        #   - (Counter, Lock) - legacy format
+        #   - (Counter, Lock, [cycle_number]) - extended format with cycle tracking
         if shared_coverage is not None:
-            # Use externally provided shared coverage tracking
-            self._coverage_counts, self._coverage_lock = shared_coverage
-            self._total_programs = 0  # Local count not used when sharing
+            if len(shared_coverage) == 3:
+                self._coverage_counts, self._coverage_lock, self._shared_cycle = shared_coverage
+            else:
+                # Legacy format - add cycle tracking
+                self._coverage_counts, self._coverage_lock = shared_coverage
+                self._shared_cycle = [0]
+            self._total_programs = 0
             self._owns_coverage = False
         else:
             # Create own coverage tracking
             self._coverage_counts = Counter()
             self._total_programs = 0
             self._coverage_lock = threading.Lock()
+            self._shared_cycle = [0]
             self._owns_coverage = True
-        
+
+        # Thread-local cycle number for detecting resets
+        self._local_cycle = 0
+
         # Required functions for next generation (optional)
         self._required_functions: Optional[Set[str]] = None
-        
+
         # Build function-to-template mapping filtered by grammar
         self._fn_to_templates = self._build_grammar_fn_to_templates()
-        
+
         # Cache template-to-functions mapping (inverse of above)
         self._template_to_fns = self._build_template_to_functions()
     
@@ -244,11 +326,25 @@ class CoverageGuidedComposer(TemplateComposer):
             self._required_functions = None
     
     def _update_coverage(self, program: ASTNode) -> None:
-        """Update coverage counts from a generated program (thread-safe)."""
+        """
+        Update coverage counts from a generated program (thread-safe).
+
+        Also checks for cycle completion - if all functions are now covered,
+        resets counts and increments the shared cycle number.
+        """
         program_fns = program.function_names() & set(self.grammar.names)
+        total_fns = len(self.grammar.names)
+
         with self._coverage_lock:
             self._coverage_counts.update(program_fns)
             self._total_programs += 1
+
+            # Check if we've achieved full coverage - start new cycle
+            covered_fns = sum(1 for c in self._coverage_counts.values() if c > 0)
+            if covered_fns >= total_fns:
+                # Full coverage achieved! Reset for new cycle
+                self._coverage_counts.clear()
+                self._shared_cycle[0] += 1
     
     # ========================================================================
     # Coverage-Biased Weight Computation
@@ -257,38 +353,54 @@ class CoverageGuidedComposer(TemplateComposer):
     def _compute_coverage_bias(self, function: str) -> float:
         """
         Compute coverage bias multiplier for a function (thread-safe).
-        
-        Returns a multiplier > 1 for under-covered functions
-        and < 1 for over-covered functions.
-        
-        The formula is: bias = (avg_count + 1) / (fn_count + 1)
-        where avg_count is the average count across all grammar functions.
+
+        Uses a cyclical coverage system with gradually increasing pressure:
+        - Tracks which functions have been covered (count > 0) in current cycle
+        - As coverage progresses, pressure on uncovered functions increases
+        - When 100% coverage is achieved, cycle resets (in _update_coverage)
+
+        Formula for uncovered functions:
+            bias = 1 + coverage_ratio * max_pressure
+        Where coverage_ratio = covered_fns / total_fns
+
+        This means:
+        - At 0% coverage: bias = 1 (no extra pressure)
+        - At 50% coverage: bias = 1 + 0.5 * max_pressure
+        - At 90% coverage: bias = 1 + 0.9 * max_pressure (very high)
+
+        For covered functions: slight reduction to favor uncovered ones.
         """
         if self.coverage_strength <= 0:
             return 1.0
-        
+
         with self._coverage_lock:
             fn_count = self._coverage_counts.get(function, 0)
-            
+
             # If function is required, give it VERY strong bias
             if self._required_functions and function in self._required_functions:
                 if fn_count == 0:
-                    # Extremely strong bias for uncovered required functions
                     return 100.0 * self.coverage_strength
                 else:
-                    # Still favor required functions even if covered
                     return 5.0 * self.coverage_strength
-            
-            # Compute average count
+
+            # Compute coverage progress in current cycle
             total_fns = len(self.grammar.names)
-            total_count = sum(self._coverage_counts.values())
-            avg_count = total_count / total_fns if total_fns > 0 else 0
-            
-            # Bias formula: uncovered functions get higher multiplier
-            bias = (avg_count + 1) / (fn_count + 1)
-            
-            # Apply strength scaling (raise to power)
-            return bias ** self.coverage_strength
+            covered_fns = sum(1 for c in self._coverage_counts.values() if c > 0)
+            coverage_ratio = covered_fns / total_fns if total_fns > 0 else 0
+
+            # Maximum pressure multiplier (scales with coverage_strength)
+            max_pressure = 20.0 * self.coverage_strength
+
+            if fn_count == 0:
+                # Uncovered function: pressure increases with cycle progress
+                # More functions covered = more pressure on remaining uncovered ones
+                bias = 1.0 + (coverage_ratio * max_pressure)
+            else:
+                # Covered function: slight reduction to favor uncovered
+                # As cycle progresses, covered functions get relatively less weight
+                bias = 1.0 / (1.0 + coverage_ratio * 0.5)
+
+            return bias
     
     def bias_weights_by_coverage(
         self,

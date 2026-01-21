@@ -231,7 +231,8 @@ class QueryFirstDatasetGenerator:
         # Shared coverage tracking initialized early (needed before query_composer)
         self._shared_coverage_counts: Counter = Counter()
         self._coverage_lock = threading.Lock()
-        
+        self._shared_cycle = [0]  # Shared cycle counter for cyclical coverage
+
         # Initial noise depends on whether annealing is enabled
         initial_noise = self.noise_start if noise_annealing else noise
         self.query_composer = CoverageGuidedComposer(
@@ -239,7 +240,7 @@ class QueryFirstDatasetGenerator:
             grammar=gold_grammar,
             noise=initial_noise,
             coverage_strength=coverage_strength,
-            shared_coverage=(self._shared_coverage_counts, self._coverage_lock)
+            shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
         )
         
         # Create query sampler
@@ -450,7 +451,7 @@ class QueryFirstDatasetGenerator:
             grammar=self.gold_grammar,
             noise=self.noise,
             coverage_strength=max(self.coverage_strength, 3.0),
-            shared_coverage=(self._shared_coverage_counts, self._coverage_lock)
+            shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
         )
         
         # Create sampler for support
@@ -710,7 +711,7 @@ class QueryFirstDatasetGenerator:
                 grammar=self.gold_grammar,
                 noise=current_noise,
                 coverage_strength=self.coverage_strength,
-                shared_coverage=(self._shared_coverage_counts, self._coverage_lock)
+                shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
             )
             query_sampler = RuleSampler(
                 composer=query_composer,
