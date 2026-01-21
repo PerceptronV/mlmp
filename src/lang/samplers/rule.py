@@ -90,7 +90,8 @@ class RuleSampler(Sampler):
         num_held_out_inputs: int = 100,
         depth_variation: int = 2,
         max_attempts_multiplier: int = 100,
-        min_quality_score: float = 0.7
+        min_quality_score: float = 0.7,
+        execution_grammar=None
     ):
         """
         Initialise the Rule sampler.
@@ -112,10 +113,16 @@ class RuleSampler(Sampler):
                              Functions with lower scores are rejected as "boring"
                              (e.g., functions that always return empty list).
                              Default 0.7 filters out degenerate functions.
+            execution_grammar: Optional grammar to use for program execution.
+                             If None, uses the composer's grammar.
+                             This allows using variant semantics for I/O generation
+                             while using canonical grammar for program composition.
         """
         super().__init__(composer)
-        self.evaluator = Evaluator(composer.grammar)
-        self.jit_compiler = JITCompiler(composer.grammar)
+        # Use execution_grammar for evaluation, or default to composer's grammar
+        self._execution_grammar = execution_grammar or composer.grammar
+        self.evaluator = Evaluator(self._execution_grammar)
+        self.jit_compiler = JITCompiler(self._execution_grammar)
         self.uniqueness_mode = uniqueness_mode
         self.num_io_pairs = num_io_pairs
         self.num_candidate_inputs = num_candidate_inputs
@@ -766,6 +773,31 @@ class RuleSampler(Sampler):
         self._cache_misses = 0
         self._jit_cache_hits = 0
         self._jit_cache_misses = 0
+
+    def set_execution_grammar(self, grammar) -> None:
+        """
+        Set a new grammar for program execution (I/O generation).
+        
+        This allows changing the semantics of functions without changing
+        the program composition logic. Useful for semantic variation
+        meta-learning where each episode has different function semantics.
+        
+        Args:
+            grammar: The grammar to use for execution (can be a SemanticGrammar
+                    or any grammar-like object with the same interface).
+        
+        Note:
+            This clears all caches since the execution semantics have changed.
+        """
+        self._execution_grammar = grammar
+        self.evaluator = Evaluator(grammar)
+        self.jit_compiler = JITCompiler(grammar)
+        # Clear caches since semantics have changed
+        self.clear_cache()
+
+    def get_execution_grammar(self):
+        """Get the current execution grammar."""
+        return self._execution_grammar
 
 
 def create_list_to_list_type():

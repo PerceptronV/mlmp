@@ -36,6 +36,7 @@ from ..lang.ast_nodes import ASTNode, pretty_print
 from ..lang.evaluator import Evaluator
 from ..lang.parser import parse
 from ..lang.compiler import JITCompiler
+from ..lang.variation_templates import TemplateSemanticGrammar, TemplateVariationRegistry
 
 
 # ============================================================================
@@ -112,9 +113,12 @@ class MetaLearningEpisode:
     support_functions_count: int
     support_examples: List[PIExample]
     query: PIExample
-    
+    # Optional semantic variation info (for training with semantic variations)
+    # Maps function_name -> {name, template_id, variant_id, description, program, param_values}
+    semantic_variants: Optional[Dict[str, Dict[str, Any]]] = None
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             'episode_id': self.episode_id,
             'symbol_mapping': self.symbol_mapping,
             'support_functions': list(self.support_functions),
@@ -122,6 +126,10 @@ class MetaLearningEpisode:
             'support_examples': [ex.to_dict() for ex in self.support_examples],
             'query': self.query.to_dict()
         }
+        # Include semantic variants if present (with full info including DSL programs)
+        if self.semantic_variants is not None:
+            result['semantic_variants'] = self.semantic_variants
+        return result
 
 
 # ============================================================================
@@ -158,7 +166,9 @@ class QueryFirstDatasetGenerator:
         noise_annealing: bool = False,
         noise_start: Optional[float] = None,
         noise_end: Optional[float] = None,
-        noise_anneal_episodes: Optional[int] = None
+        noise_anneal_episodes: Optional[int] = None,
+        semantic_variations: bool = False,
+        canonical_prob: float = 0.0
     ):
         """
         Initialize the query-first dataset generator.
@@ -184,6 +194,13 @@ class QueryFirstDatasetGenerator:
             noise_start: Starting noise value (default: 0.1)
             noise_end: Ending noise value (default: 0.8)
             noise_anneal_episodes: Number of episodes over which to anneal (default: 50000)
+            semantic_variations: If True, use different function semantics per episode.
+                               Each function will have a randomly selected variant,
+                               creating a more challenging meta-learning task where
+                               the model must learn function semantics from support examples.
+            canonical_prob: Probability of selecting canonical variant when semantic_variations=True.
+                          0.0 = always random variants, 1.0 = always canonical.
+                          Default 0.0 for maximum variation.
         """
         self.seed = seed
         self.rng = random.Random(seed)
@@ -199,6 +216,10 @@ class QueryFirstDatasetGenerator:
         self.strict_uniqueness_episodes = strict_uniqueness_episodes
         self._excluded_queries: Set[str] = excluded_queries or set()
         self._episodes_generated = 0
+        
+        # Semantic variation settings
+        self.semantic_variations = semantic_variations
+        self.canonical_prob = canonical_prob
         
         # Noise annealing settings
         self.noise_annealing = noise_annealing
@@ -400,7 +421,8 @@ class QueryFirstDatasetGenerator:
         symbol_mapping: Dict[str, str],
         exclude_programs: Set[str],
         depth: int,
-        support_seed: Optional[int] = None
+        support_seed: Optional[int] = None,
+        execution_grammar=None
     ) -> Optional[List[PIExample]]:
         """
         Generate support examples that cover required functions and maximize diversity.
@@ -411,6 +433,8 @@ class QueryFirstDatasetGenerator:
             exclude_programs: Program strings to avoid (includes query)
             depth: Program depth
             support_seed: Seed for support generation (for thread-safety)
+            execution_grammar: Optional grammar for I/O generation (for semantic variations).
+                             If None, uses the canonical gold grammar.
         
         Returns:
             List of support examples, or None if generation fails
@@ -430,13 +454,15 @@ class QueryFirstDatasetGenerator:
         )
         
         # Create sampler for support
+        # If execution_grammar is provided, use it for I/O generation (semantic variations)
         support_sampler = RuleSampler(
             composer=support_composer,
             uniqueness_mode=self.uniqueness_mode,
             num_io_pairs=self.n_io,
             num_candidate_inputs=100,
             depth_variation=2,
-            max_attempts_multiplier=50
+            max_attempts_multiplier=50,
+            execution_grammar=execution_grammar
         )
         
         support_examples: List[PIExample] = []
@@ -535,34 +561,49 @@ class QueryFirstDatasetGenerator:
     ) -> Optional[MetaLearningEpisode]:
         """
         Generate a single meta-learning episode using query-first strategy.
-        
+
         This is the single-threaded version that uses shared query_sampler.
         For multi-threaded generation, use generate_dataset_parallel().
-        
+
         Steps:
         1. Generate query program using full grammar
         2. Extract functions used by query
         3. Generate support examples covering query functions + maximizing diversity
         4. Apply symbol mapping
-        
+
         Args:
             episode_id: Unique identifier for this episode
             use_identity_mapping: If True, don't shuffle symbols
-        
+
         Returns:
             MetaLearningEpisode, or None if generation fails
         """
         # Generate symbol mapping for this episode
         symbol_mapping = self._generate_symbol_mapping(use_identity_mapping)
-        
+
+        # Sample semantic grammar if semantic variations are enabled
+        semantic_grammar = None
+        semantic_variant_info = None
+        if self.semantic_variations:
+            semantic_grammar = TemplateSemanticGrammar.sample(
+                self.gold_grammar,
+                self.rng,
+                canonical_prob=self.canonical_prob
+            )
+            semantic_variant_info = semantic_grammar.get_variant_info()
+
         try:
             # Step 1: Generate query using full grammar
+            # If semantic variations enabled, use semantic grammar for execution
+            if semantic_grammar is not None:
+                self.query_sampler.set_execution_grammar(semantic_grammar)
+
             query_candidates = self.query_sampler.sample(
                 target_type=self.target_type,
                 n=self.max_query_attempts,
                 depth=self.max_program_depth
             )
-            
+
             # Find a valid query and accept it atomically
             # This ensures: (1) not in excluded set, (2) not overrepresented
             query_sampled = None
@@ -572,42 +613,50 @@ class QueryFirstDatasetGenerator:
                     # Update coverage tracking ONLY for accepted queries
                     self.query_composer.update_coverage_from_program(candidate.program)
                     break
-            
+
             if query_sampled is None:
                 return None
-            
+
             # Step 2: Extract query functions
             query_example = self._sampled_to_pi_example(query_sampled, symbol_mapping)
             query_functions = query_example.functions_used
-            
+
             # Step 3: Generate support with coverage
             support_examples = self._generate_support_with_coverage(
                 required_functions=query_functions,
                 symbol_mapping=symbol_mapping,
                 exclude_programs={query_example.program_canonical},
-                depth=self.max_program_depth
+                depth=self.max_program_depth,
+                execution_grammar=semantic_grammar
             )
-            
+
             if support_examples is None:
                 return None
-            
+
             # Collect all support functions
             support_functions: Set[str] = set()
             for ex in support_examples:
                 support_functions.update(ex.functions_used)
-            
+
             return MetaLearningEpisode(
                 episode_id=episode_id,
                 symbol_mapping=symbol_mapping,
                 support_functions=support_functions,
                 support_functions_count=len(support_functions),
                 support_examples=support_examples,
-                query=query_example
+                query=query_example,
+                semantic_variants=semantic_variant_info
             )
-            
+
         except (ValueError, KeyError):
             return None
-    
+
+        finally:
+            # Reset execution grammar to canonical for next episode
+            # (since query_sampler is shared in single-threaded mode)
+            if semantic_grammar is not None:
+                self.query_sampler.set_execution_grammar(self.gold_grammar)
+
     def _generate_episode_with_seed(
         self,
         episode_id: int,
@@ -640,6 +689,18 @@ class QueryFirstDatasetGenerator:
         # Get current noise level (may be annealed)
         current_noise = self._get_current_noise(progress_episode_num)
         
+        # Sample semantic grammar if semantic variations are enabled
+        semantic_grammar = None
+        semantic_variant_info = None
+        if self.semantic_variations:
+            semantic_grammar = TemplateSemanticGrammar.sample(
+                self.gold_grammar,
+                local_rng,
+                canonical_prob=self.canonical_prob
+            )
+            # Get full variant info including DSL programs
+            semantic_variant_info = semantic_grammar.get_variant_info()
+        
         try:
             # Create thread-local composer and sampler for query generation
             # Use coverage-guided to ensure all functions are covered
@@ -657,7 +718,9 @@ class QueryFirstDatasetGenerator:
                 num_io_pairs=self.n_io,
                 num_candidate_inputs=100,
                 depth_variation=2,
-                max_attempts_multiplier=100
+                max_attempts_multiplier=100,
+                # Use semantic grammar for execution if semantic variations enabled
+                execution_grammar=semantic_grammar
             )
             
             # Step 1: Generate query using full grammar
@@ -690,7 +753,8 @@ class QueryFirstDatasetGenerator:
                 symbol_mapping=symbol_mapping,
                 exclude_programs={query_example.program_canonical},
                 depth=self.max_program_depth,
-                support_seed=support_seed
+                support_seed=support_seed,
+                execution_grammar=semantic_grammar  # Pass semantic grammar for I/O generation
             )
             
             if support_examples is None:
@@ -707,7 +771,8 @@ class QueryFirstDatasetGenerator:
                 support_functions=support_functions,
                 support_functions_count=len(support_functions),
                 support_examples=support_examples,
-                query=query_example
+                query=query_example,
+                semantic_variants=semantic_variant_info
             )
             
         except (ValueError, KeyError):
@@ -808,6 +873,8 @@ class QueryFirstDatasetGenerator:
                   f"over {self.noise_anneal_episodes} episodes")
         else:
             print(f"Noise: {self.noise:.2f} (fixed)")
+        if self.semantic_variations:
+            print(f"Semantic variations: ENABLED (canonical_prob={self.canonical_prob:.2f})")
         
         # Pre-generate all seeds for reproducibility
         # Each attempt gets a unique seed derived from base seed
@@ -1384,6 +1451,20 @@ def main():
         '--canonical-programs', type=str, default='src/data/rule/functions.txt'
     )
     
+    # Semantic variation parameters (TRAINING ONLY)
+    parser.add_argument(
+        '--semantic-variations', action='store_true',
+        help='Enable semantic variations for training. Each function will have '
+             'randomly varying semantics per episode (e.g., + might mean max, '
+             'map might skip every other element). Creates a more challenging '
+             'meta-learning task. NOT applied to validation (canonical semantics).'
+    )
+    parser.add_argument(
+        '--canonical-prob', type=float, default=0.0,
+        help='Probability of selecting canonical variant when --semantic-variations is enabled. '
+             '0.0 = always random variants, 1.0 = always canonical (default: 0.0)'
+    )
+    
     args = parser.parse_args()
     
     uniqueness_mode = (
@@ -1391,7 +1472,11 @@ def main():
         else UniquenessMode.STRING
     )
     
-    output_dir = Path(args.output_dir) / f"query_first_{args.composer}_seed{args.seed}"
+    # Build output directory name
+    output_name = f"query_first_{args.composer}_seed{args.seed}"
+    if args.semantic_variations:
+        output_name += "_semvar"
+    output_dir = Path(args.output_dir) / output_name
     
     # Generate validation set first (single-threaded)
     print("\n" + "=" * 80)
@@ -1449,7 +1534,9 @@ def main():
         noise_annealing=args.noise_annealing,
         noise_start=args.noise_start,
         noise_end=args.noise_end,
-        noise_anneal_episodes=args.noise_anneal_episodes
+        noise_anneal_episodes=args.noise_anneal_episodes,
+        semantic_variations=args.semantic_variations,
+        canonical_prob=args.canonical_prob
     )
     
     # Use parallel or single-threaded generation based on num_workers
@@ -1482,6 +1569,13 @@ def main():
               f"over {args.noise_anneal_episodes} episodes")
     else:
         print(f"Noise: {args.noise:.2f} (fixed)")
+    if args.semantic_variations:
+        print(f"Semantic variations: ENABLED (canonical_prob={args.canonical_prob:.2f})")
+        print(f"  - Each training episode has unique function semantics")
+        print(f"  - Model must learn semantics from support examples")
+        print(f"  - Validation uses canonical semantics (not affected)")
+    else:
+        print(f"Semantic variations: DISABLED (standard symbol shuffling only)")
 
 
 if __name__ == '__main__':
