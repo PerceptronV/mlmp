@@ -7,7 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'lang'))
 
 import unittest
-from lexer import Lexer, Token, TokenType, LexerError, tokenize
+from lexer import Lexer, Token, TokenType, LexerError, tokenise
 
 
 class TestBasicTokens(unittest.TestCase):
@@ -15,25 +15,25 @@ class TestBasicTokens(unittest.TestCase):
     
     def test_lambda_symbol(self):
         """Test lexing lambda symbol."""
-        tokens = tokenize("λ")
+        tokens = tokenise("λ")
         self.assertEqual(tokens[0].type, TokenType.LAMBDA)
         self.assertEqual(tokens[0].value, "λ")
     
     def test_parentheses(self):
         """Test lexing parentheses."""
-        tokens = tokenize("()")
+        tokens = tokenise("()")
         self.assertEqual(tokens[0].type, TokenType.LPAREN)
         self.assertEqual(tokens[1].type, TokenType.RPAREN)
     
     def test_brackets(self):
         """Test lexing square brackets."""
-        tokens = tokenize("[]")
+        tokens = tokenise("[]")
         self.assertEqual(tokens[0].type, TokenType.LBRACKET)
         self.assertEqual(tokens[1].type, TokenType.RBRACKET)
     
     def test_numbers(self):
         """Test lexing numbers."""
-        tokens = tokenize("0 1 42 99")
+        tokens = tokenise("0 1 42 99")
         numbers = [t for t in tokens if t.type == TokenType.NUMBER]
         self.assertEqual(len(numbers), 4)
         self.assertEqual(numbers[0].value, "0")
@@ -43,7 +43,7 @@ class TestBasicTokens(unittest.TestCase):
     
     def test_booleans(self):
         """Test lexing boolean values."""
-        tokens = tokenize("true false")
+        tokens = tokenise("true false")
         booleans = [t for t in tokens if t.type == TokenType.BOOLEAN]
         self.assertEqual(len(booleans), 2)
         self.assertEqual(booleans[0].value, "true")
@@ -51,7 +51,7 @@ class TestBasicTokens(unittest.TestCase):
     
     def test_identifiers(self):
         """Test lexing identifiers."""
-        tokens = tokenize("x foo bar_baz")
+        tokens = tokenise("x foo bar_baz")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(len(idents), 3)
         self.assertEqual(idents[0].value, "x")
@@ -64,7 +64,7 @@ class TestLambdaExpressions(unittest.TestCase):
     
     def test_identity_function(self):
         """Test lexing identity function: (λ x x)"""
-        tokens = tokenize("(λ x x)")
+        tokens = tokenise("(λ x x)")
         expected = [
             TokenType.LPAREN,
             TokenType.LAMBDA,
@@ -78,7 +78,7 @@ class TestLambdaExpressions(unittest.TestCase):
     
     def test_lambda_with_body(self):
         """Test lexing lambda with expression body: (λ x (+ x 1))"""
-        tokens = tokenize("(λ x (+ x 1))")
+        tokens = tokenise("(λ x (+ x 1))")
         types = [t.type for t in tokens]
         expected = [
             TokenType.LPAREN,
@@ -96,7 +96,7 @@ class TestLambdaExpressions(unittest.TestCase):
     
     def test_nested_lambda(self):
         """Test lexing nested lambdas."""
-        tokens = tokenize("(λ x (λ y (+ x y)))")
+        tokens = tokenise("(λ x (λ y (+ x y)))")
         lambda_count = len([t for t in tokens if t.type == TokenType.LAMBDA])
         self.assertEqual(lambda_count, 2)
 
@@ -106,32 +106,32 @@ class TestArithmeticOperators(unittest.TestCase):
     
     def test_addition(self):
         """Test lexing addition: (+ 1 2)"""
-        tokens = tokenize("(+ 1 2)")
+        tokens = tokenise("(+ 1 2)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(len(idents), 1)
         self.assertEqual(idents[0].value, "+")
     
     def test_subtraction(self):
         """Test lexing subtraction: (- 5 3)"""
-        tokens = tokenize("(- 5 3)")
+        tokens = tokenise("(- 5 3)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "-")
     
     def test_multiplication(self):
         """Test lexing multiplication: (* 2 3)"""
-        tokens = tokenize("(* 2 3)")
+        tokens = tokenise("(* 2 3)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "*")
     
     def test_division(self):
         """Test lexing division: (/ 10 2)"""
-        tokens = tokenize("(/ 10 2)")
+        tokens = tokenise("(/ 10 2)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "/")
     
     def test_modulo(self):
         """Test lexing modulo: (% 10 3)"""
-        tokens = tokenize("(% 10 3)")
+        tokens = tokenise("(% 10 3)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "%")
 
@@ -141,19 +141,19 @@ class TestComparisonOperators(unittest.TestCase):
     
     def test_less_than(self):
         """Test lexing less than: (< 1 2)"""
-        tokens = tokenize("(< 1 2)")
+        tokens = tokenise("(< 1 2)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "<")
     
     def test_greater_than(self):
         """Test lexing greater than: (> 2 1)"""
-        tokens = tokenize("(> 2 1)")
+        tokens = tokenise("(> 2 1)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, ">")
     
     def test_equality(self):
         """Test lexing equality: (== 1 1)"""
-        tokens = tokenize("(== 1 1)")
+        tokens = tokenise("(== 1 1)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "==")
 
@@ -163,13 +163,13 @@ class TestListOperations(unittest.TestCase):
     
     def test_empty_list(self):
         """Test lexing empty list: []"""
-        tokens = tokenize("[]")
+        tokens = tokenise("[]")
         types = [t.type for t in tokens if t.type != TokenType.EOF]
         self.assertEqual(types, [TokenType.LBRACKET, TokenType.RBRACKET])
     
     def test_list_literal(self):
         """Test lexing list literal: [1 2 3]"""
-        tokens = tokenize("[1 2 3]")
+        tokens = tokenise("[1 2 3]")
         types = [t.type for t in tokens if t.type != TokenType.EOF]
         expected = [
             TokenType.LBRACKET,
@@ -182,19 +182,19 @@ class TestListOperations(unittest.TestCase):
     
     def test_cons(self):
         """Test lexing cons: (cons 1 [2 3])"""
-        tokens = tokenize("(cons 1 [2 3])")
+        tokens = tokenise("(cons 1 [2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "cons")
     
     def test_first(self):
         """Test lexing first: (first [1 2 3])"""
-        tokens = tokenize("(first [1 2 3])")
+        tokens = tokenise("(first [1 2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "first")
     
     def test_last(self):
         """Test lexing last: (last [1 2 3])"""
-        tokens = tokenize("(last [1 2 3])")
+        tokens = tokenise("(last [1 2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "last")
 
@@ -204,25 +204,25 @@ class TestHigherOrderFunctions(unittest.TestCase):
     
     def test_map(self):
         """Test lexing map: (map (λ x (* x 2)) [1 2 3])"""
-        tokens = tokenize("(map (λ x (* x 2)) [1 2 3])")
+        tokens = tokenise("(map (λ x (* x 2)) [1 2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "map")
     
     def test_filter(self):
         """Test lexing filter: (filter (λ x (> x 5)) [3 7 2 9])"""
-        tokens = tokenize("(filter (λ x (> x 5)) [3 7 2 9])")
+        tokens = tokenise("(filter (λ x (> x 5)) [3 7 2 9])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "filter")
     
     def test_fold(self):
         """Test lexing fold: (fold (λ acc x (+ acc x)) 0 [1 2 3])"""
-        tokens = tokenize("(fold (λ acc x (+ acc x)) 0 [1 2 3])")
+        tokens = tokenise("(fold (λ acc x (+ acc x)) 0 [1 2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "fold")
     
     def test_foldi(self):
         """Test lexing foldi with index."""
-        tokens = tokenize("(foldi (λ acc x i (+ acc i)) 0 [1 2 3])")
+        tokens = tokenise("(foldi (λ acc x i (+ acc i)) 0 [1 2 3])")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "foldi")
 
@@ -232,7 +232,7 @@ class TestConditionals(unittest.TestCase):
     
     def test_if_expression(self):
         """Test lexing if expression: (if (< x 5) true false)"""
-        tokens = tokenize("(if (< x 5) true false)")
+        tokens = tokenise("(if (< x 5) true false)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "if")
         bools = [t for t in tokens if t.type == TokenType.BOOLEAN]
@@ -244,19 +244,19 @@ class TestBooleanOperations(unittest.TestCase):
     
     def test_and(self):
         """Test lexing and: (and true false)"""
-        tokens = tokenize("(and true false)")
+        tokens = tokenise("(and true false)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "and")
     
     def test_or(self):
         """Test lexing or: (or true false)"""
-        tokens = tokenize("(or true false)")
+        tokens = tokenise("(or true false)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "or")
     
     def test_not(self):
         """Test lexing not: (not true)"""
-        tokens = tokenize("(not true)")
+        tokens = tokenise("(not true)")
         idents = [t for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(idents[0].value, "not")
 
@@ -266,21 +266,21 @@ class TestComplexExpressions(unittest.TestCase):
     
     def test_nested_arithmetic(self):
         """Test lexing nested arithmetic: (+ (* 2 3) (/ 10 5))"""
-        tokens = tokenize("(+ (* 2 3) (/ 10 5))")
+        tokens = tokenise("(+ (* 2 3) (/ 10 5))")
         ops = [t.value for t in tokens if t.type == TokenType.IDENT]
         self.assertEqual(ops, ["+", "*", "/"])
     
     def test_map_with_lambda(self):
         """Test lexing map with lambda function."""
         code = "(map (λ x (* x 2)) [1 2 3])"
-        tokens = tokenize(code)
+        tokens = tokenise(code)
         self.assertEqual(len([t for t in tokens if t.type == TokenType.LAMBDA]), 1)
         self.assertEqual(len([t for t in tokens if t.type == TokenType.LBRACKET]), 1)
     
     def test_filter_with_condition(self):
         """Test lexing filter with conditional."""
         code = "(filter (λ x (> x 5)) [3 7 2 9])"
-        tokens = tokenize(code)
+        tokens = tokenise(code)
         idents = [t.value for t in tokens if t.type == TokenType.IDENT]
         self.assertIn("filter", idents)
         self.assertIn(">", idents)
@@ -291,9 +291,9 @@ class TestWhitespaceAndComments(unittest.TestCase):
     
     def test_whitespace_handling(self):
         """Test that whitespace is properly skipped."""
-        tokens1 = tokenize("(+ 1 2)")
-        tokens2 = tokenize("(  +   1   2  )")
-        tokens3 = tokenize("(\n+\n1\n2\n)")
+        tokens1 = tokenise("(+ 1 2)")
+        tokens2 = tokenise("(  +   1   2  )")
+        tokens3 = tokenise("(\n+\n1\n2\n)")
         
         types1 = [t.type for t in tokens1]
         types2 = [t.type for t in tokens2]
@@ -304,7 +304,7 @@ class TestWhitespaceAndComments(unittest.TestCase):
     
     def test_comments(self):
         """Test that comments are properly skipped."""
-        tokens = tokenize("(+ 1 2) # add two numbers")
+        tokens = tokenise("(+ 1 2) # add two numbers")
         types = [t.type for t in tokens]
         expected = [
             TokenType.LPAREN,
@@ -322,19 +322,19 @@ class TestEdgeCases(unittest.TestCase):
     
     def test_empty_input(self):
         """Test lexing empty input."""
-        tokens = tokenize("")
+        tokens = tokenise("")
         self.assertEqual(len(tokens), 1)
         self.assertEqual(tokens[0].type, TokenType.EOF)
     
     def test_only_whitespace(self):
         """Test lexing input with only whitespace."""
-        tokens = tokenize("   \n  \t  ")
+        tokens = tokenise("   \n  \t  ")
         self.assertEqual(len(tokens), 1)
         self.assertEqual(tokens[0].type, TokenType.EOF)
     
     def test_token_positions(self):
         """Test that token positions are correctly tracked."""
-        tokens = tokenize("(+ 1 2)")
+        tokens = tokenise("(+ 1 2)")
         self.assertEqual(tokens[0].position, 0)  # (
         self.assertEqual(tokens[1].position, 1)  # +
         self.assertEqual(tokens[2].position, 3)  # 1
@@ -368,15 +368,15 @@ class TestBuiltInFunctions(unittest.TestCase):
             "droplast", "cut_slice", "take", "takelast", "slice"
         ]
         for func in functions:
-            tokens = tokenize(f"({func})")
+            tokens = tokenise(f"({func})")
             idents = [t for t in tokens if t.type == TokenType.IDENT]
-            self.assertEqual(idents[0].value, func, f"Failed to tokenize {func}")
+            self.assertEqual(idents[0].value, func, f"Failed to tokenise {func}")
     
     def test_higher_order_functions(self):
         """Test lexing higher-order function names."""
         functions = ["fold", "foldi", "filter", "filteri", "map", "mapi"]
         for func in functions:
-            tokens = tokenize(f"({func})")
+            tokens = tokenise(f"({func})")
             idents = [t for t in tokens if t.type == TokenType.IDENT]
             self.assertEqual(idents[0].value, func)
     
@@ -388,7 +388,7 @@ class TestBuiltInFunctions(unittest.TestCase):
             "sort", "reverse", "flatten", "zip"
         ]
         for func in functions:
-            tokens = tokenize(f"({func})")
+            tokens = tokenise(f"({func})")
             idents = [t for t in tokens if t.type == TokenType.IDENT]
             self.assertEqual(idents[0].value, func)
 
@@ -398,33 +398,33 @@ class TestExamplesFromSpec(unittest.TestCase):
     
     def test_take_example(self):
         """Test: (λ (x) (take 1 x))"""
-        tokens = tokenize("(λ x (take 1 x))")
+        tokens = tokenise("(λ x (take 1 x))")
         self.assertIsNotNone(tokens)
         self.assertEqual(tokens[0].type, TokenType.LPAREN)
         self.assertEqual(tokens[1].type, TokenType.LAMBDA)
     
     def test_cons_head_empty(self):
         """Test: (λ (x) (cons (head x) empty))"""
-        tokens = tokenize("(λ x (cons (first x) []))")
+        tokens = tokenise("(λ x (cons (first x) []))")
         lambda_count = len([t for t in tokens if t.type == TokenType.LAMBDA])
         self.assertEqual(lambda_count, 1)
     
     def test_flatten_mapi(self):
         """Test: (λ (x) (flatten (mapi (λ (y z) (cons z (singleton y))) x)))"""
-        tokens = tokenize("(λ x (flatten (mapi (λ y z (cons z (singleton y))) x)))")
+        tokens = tokenise("(λ x (flatten (mapi (λ y z (cons z (singleton y))) x)))")
         lambda_count = len([t for t in tokens if t.type == TokenType.LAMBDA])
         self.assertEqual(lambda_count, 2)
     
     def test_singleton_first(self):
         """Test: (λ (x) (singleton (first x)))"""
-        tokens = tokenize("(λ x (singleton (first x)))")
+        tokens = tokenise("(λ x (singleton (first x)))")
         idents = [t.value for t in tokens if t.type == TokenType.IDENT]
         self.assertIn("singleton", idents)
         self.assertIn("first", idents)
     
     def test_droplast(self):
         """Test: (λ (x) (droplast 1 x))"""
-        tokens = tokenize("(λ x (droplast 1 x))")
+        tokens = tokenise("(λ x (droplast 1 x))")
         idents = [t.value for t in tokens if t.type == TokenType.IDENT]
         self.assertIn("droplast", idents)
 

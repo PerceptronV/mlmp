@@ -43,6 +43,7 @@ from ..ast_nodes import ASTNode, LambdaNode, VariableNode, pretty_print
 from ..type_utils import TypeType, SubstitutionTable
 from ..evaluator import Evaluator, EvaluationError
 from ..environment import Closure
+from ..compiler import JITCompiler, JITCompilationError
 
 
 @dataclass
@@ -114,6 +115,7 @@ class RuleSampler(Sampler):
         """
         super().__init__(composer)
         self.evaluator = Evaluator(composer.grammar)
+        self.jit_compiler = JITCompiler(composer.grammar)
         self.uniqueness_mode = uniqueness_mode
         self.num_io_pairs = num_io_pairs
         self.num_candidate_inputs = num_candidate_inputs
@@ -130,6 +132,11 @@ class RuleSampler(Sampler):
         self._execution_cache: dict[tuple[str, tuple[int, ...]], Optional[list[int]]] = {}
         self._cache_hits = 0
         self._cache_misses = 0
+
+        # JIT compilation cache: maps program_str -> compiled function
+        self._jit_cache: dict[str, Callable] = {}
+        self._jit_cache_hits = 0
+        self._jit_cache_misses = 0
 
         # Generate held-out inputs for behavioural uniqueness checking
         self._generate_held_out_inputs()
@@ -219,6 +226,9 @@ class RuleSampler(Sampler):
         """
         Execute a program on an input list with caching.
 
+        Uses JIT compilation for significant speedup when executing the same
+        program multiple times (100 candidate inputs + held-out inputs).
+
         Args:
             program: The program AST (should be a lambda)
             input_list: Input list
@@ -233,7 +243,7 @@ class RuleSampler(Sampler):
             program_str = pretty_print(program)
         cache_key = (program_str, tuple(input_list))
 
-        # Check cache
+        # Check execution cache first (still useful for duplicate inputs)
         if cache_key in self._execution_cache:
             self._cache_hits += 1
             cached_result = self._execution_cache[cache_key]
@@ -242,29 +252,49 @@ class RuleSampler(Sampler):
 
         self._cache_misses += 1
 
+        # Get or compile the function
+        if program_str in self._jit_cache:
+            self._jit_cache_hits += 1
+            compiled_fn = self._jit_cache[program_str]
+        else:
+            self._jit_cache_misses += 1
+            try:
+                # Compile the program to a native Python function
+                compiled_fn = self.jit_compiler.compile(program)
+                self._jit_cache[program_str] = compiled_fn
+            except (JITCompilationError, Exception):
+                # Fall back to interpreter if JIT compilation fails
+                compiled_fn = None
+
         # Execute program
         try:
-            # Evaluate the lambda to get a closure
-            closure = self.evaluator.eval(program)
+            if compiled_fn is not None:
+                # Use JIT-compiled function (fast path)
+                output = compiled_fn(input_list)
+            else:
+                # Fall back to interpreter (slow path)
+                closure = self.evaluator.eval(program)
 
-            if type(closure) is not Closure:
+                if type(closure) is not Closure:
+                    result = None
+                    self._execution_cache[cache_key] = result
+                    return result
+                else:
+                    # Apply the closure to the input
+                    env = closure.env.extend(closure.param[0], input_list)
+                    output = self.evaluator.eval(closure.body, env)
+
+            # Verify result is a list of integers
+            if type(output) is not list:
+                result = None
+            elif not all(type(x) is int for x in output):
+                result = None
+            elif len(output) > self.max_list_length:
                 result = None
             else:
-                # Apply the closure to the input
-                env = closure.env.extend(closure.param[0], input_list)
-                output = self.evaluator.eval(closure.body, env)
+                result = output
 
-                # Verify result is a list of integers
-                if type(output) is not list:
-                    result = None
-                elif not all(type(x) is int for x in output):
-                    result = None
-                elif len(output) > self.max_list_length:
-                    result = None
-                else:
-                    result = output
-
-        except (EvaluationError, NameError, TypeError, ZeroDivisionError):
+        except (EvaluationError, NameError, TypeError, ZeroDivisionError, Exception):
             result = None
 
         # Cache the result
@@ -693,31 +723,49 @@ class RuleSampler(Sampler):
 
     def get_cache_stats(self) -> dict[str, Any]:
         """
-        Get execution cache statistics.
+        Get execution and JIT compilation cache statistics.
 
         Returns:
-            Dictionary with cache hits, misses, hit rate, and cache size
+            Dictionary with cache hits, misses, hit rate, and cache sizes
         """
-        total = self._cache_hits + self._cache_misses
-        hit_rate = self._cache_hits / total if total > 0 else 0.0
+        exec_total = self._cache_hits + self._cache_misses
+        exec_hit_rate = self._cache_hits / exec_total if exec_total > 0 else 0.0
+
+        jit_total = self._jit_cache_hits + self._jit_cache_misses
+        jit_hit_rate = self._jit_cache_hits / jit_total if jit_total > 0 else 0.0
+
         return {
-            'hits': self._cache_hits,
-            'misses': self._cache_misses,
-            'total': total,
-            'hit_rate': hit_rate,
-            'cache_size': len(self._execution_cache)
+            'execution_cache': {
+                'hits': self._cache_hits,
+                'misses': self._cache_misses,
+                'total': exec_total,
+                'hit_rate': exec_hit_rate,
+                'cache_size': len(self._execution_cache)
+            },
+            'jit_cache': {
+                'hits': self._jit_cache_hits,
+                'misses': self._jit_cache_misses,
+                'total': jit_total,
+                'hit_rate': jit_hit_rate,
+                'cache_size': len(self._jit_cache)
+            }
         }
 
     def reset_cache_stats(self) -> None:
-        """Reset cache statistics counters."""
+        """Reset cache statistics counters (both execution and JIT)."""
         self._cache_hits = 0
         self._cache_misses = 0
+        self._jit_cache_hits = 0
+        self._jit_cache_misses = 0
 
     def clear_cache(self) -> None:
-        """Clear the execution cache and reset statistics."""
+        """Clear both execution and JIT compilation caches and reset statistics."""
         self._execution_cache.clear()
+        self._jit_cache.clear()
         self._cache_hits = 0
         self._cache_misses = 0
+        self._jit_cache_hits = 0
+        self._jit_cache_misses = 0
 
 
 def create_list_to_list_type():

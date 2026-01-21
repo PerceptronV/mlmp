@@ -21,7 +21,7 @@ Quick start:
     Int → Int
 """
 
-from .lexer import Lexer, Token, TokenType, LexerError, tokenize
+from .lexer import Lexer, Token, TokenType, LexerError, tokenise
 from .parser import Parser, parse, ParseError
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
@@ -40,7 +40,7 @@ from .grammar import Grammar, DefaultGrammar
 
 __all__ = [
     # Lexer
-    'Lexer', 'Token', 'TokenType', 'LexerError', 'tokenize',
+    'Lexer', 'Token', 'TokenType', 'LexerError', 'tokenise',
     # Parser
     'Parser', 'parse', 'ParseError',
     # AST Nodes

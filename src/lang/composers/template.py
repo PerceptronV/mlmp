@@ -81,15 +81,25 @@ class TemplateComposer(Composer):
         self.simple_list_ops = {'reverse', 'unique', 'take', 'drop', 'takelast', 'droplast'}
 
         # Template weights (relative probabilities)
+        # Rebalanced to match canonical distribution:
+        # - Reduced map/filter from 0.20 to 0.08/0.06 (canonical ~5%/2%)
+        # - Added list_access (18% canonical), list_construct (19% canonical)
+        # - Added aggregation (7% canonical), structural (8% canonical), fold (5% for coverage)
+        # - Added advanced_hof for count, zip, find, group (~3% canonical)
         self.template_weights = {
-            'identity': 0.05,
-            'map': 0.20,
-            'filter': 0.20,
-            'sort': 0.10,
-            'fold_to_list': 0.05,
-            'composition': 0.25,
-            'simple_op': 0.10,
-            'conditional': 0.05,
+            'identity': 0.03,
+            'map': 0.07,              # Reduced from 0.20 (canonical ~5%)
+            'filter': 0.05,           # Reduced from 0.20 (canonical ~2%)
+            'sort': 0.04,
+            'fold': 0.05,             # Increased from 0.02 to ensure fold/foldi coverage
+            'composition': 0.08,      # Reduced from 0.25
+            'simple_op': 0.07,
+            'conditional': 0.02,      # Reduced from 0.05
+            'list_access': 0.18,      # NEW - canonical ~18%
+            'list_construct': 0.18,   # NEW - canonical ~19%
+            'aggregation': 0.12,      # Increased - canonical ~7% (need more max/min/sum)
+            'structural': 0.10,       # NEW - canonical ~8%
+            'advanced_hof': 0.04,     # NEW - for count, zip, find, group (~3% canonical)
         }
 
         # Define function requirements for each template
@@ -99,10 +109,15 @@ class TemplateComposer(Composer):
             'map': {'map'},     # Needs map (or mapi, handled separately)
             'filter': {'filter'},  # Needs filter (or filteri)
             'sort': {'sort'},
-            'fold_to_list': set(),  # Falls back to simple_op
+            'fold': {'fold'},      # NEW - needs fold function
             'composition': set(),   # Checked dynamically based on available templates
             'simple_op': set(),     # Checked dynamically
             'conditional': {'length'},  # Needs length for condition
+            'list_access': set(),      # NEW - checked dynamically (first, last, nth, etc.)
+            'list_construct': set(),   # NEW - checked dynamically (cons, append, concat, etc.)
+            'aggregation': set(),      # NEW - checked dynamically (max, min, sum, etc.)
+            'structural': set(),       # NEW - checked dynamically (slice, swap, cut_idx, etc.)
+            'advanced_hof': set(),     # NEW - checked dynamically (count, zip, find, group)
         }
 
         # Predicate pattern requirements
@@ -176,9 +191,34 @@ class TemplateComposer(Composer):
                 )
                 if other_available >= 1:
                     available[template] = weight
-            elif template == 'fold_to_list':
-                # Falls back to simple_op, so check that
-                if self._get_available_simple_ops():
+            elif template == 'list_access':
+                # Needs at least one list accessor: first, last, second, third, nth
+                accessors = ['first', 'last', 'second', 'third', 'nth']
+                if any(self._has_function(fn) for fn in accessors):
+                    available[template] = weight
+            elif template == 'list_construct':
+                # Needs at least one constructor: cons, append, concat, repeat
+                constructors = ['cons', 'append', 'concat', 'repeat', 'singleton']
+                if any(self._has_function(fn) for fn in constructors):
+                    available[template] = weight
+            elif template == 'aggregation':
+                # Needs at least one aggregator: max, min, sum, product, length
+                aggregators = ['max', 'min', 'sum', 'product', 'length']
+                if any(self._has_function(fn) for fn in aggregators):
+                    available[template] = weight
+            elif template == 'structural':
+                # Needs at least one structural op: slice, swap, cut_idx, insert, replace
+                structural_ops = ['slice', 'swap', 'cut_idx', 'insert', 'replace', 'cut_slice', 'cut_val', 'cut_vals', 'splice']
+                if any(self._has_function(fn) for fn in structural_ops):
+                    available[template] = weight
+            elif template == 'fold':
+                # Needs fold function
+                if self._has_function('fold'):
+                    available[template] = weight
+            elif template == 'advanced_hof':
+                # Needs at least one of: count, zip, find, group
+                advanced_hofs = ['count', 'zip', 'find', 'group']
+                if any(self._has_function(fn) for fn in advanced_hofs):
                     available[template] = weight
             else:
                 # Standard check: all required functions must exist
@@ -268,25 +308,32 @@ class TemplateComposer(Composer):
 
         if elem_type == int:
             # is_even_odd: needs at least one of is_even, is_odd
+            # Reduced from 0.25 to 0.15 to match canonical distribution
             if self._has_function('is_even') or self._has_function('is_odd'):
-                forms['is_even_odd'] = 0.25
+                forms['is_even_odd'] = 0.15
 
             # compare_const: needs at least one comparison operator
+            # Reduced from 0.30 to 0.20 to reduce over-representation of < and >
             if any(self._has_function(op) for op in ['<', '>', '==']):
-                forms['compare_const'] = 0.30
+                forms['compare_const'] = 0.20
 
             # modulo_check: needs % and ==
+            # Reduced from 0.20 to 0.15 to reduce % over-representation
             if self._has_function('%') and self._has_function('=='):
-                forms['modulo_check'] = 0.20
+                forms['modulo_check'] = 0.15
 
             # compound: needs at least one combiner and a base predicate
             if (self._has_function('and') or self._has_function('or')) and forms:
-                forms['compound'] = 0.15
+                forms['compound'] = 0.10
 
             # index_based: needs comparisons or is_even/is_odd
             if use_index:
                 if any(self._has_function(op) for op in ['<', '>', '==', 'is_even', 'is_odd']):
                     forms['index_based'] = 0.10
+
+            # is_in: check if element is in list - (is_in x val)
+            if self._has_function('is_in'):
+                forms['is_in'] = 0.08
         else:
             # For non-int, default to equality if available
             if self._has_function('=='):
@@ -337,12 +384,18 @@ class TemplateComposer(Composer):
 
         if actual_elem == int and actual_ret == int:
             # arithmetic: needs at least one arithmetic operator
+            # Reduced from 0.40 to 0.25 to reduce over-representation
             if any(self._has_function(op) for op in ['+', '-', '*']):
-                forms['arithmetic'] = 0.40
+                forms['arithmetic'] = 0.25
+
+            # division: needs / - common in canonical (e.g., (/ y 10) for digit extraction)
+            if self._has_function('/'):
+                forms['division'] = 0.12
 
             # modulo: needs %
+            # Reduced from 0.15 to 0.10 to reduce % over-representation
             if self._has_function('%'):
-                forms['modulo'] = 0.15
+                forms['modulo'] = 0.10
 
             # with_index: needs arithmetic ops
             if use_index and any(self._has_function(op) for op in ['+', '-', '*']):
@@ -350,9 +403,10 @@ class TemplateComposer(Composer):
 
         if actual_ret == int:
             # conditional: available if we have predicates
+            # Increased from 0.15 to 0.20 for variety
             pred_forms = self._get_available_predicate_forms(actual_elem)
             if pred_forms:
-                forms['conditional'] = 0.15
+                forms['conditional'] = 0.20
 
         if get_base_type(actual_ret) == list:
             # singleton: needs singleton function
@@ -602,6 +656,16 @@ class TemplateComposer(Composer):
                 const = self.rng.randint(0, 10)
                 return ApplicationNode(VariableNode(op), [idx_node, NumberNode(const)])
 
+        elif form == 'is_in' and self._has_function('is_in'):
+            # (is_in x val) - check if val is in list x
+            # We need to pass the list variable from context
+            list_vars = [name for name, t in context.items() if get_base_type(t) == list]
+            if list_vars:
+                list_var = self.rng.choice(list_vars)
+                return ApplicationNode(VariableNode('is_in'), [VariableNode(list_var), elem_node])
+            # Fallback: use a constant
+            return ApplicationNode(VariableNode('=='), [elem_node, NumberNode(self.rng.randint(0, 99))])
+
         elif form == 'equality' and self._has_function('=='):
             return ApplicationNode(VariableNode('=='), [elem_node, NumberNode(self.rng.randint(0, 99))])
 
@@ -708,6 +772,11 @@ class TemplateComposer(Composer):
         elif form == 'modulo':
             divisor = self.rng.choice([2, 3, 5, 10, 100])
             return ApplicationNode(VariableNode('%'), [elem_node, NumberNode(divisor)])
+
+        elif form == 'division':
+            # Division patterns like (/ y 10) for digit extraction
+            divisor = self.rng.choice([2, 3, 5, 10, 100])
+            return ApplicationNode(VariableNode('/'), [elem_node, NumberNode(divisor)])
 
         elif form == 'with_index' and idx_var:
             idx_node = VariableNode(idx_var)
@@ -948,8 +1017,10 @@ class TemplateComposer(Composer):
                 input_var, elem_type, depth, context, substitutions
             )
 
-        elif template == 'fold_to_list':
-            return self._generate_simple_list_op(input_var, input_type, output_type, substitutions)
+        elif template == 'fold':
+            return self._generate_fold_template(
+                input_var, elem_type, output_type, depth, context, substitutions
+            )
 
         elif template == 'composition':
             return self._generate_composition(
@@ -962,6 +1033,31 @@ class TemplateComposer(Composer):
         elif template == 'conditional':
             return self._generate_conditional_list(
                 input_var, input_type, output_type, depth, context, substitutions
+            )
+
+        elif template == 'list_access':
+            return self._generate_list_access_template(
+                input_var, elem_type, depth, context, substitutions
+            )
+
+        elif template == 'list_construct':
+            return self._generate_list_construct_template(
+                input_var, elem_type, output_type, depth, context, substitutions
+            )
+
+        elif template == 'aggregation':
+            return self._generate_aggregation_template(
+                input_var, elem_type, depth, context, substitutions
+            )
+
+        elif template == 'structural':
+            return self._generate_structural_template(
+                input_var, elem_type, depth, context, substitutions
+            )
+
+        elif template == 'advanced_hof':
+            return self._generate_advanced_hof_template(
+                input_var, elem_type, output_type, depth, context, substitutions
             )
 
         return input_node
@@ -1100,6 +1196,688 @@ class TemplateComposer(Composer):
             VariableNode('sort'),
             [lambda_node, VariableNode(input_var)]
         )
+
+    # ========================================================================
+    # NEW Template Generation Methods (to match canonical distribution)
+    # ========================================================================
+
+    def _generate_list_access_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate list access patterns like:
+        - (singleton (first x))
+        - (singleton (last x))
+        - (singleton (nth n x))
+        - (cons (first x) (singleton (last x)))
+
+        These are common in canonical programs (~18% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        # Get available accessors
+        accessors = []
+        if self._has_function('first'):
+            accessors.append('first')
+        if self._has_function('last'):
+            accessors.append('last')
+        if self._has_function('second'):
+            accessors.append('second')
+        if self._has_function('third'):
+            accessors.append('third')
+        if self._has_function('nth'):
+            accessors.append('nth')
+
+        if not accessors:
+            return input_node
+
+        # Choose pattern based on available functions
+        patterns = []
+        has_singleton = self._has_function('singleton')
+        has_cons = self._has_function('cons')
+
+        if has_singleton:
+            patterns.extend(['singleton_access'] * 5)  # High weight for simple singleton patterns
+        if has_cons and has_singleton and len(accessors) >= 2:
+            patterns.extend(['cons_access'] * 2)  # (cons (first x) (singleton (last x)))
+        if has_cons:
+            patterns.extend(['cons_to_list'] * 2)  # (cons (first x) x)
+        if self._has_function('take') and 'first' in accessors:
+            patterns.append('take_first')  # (take (first x) (drop 1 x))
+
+        if not patterns:
+            # Fallback to simple drop/take
+            if self._has_function('take'):
+                n = self.rng.randint(1, 3)
+                return ApplicationNode(VariableNode('take'), [NumberNode(n), input_node])
+            return input_node
+
+        pattern = self.rng.choice(patterns)
+
+        if pattern == 'singleton_access':
+            accessor = self.rng.choice(accessors)
+            if accessor == 'nth':
+                n = self.rng.randint(0, 5)
+                access_expr = ApplicationNode(VariableNode('nth'), [NumberNode(n), input_node])
+            else:
+                access_expr = ApplicationNode(VariableNode(accessor), [input_node])
+            return ApplicationNode(VariableNode('singleton'), [access_expr])
+
+        elif pattern == 'cons_access':
+            # (cons (first x) (singleton (last x)))
+            accessor1 = self.rng.choice([a for a in accessors if a != 'nth'])
+            accessor2 = self.rng.choice([a for a in accessors if a != accessor1 and a != 'nth'])
+            if not accessor2:
+                accessor2 = accessor1
+            access1 = ApplicationNode(VariableNode(accessor1), [input_node])
+            access2 = ApplicationNode(VariableNode(accessor2), [input_node])
+            singleton_expr = ApplicationNode(VariableNode('singleton'), [access2])
+            return ApplicationNode(VariableNode('cons'), [access1, singleton_expr])
+
+        elif pattern == 'cons_to_list':
+            # (cons (first x) x) or (cons (last x) x)
+            accessor = self.rng.choice([a for a in accessors if a != 'nth']) if any(a != 'nth' for a in accessors) else 'first'
+            if not self._has_function(accessor):
+                accessor = accessors[0]
+            if accessor == 'nth':
+                access_expr = ApplicationNode(VariableNode('nth'), [NumberNode(0), input_node])
+            else:
+                access_expr = ApplicationNode(VariableNode(accessor), [input_node])
+            return ApplicationNode(VariableNode('cons'), [access_expr, input_node])
+
+        elif pattern == 'take_first':
+            # (take (first x) (drop 1 x))
+            first_expr = ApplicationNode(VariableNode('first'), [input_node])
+            drop_expr = ApplicationNode(VariableNode('drop'), [NumberNode(1), input_node])
+            return ApplicationNode(VariableNode('take'), [first_expr, drop_expr])
+
+        return input_node
+
+    def _generate_list_construct_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        output_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate list construction patterns like:
+        - (cons val x)
+        - (append x val)
+        - (concat x (singleton val))
+        - (repeat (first x) n)
+        - (flatten (map ... x))
+
+        These are common in canonical programs (~19% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        patterns = []
+
+        # Cons patterns: (cons val x)
+        if self._has_function('cons'):
+            patterns.extend(['cons_val'] * 4)
+            if self._has_function('first') or self._has_function('last'):
+                patterns.extend(['cons_element'] * 2)  # (cons (first x) x)
+
+        # Append patterns: (append x val)
+        if self._has_function('append'):
+            patterns.extend(['append_val'] * 3)
+            if self._has_function('first') or self._has_function('last'):
+                patterns.extend(['append_element'] * 2)  # (append x (first x))
+
+        # Concat patterns: (concat x y)
+        if self._has_function('concat'):
+            patterns.extend(['concat_self'] * 2)  # (concat x x)
+            if self._has_function('reverse'):
+                patterns.append('concat_reverse')  # (concat (reverse x) x)
+            if self._has_function('drop') or self._has_function('take'):
+                patterns.append('concat_parts')  # (concat (drop n x) (take n x))
+
+        # Repeat patterns: (repeat (first x) n)
+        if self._has_function('repeat'):
+            if self._has_function('first') or self._has_function('last'):
+                patterns.extend(['repeat_element'] * 2)
+            if self._has_function('max') or self._has_function('min'):
+                patterns.append('repeat_agg')  # (repeat (max x) (min x))
+
+        # Flatten patterns: (flatten (map singleton x)) -- simpler flatten usage
+        if self._has_function('flatten') and self._has_function('map'):
+            patterns.append('flatten_map')
+
+        if not patterns:
+            return input_node
+
+        pattern = self.rng.choice(patterns)
+
+        if pattern == 'cons_val':
+            val = NumberNode(self.rng.randint(0, 99))
+            return ApplicationNode(VariableNode('cons'), [val, input_node])
+
+        elif pattern == 'cons_element':
+            accessor = 'first' if self._has_function('first') else 'last'
+            access_expr = ApplicationNode(VariableNode(accessor), [input_node])
+            return ApplicationNode(VariableNode('cons'), [access_expr, input_node])
+
+        elif pattern == 'append_val':
+            val = NumberNode(self.rng.randint(0, 99))
+            return ApplicationNode(VariableNode('append'), [input_node, val])
+
+        elif pattern == 'append_element':
+            accessor = 'first' if self._has_function('first') else 'last'
+            access_expr = ApplicationNode(VariableNode(accessor), [input_node])
+            return ApplicationNode(VariableNode('append'), [input_node, access_expr])
+
+        elif pattern == 'concat_self':
+            return ApplicationNode(VariableNode('concat'), [input_node, input_node])
+
+        elif pattern == 'concat_reverse':
+            rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
+            return ApplicationNode(VariableNode('concat'), [rev_expr, input_node])
+
+        elif pattern == 'concat_parts':
+            n = self.rng.randint(1, 4)
+            if self._has_function('drop') and self._has_function('take'):
+                drop_expr = ApplicationNode(VariableNode('drop'), [NumberNode(n), input_node])
+                take_expr = ApplicationNode(VariableNode('take'), [NumberNode(n), input_node])
+                return ApplicationNode(VariableNode('concat'), [drop_expr, take_expr])
+            return ApplicationNode(VariableNode('concat'), [input_node, input_node])
+
+        elif pattern == 'repeat_element':
+            accessor = 'first' if self._has_function('first') else 'last'
+            access_expr = ApplicationNode(VariableNode(accessor), [input_node])
+            n = self.rng.randint(2, 10)
+            return ApplicationNode(VariableNode('repeat'), [access_expr, NumberNode(n)])
+
+        elif pattern == 'repeat_agg':
+            agg1 = 'max' if self._has_function('max') else 'min'
+            agg2 = 'min' if self._has_function('min') else 'max'
+            agg1_expr = ApplicationNode(VariableNode(agg1), [input_node])
+            agg2_expr = ApplicationNode(VariableNode(agg2), [input_node])
+            return ApplicationNode(VariableNode('repeat'), [agg1_expr, agg2_expr])
+
+        elif pattern == 'flatten_map':
+            # (flatten (map (λ y (cons y (singleton y))) x))
+            elem_var = self._fresh_var_name()
+            elem_node = VariableNode(elem_var)
+            if self._has_function('singleton') and self._has_function('cons'):
+                inner = ApplicationNode(VariableNode('singleton'), [elem_node])
+                body = ApplicationNode(VariableNode('cons'), [elem_node, inner])
+            elif self._has_function('singleton'):
+                body = ApplicationNode(VariableNode('singleton'), [elem_node])
+            else:
+                body = elem_node
+            lambda_node = LambdaNode(elem_var, body)
+            map_expr = ApplicationNode(VariableNode('map'), [lambda_node, input_node])
+            return ApplicationNode(VariableNode('flatten'), [map_expr])
+
+        return input_node
+
+    def _generate_aggregation_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate aggregation patterns like:
+        - (singleton (max x))
+        - (singleton (min x))
+        - (singleton (sum x))
+        - (singleton (product x))
+        - (repeat (max x) (min x))
+        - (range (min x) 1 (max x))
+
+        These are common in canonical programs (~7% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        # Get available aggregators
+        aggregators = []
+        if self._has_function('max'):
+            aggregators.append('max')
+        if self._has_function('min'):
+            aggregators.append('min')
+        if self._has_function('sum'):
+            aggregators.append('sum')
+        if self._has_function('product'):
+            aggregators.append('product')
+        if self._has_function('length'):
+            aggregators.append('length')
+
+        if not aggregators:
+            return input_node
+
+        patterns = []
+        has_singleton = self._has_function('singleton')
+        has_repeat = self._has_function('repeat')
+        has_range = self._has_function('range')
+
+        if has_singleton:
+            patterns.extend(['singleton_agg'] * 5)  # Most common
+        if has_repeat and 'max' in aggregators and 'min' in aggregators:
+            patterns.extend(['repeat_agg'] * 2)  # (repeat (max x) (min x))
+        if has_range and 'max' in aggregators and 'min' in aggregators:
+            patterns.append('range_agg')  # (range (min x) 1 (max x))
+        if has_singleton and 'length' in aggregators and self._has_function('unique'):
+            patterns.append('unique_length')  # (singleton (length (unique x)))
+
+        if not patterns:
+            return input_node
+
+        pattern = self.rng.choice(patterns)
+
+        if pattern == 'singleton_agg':
+            agg = self.rng.choice(aggregators)
+            agg_expr = ApplicationNode(VariableNode(agg), [input_node])
+            return ApplicationNode(VariableNode('singleton'), [agg_expr])
+
+        elif pattern == 'repeat_agg':
+            # (repeat (max x) (min x))
+            max_expr = ApplicationNode(VariableNode('max'), [input_node])
+            min_expr = ApplicationNode(VariableNode('min'), [input_node])
+            return ApplicationNode(VariableNode('repeat'), [max_expr, min_expr])
+
+        elif pattern == 'range_agg':
+            # (range (min x) (max x) 1) or (range (min x) (max x) 2)
+            min_expr = ApplicationNode(VariableNode('min'), [input_node])
+            max_expr = ApplicationNode(VariableNode('max'), [input_node])
+            step = NumberNode(self.rng.choice([1, 2]))
+            return ApplicationNode(VariableNode('range'), [min_expr, max_expr, step])
+
+        elif pattern == 'unique_length':
+            # (singleton (length (unique x)))
+            unique_expr = ApplicationNode(VariableNode('unique'), [input_node])
+            length_expr = ApplicationNode(VariableNode('length'), [unique_expr])
+            return ApplicationNode(VariableNode('singleton'), [length_expr])
+
+        return input_node
+
+    def _generate_structural_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate structural manipulation patterns like:
+        - (slice i j x)
+        - (cut_idx i x)
+        - (swap i j x)
+        - (insert val i x)
+        - (replace i val x)
+
+        These are common in canonical programs (~8% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        patterns = []
+
+        # Slice patterns
+        if self._has_function('slice'):
+            patterns.extend(['slice_const'] * 2)
+            if self._has_function('first') and self._has_function('second'):
+                patterns.append('slice_dynamic')  # (slice (first x) (second x) (drop 2 x))
+
+        # Swap patterns
+        if self._has_function('swap'):
+            patterns.extend(['swap_const'] * 2)
+
+        # Cut patterns
+        if self._has_function('cut_idx'):
+            patterns.extend(['cut_idx_const'] * 2)
+            if self._has_function('first'):
+                patterns.append('cut_idx_dynamic')  # (cut_idx (first x) (drop 1 x))
+
+        if self._has_function('cut_slice'):
+            patterns.extend(['cut_slice_const'] * 2)
+            if self._has_function('first') and self._has_function('second'):
+                patterns.append('cut_slice_dynamic')  # (cut_slice (first x) (second x) x)
+
+        if self._has_function('cut_val'):
+            patterns.append('cut_val')  # (cut_val n x) or (cut_val (max x) x)
+
+        if self._has_function('cut_vals'):
+            patterns.append('cut_vals')  # (cut_vals n x)
+
+        # Insert patterns
+        if self._has_function('insert'):
+            patterns.extend(['insert_const'] * 2)
+
+        # Replace patterns
+        if self._has_function('replace'):
+            patterns.extend(['replace_const'] * 2)
+            if self._has_function('first') or self._has_function('last'):
+                patterns.append('replace_dynamic')  # (replace i (last x) x)
+
+        # Splice patterns
+        if self._has_function('splice') and self._has_function('singleton'):
+            patterns.append('splice_const')
+
+        if not patterns:
+            return input_node
+
+        pattern = self.rng.choice(patterns)
+
+        if pattern == 'slice_const':
+            i = self.rng.randint(0, 3)
+            j = i + self.rng.randint(1, 4)
+            return ApplicationNode(VariableNode('slice'), [NumberNode(i), NumberNode(j), input_node])
+
+        elif pattern == 'slice_dynamic':
+            first_expr = ApplicationNode(VariableNode('first'), [input_node])
+            second_expr = ApplicationNode(VariableNode('second'), [input_node])
+            drop_expr = ApplicationNode(VariableNode('drop'), [NumberNode(2), input_node])
+            return ApplicationNode(VariableNode('slice'), [first_expr, second_expr, drop_expr])
+
+        elif pattern == 'swap_const':
+            i = self.rng.randint(0, 3)
+            j = self.rng.randint(i + 1, 5)
+            return ApplicationNode(VariableNode('swap'), [NumberNode(i), NumberNode(j), input_node])
+
+        elif pattern == 'cut_idx_const':
+            i = self.rng.randint(1, 5)
+            return ApplicationNode(VariableNode('cut_idx'), [NumberNode(i), input_node])
+
+        elif pattern == 'cut_idx_dynamic':
+            first_expr = ApplicationNode(VariableNode('first'), [input_node])
+            drop_expr = ApplicationNode(VariableNode('drop'), [NumberNode(1), input_node])
+            return ApplicationNode(VariableNode('cut_idx'), [first_expr, drop_expr])
+
+        elif pattern == 'cut_slice_const':
+            i = self.rng.randint(0, 4)
+            j = i + self.rng.randint(1, 4)
+            return ApplicationNode(VariableNode('cut_slice'), [NumberNode(i), NumberNode(j), input_node])
+
+        elif pattern == 'cut_slice_dynamic':
+            first_expr = ApplicationNode(VariableNode('first'), [input_node])
+            second_expr = ApplicationNode(VariableNode('second'), [input_node])
+            return ApplicationNode(VariableNode('cut_slice'), [first_expr, second_expr, input_node])
+
+        elif pattern == 'cut_val':
+            if self._has_function('max') and self.rng.random() < 0.5:
+                val = ApplicationNode(VariableNode('max'), [input_node])
+            else:
+                val = NumberNode(self.rng.randint(0, 10))
+            return ApplicationNode(VariableNode('cut_val'), [val, input_node])
+
+        elif pattern == 'cut_vals':
+            if self._has_function('first') and self.rng.random() < 0.5:
+                val = ApplicationNode(VariableNode('first'), [input_node])
+            else:
+                val = NumberNode(self.rng.randint(0, 10))
+            return ApplicationNode(VariableNode('cut_vals'), [val, input_node])
+
+        elif pattern == 'insert_const':
+            val = NumberNode(self.rng.randint(0, 99))
+            i = self.rng.randint(0, 5)
+            return ApplicationNode(VariableNode('insert'), [val, NumberNode(i), input_node])
+
+        elif pattern == 'replace_const':
+            i = self.rng.randint(0, 5)
+            val = NumberNode(self.rng.randint(0, 99))
+            return ApplicationNode(VariableNode('replace'), [NumberNode(i), val, input_node])
+
+        elif pattern == 'replace_dynamic':
+            i = self.rng.randint(0, 5)
+            accessor = 'last' if self._has_function('last') else 'first'
+            val = ApplicationNode(VariableNode(accessor), [input_node])
+            return ApplicationNode(VariableNode('replace'), [NumberNode(i), val, input_node])
+
+        elif pattern == 'splice_const':
+            # (splice (singleton val) i x)
+            val = NumberNode(self.rng.randint(0, 99))
+            singleton_expr = ApplicationNode(VariableNode('singleton'), [val])
+            i = self.rng.randint(0, 5)
+            return ApplicationNode(VariableNode('splice'), [singleton_expr, NumberNode(i), input_node])
+
+        return input_node
+
+    def _generate_fold_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        output_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate fold patterns like:
+        - (fold (λ (y z) (append y z)) [] x) - simple fold
+        - (fold (λ (y z) (append y (+ (last y) z))) (singleton 0) x) - cumulative sum
+        - (fold (λ (y z) (if (> z (last y)) (append y z) y)) (take 1 x) (drop 1 x)) - filter fold
+        - (fold (λ (y z) (cons z (reverse y))) [] x) - reverse via fold
+
+        These are present in canonical programs (~2% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        if not self._has_function('fold'):
+            return input_node
+
+        patterns = []
+
+        # Simple fold patterns
+        if self._has_function('append'):
+            patterns.append('fold_append')  # (fold (λ (y z) (append y (singleton z))) [] x)
+
+        # Cumulative sum via fold
+        if self._has_function('append') and self._has_function('last') and self._has_function('+') and self._has_function('singleton'):
+            patterns.append('fold_cumsum')  # (fold (λ (y z) (append y (+ (last y) z))) (singleton 0) x)
+
+        # Filter-like fold
+        if self._has_function('append') and self._has_function('last') and self._has_function('>') and self._has_function('take') and self._has_function('drop'):
+            patterns.append('fold_filter')  # (fold (λ (y z) (if (> z (last y)) (append y z) y)) (take 1 x) (drop 1 x))
+
+        # Reverse via fold
+        if self._has_function('cons'):
+            patterns.append('fold_reverse')  # (fold (λ (y z) (cons z y)) [] x)
+
+        if not patterns:
+            # Fallback to simple operation
+            return self._generate_simple_list_op(input_var, list[elem_type], output_type, substitutions)
+
+        pattern = self.rng.choice(patterns)
+
+        acc_var = self._fresh_var_name()
+        elem_var = self._fresh_var_name()
+        acc_node = VariableNode(acc_var)
+        elem_node = VariableNode(elem_var)
+
+        if pattern == 'fold_append':
+            # (fold (λ (y z) (append y (singleton z))) [] x)
+            if self._has_function('singleton'):
+                singleton_z = ApplicationNode(VariableNode('singleton'), [elem_node])
+                body = ApplicationNode(VariableNode('append'), [acc_node, singleton_z])
+            else:
+                body = ApplicationNode(VariableNode('append'), [acc_node, elem_node])
+            init = ListNode([])
+            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            return ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
+
+        elif pattern == 'fold_cumsum':
+            # (drop 1 (fold (λ (y z) (append y (+ (last y) z))) (singleton 0) x))
+            last_y = ApplicationNode(VariableNode('last'), [acc_node])
+            sum_expr = ApplicationNode(VariableNode('+'), [last_y, elem_node])
+            body = ApplicationNode(VariableNode('append'), [acc_node, sum_expr])
+            init = ApplicationNode(VariableNode('singleton'), [NumberNode(0)])
+            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            fold_expr = ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
+            # Optionally drop the initial 0
+            if self._has_function('drop') and self.rng.random() < 0.5:
+                return ApplicationNode(VariableNode('drop'), [NumberNode(1), fold_expr])
+            return fold_expr
+
+        elif pattern == 'fold_filter':
+            # (fold (λ (y z) (if (> z (last y)) (append y z) y)) (take 1 x) (drop 1 x))
+            last_y = ApplicationNode(VariableNode('last'), [acc_node])
+            cond = ApplicationNode(VariableNode('>'), [elem_node, last_y])
+            then_expr = ApplicationNode(VariableNode('append'), [acc_node, elem_node])
+            else_expr = acc_node
+            body = IfNode(cond, then_expr, else_expr)
+            init = ApplicationNode(VariableNode('take'), [NumberNode(1), input_node])
+            rest = ApplicationNode(VariableNode('drop'), [NumberNode(1), input_node])
+            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            return ApplicationNode(VariableNode('fold'), [lambda_node, init, rest])
+
+        elif pattern == 'fold_reverse':
+            # (fold (λ (y z) (cons z y)) [] x) - equivalent to reverse
+            body = ApplicationNode(VariableNode('cons'), [elem_node, acc_node])
+            init = ListNode([])
+            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            return ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
+
+        return input_node
+
+    def _generate_advanced_hof_template(
+        self,
+        input_var: str,
+        elem_type: TypeType,
+        output_type: TypeType,
+        depth: int,
+        context: dict[str, TypeType],
+        substitutions: SubstitutionTable
+    ) -> ASTNode:
+        """
+        Generate advanced higher-order function patterns like:
+        - (singleton (count pred x)) - count elements matching predicate
+        - (map (λ y (count (== y) x)) x) - count occurrences of each element
+        - (zip x (reverse x)) - zip list with its reverse
+        - (flatten (zip x y)) - interleave two lists
+        - (find pred x) - find first matching element
+        - (map first (group key x)) - get first element of each group
+
+        These are present in canonical programs (~3% of usage).
+        """
+        input_node = VariableNode(input_var)
+
+        patterns = []
+
+        # Count patterns
+        if self._has_function('count'):
+            if self._has_function('singleton'):
+                patterns.extend(['count_singleton'] * 2)  # (singleton (count pred x))
+            if self._has_function('map'):
+                patterns.append('count_map')  # (map (λ y (count (== y) x)) x)
+
+        # Zip patterns
+        if self._has_function('zip'):
+            if self._has_function('reverse'):
+                patterns.extend(['zip_reverse'] * 2)  # (zip x (reverse x))
+            if self._has_function('flatten'):
+                patterns.append('zip_flatten')  # (flatten (zip x (reverse x)))
+            if self._has_function('map') and self._has_function('first'):
+                patterns.append('zip_map')  # (map first (zip x y))
+            if self._has_function('droplast') and self._has_function('drop'):
+                patterns.append('zip_adjacent')  # (zip (droplast 1 x) (drop 1 x))
+
+        # Find patterns
+        if self._has_function('find'):
+            patterns.extend(['find_pred'] * 2)  # (find pred x)
+
+        # Group patterns
+        if self._has_function('group'):
+            if self._has_function('map') and self._has_function('first'):
+                patterns.append('group_first')  # (map first (group key x))
+            if self._has_function('map') and self._has_function('length'):
+                patterns.append('group_length')  # (map length (group key x))
+
+        if not patterns:
+            return input_node
+
+        pattern = self.rng.choice(patterns)
+
+        if pattern == 'count_singleton':
+            # (singleton (count pred x))
+            elem_var = self._fresh_var_name()
+            pred = self._generate_simple_predicate(elem_var, int)
+            lambda_pred = LambdaNode(elem_var, pred)
+            count_expr = ApplicationNode(VariableNode('count'), [lambda_pred, input_node])
+            return ApplicationNode(VariableNode('singleton'), [count_expr])
+
+        elif pattern == 'count_map':
+            # (map (λ y (count (== y) x)) x) - count occurrences of each element
+            elem_var = self._fresh_var_name()
+            inner_var = self._fresh_var_name()
+            eq_pred = ApplicationNode(VariableNode('=='), [VariableNode(elem_var), VariableNode(inner_var)])
+            inner_lambda = LambdaNode(inner_var, eq_pred)
+            count_expr = ApplicationNode(VariableNode('count'), [inner_lambda, input_node])
+            outer_lambda = LambdaNode(elem_var, count_expr)
+            return ApplicationNode(VariableNode('map'), [outer_lambda, input_node])
+
+        elif pattern == 'zip_reverse':
+            # (zip x (reverse x))
+            rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
+            return ApplicationNode(VariableNode('zip'), [input_node, rev_expr])
+
+        elif pattern == 'zip_flatten':
+            # (flatten (zip x (reverse x)))
+            rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
+            zip_expr = ApplicationNode(VariableNode('zip'), [input_node, rev_expr])
+            return ApplicationNode(VariableNode('flatten'), [zip_expr])
+
+        elif pattern == 'zip_map':
+            # (map first (zip x (reverse x))) or (map sum (zip x (reverse x)))
+            rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
+            zip_expr = ApplicationNode(VariableNode('zip'), [input_node, rev_expr])
+            fn = 'first' if self._has_function('first') else 'sum' if self._has_function('sum') else 'first'
+            return ApplicationNode(VariableNode('map'), [VariableNode(fn), zip_expr])
+
+        elif pattern == 'zip_adjacent':
+            # (zip (droplast 1 x) (drop 1 x)) - zip adjacent pairs
+            droplast_expr = ApplicationNode(VariableNode('droplast'), [NumberNode(1), input_node])
+            drop_expr = ApplicationNode(VariableNode('drop'), [NumberNode(1), input_node])
+            return ApplicationNode(VariableNode('zip'), [droplast_expr, drop_expr])
+
+        elif pattern == 'find_pred':
+            # (find pred x)
+            elem_var = self._fresh_var_name()
+            # Use is_even/is_odd if available, else comparison
+            if self._has_function('is_even'):
+                pred = VariableNode('is_even')
+            elif self._has_function('is_odd'):
+                pred = VariableNode('is_odd')
+            else:
+                inner_pred = self._generate_simple_predicate(elem_var, int)
+                pred = LambdaNode(elem_var, inner_pred)
+            return ApplicationNode(VariableNode('find'), [pred, input_node])
+
+        elif pattern == 'group_first':
+            # (map first (group (λ y x) x)) - get first element of each group
+            elem_var = self._fresh_var_name()
+            # Simple key function (identity or modulo)
+            if self._has_function('%'):
+                key_body = ApplicationNode(VariableNode('%'), [VariableNode(elem_var), NumberNode(10)])
+            else:
+                key_body = VariableNode(elem_var)
+            key_lambda = LambdaNode(elem_var, key_body)
+            group_expr = ApplicationNode(VariableNode('group'), [key_lambda, input_node])
+            return ApplicationNode(VariableNode('map'), [VariableNode('first'), group_expr])
+
+        elif pattern == 'group_length':
+            # (map length (group (λ y x) x)) - get size of each group
+            elem_var = self._fresh_var_name()
+            if self._has_function('%'):
+                key_body = ApplicationNode(VariableNode('%'), [VariableNode(elem_var), NumberNode(10)])
+            else:
+                key_body = VariableNode(elem_var)
+            key_lambda = LambdaNode(elem_var, key_body)
+            group_expr = ApplicationNode(VariableNode('group'), [key_lambda, input_node])
+            return ApplicationNode(VariableNode('map'), [VariableNode('length'), group_expr])
+
+        return input_node
 
     def _generate_simple_list_op(
         self,

@@ -32,15 +32,24 @@ class Tokeniser:
         self.int_max = int_max
         self.n_vars_max = n_vars_max
         self.grammar = grammar
+    
+    def tokenise_int(self, i: int) -> int:
+        equiv = i % (self.int_max + 1)
+        return self.vocab.stoi[str(equiv)]
+    
+    def tokenise_element(self, c: str) -> int:
+        if c.isnumeric():
+            return self.tokenise_int(int(c))
+        return self.vocab.stoi[c]
 
     def tokenise_program(self, text: str) -> list[int]:
         toks = [t.value for t in tokenise(text) if t.value]
-        return [self.vocab.stoi[tok] for tok in toks]
+        return [self.tokenise_element(tok) for tok in toks]
     
     def tokenise_list(self, arr: list[int]) -> list[int]:
         return [self.vocab.stoi['[']] + \
-            [self.vocab.stoi[str(i % (self.int_max + 1))] for i in arr] + \
-            [self.vocab.stoi[']']]
+               [self.tokenise_int(i) for i in arr] + \
+               [self.vocab.stoi[']']]
     
     def detokenise(self, toks: list[int]) -> str:
         return ' '.join(self.vocab.itos[tok] for tok in toks)

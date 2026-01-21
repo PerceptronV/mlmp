@@ -174,8 +174,8 @@ class RandomComposer(Composer):
         """
         Generate a lambda expression.
 
-        For Callable[[A1, A2, ...], R], generates nested lambdas:
-        (λ x1 (λ x2 ... body))
+        For Callable[[A1, A2, ...], R], generates a multi-argument lambda:
+        (λ (x1 x2 ...) body)
         """
         target = substitute_type_vars(target_type, substitutions)
         type_args = get_args(target)
@@ -188,7 +188,7 @@ class RandomComposer(Composer):
         if not isinstance(param_types_list, list):
             raise ValueError(f"Expected parameter list in Callable, got {param_types_list}")
 
-        # Generate nested lambdas
+        # Generate parameter names and add to context
         new_context = context.copy()
         param_names = []
 
@@ -200,11 +200,8 @@ class RandomComposer(Composer):
         # Generate body with all parameters in scope
         body = self.generate(ret_type, depth - 1, new_context, substitutions)
 
-        # Build nested lambdas from inside out
-        for param_name in reversed(param_names):
-            body = LambdaNode(param_name, body)
-
-        return body
+        # Build a single multi-argument lambda
+        return LambdaNode(param_names, body)
 
     def _generate_if(
         self,

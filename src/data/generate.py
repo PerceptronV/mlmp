@@ -34,6 +34,8 @@ from ..lang.ast_nodes import (
     ListNode, NumberNode, VariableNode, IfNode, BooleanNode
 )
 from ..lang.evaluator import Evaluator
+from ..lang.parser import parse
+from ..lang.compiler import JITCompiler
 
 
 # ============================================================================
@@ -55,24 +57,35 @@ def apply_symbol_mapping(program_str: str, mapping: Dict[str, str]) -> str:
     Returns:
         Program string with symbols replaced
     """
+    # Use a two-pass approach with placeholders to avoid double-replacement
+    # when canonical names appear as shuffled names (e.g., cons->take, take->foldi)
     result = program_str
 
     # Sort by length (longest first) to avoid partial replacements
     # e.g., replace "is_even" before "is"
     sorted_names = sorted(mapping.keys(), key=len, reverse=True)
 
-    for canonical_name in sorted_names:
+    # Pass 1: Replace canonical names with unique placeholders
+    placeholders = {}
+    for idx, canonical_name in enumerate(sorted_names):
         shuffled_name = mapping[canonical_name]
         if canonical_name != shuffled_name:
+            placeholder = f"__PLACEHOLDER_{idx}__"
+            placeholders[placeholder] = shuffled_name
+            
             # Use word boundary regex to avoid partial matches
             # Match the name when it's followed by space, ), or end
             # and preceded by space, (, or start
             pattern = r'(?<=[(\s])' + re.escape(canonical_name) + r'(?=[\s)]|$)'
-            result = re.sub(pattern, shuffled_name, result)
+            result = re.sub(pattern, placeholder, result)
 
             # Also handle at start of expression (after open paren)
             pattern = r'\(' + re.escape(canonical_name) + r'(?=\s)'
-            result = re.sub(pattern, '(' + shuffled_name, result)
+            result = re.sub(pattern, '(' + placeholder, result)
+
+    # Pass 2: Replace placeholders with shuffled names
+    for placeholder, shuffled_name in placeholders.items():
+        result = result.replace(placeholder, shuffled_name)
 
     return result
 
@@ -272,7 +285,7 @@ class DatasetGenerator:
         # Accept if this program appears less than expected under uniform distribution
         total_queries = sum(self._query_counts.values())
         average_count = total_queries / n_unique
-        return current_count <= average_count
+        return current_count < average_count
 
     def _generate_symbol_mapping(self, use_identity: bool = False) -> Dict[str, str]:
         """
@@ -514,6 +527,411 @@ class DatasetGenerator:
             print(f"Successfully generated {n_episodes} {split} episodes!")
 
 
+# ============================================================================
+# Validation Dataset Generator
+# ============================================================================
+
+class ValidationDatasetGenerator:
+    """
+    Validation dataset generator using canonical programs from functions.txt.
+
+    Generates episodes where:
+    - Support examples are randomly generated
+    - Query programs come from a predefined canonical set
+    - Query only uses functions that appear in support examples
+    - No symbol shuffling (identity mapping only)
+    """
+
+    def __init__(
+        self,
+        seed: int,
+        canonical_programs_path: Path,
+        n_support: int = 4,
+        n_io: int = 11,
+        max_program_depth: int = 4,
+        gold_grammar: Grammar = DefaultGrammar,
+        composer_name: str = 'random',
+        uniqueness_mode: UniquenessMode = UniquenessMode.STRING
+    ):
+        """
+        Initialize the validation dataset generator.
+
+        Args:
+            seed: Random seed for reproducibility
+            canonical_programs_path: Path to functions.txt with canonical programs
+            n_support: Number of support examples per episode
+            n_io: Number of I/O pairs per program
+            max_program_depth: Maximum depth for generated support programs
+            gold_grammar: The gold grammar to use
+            composer_name: Name of the composer for support generation
+            uniqueness_mode: How to check program uniqueness
+        """
+        self.seed = seed
+        self.rng = random.Random(seed)
+        self.n_support = n_support
+        self.n_io = n_io
+        self.max_program_depth = max_program_depth
+        self.gold_grammar = gold_grammar
+        self.composer_name = composer_name
+        self.uniqueness_mode = uniqueness_mode
+
+        # Load canonical programs
+        self.canonical_programs = self._load_canonical_programs(canonical_programs_path)
+        print(f"Loaded {len(self.canonical_programs)} canonical programs")
+
+        # Create composer and sampler for support examples
+        self.composer = get_composer(composer_name, seed, gold_grammar)
+        self.sampler = RuleSampler(
+            composer=self.composer,
+            uniqueness_mode=uniqueness_mode,
+            num_io_pairs=n_io,
+            num_candidate_inputs=100,
+            depth_variation=2,
+            max_attempts_multiplier=100
+        )
+
+        # Create compiler for generating I/O pairs
+        self.compiler = JITCompiler(gold_grammar)
+
+        # Get grammar function names for extraction
+        self.grammar_names = set(gold_grammar.names)
+
+        # Target type for all programs
+        self.target_type = create_list_to_list_type()
+
+        # Track which canonical programs have been used as queries
+        self._used_query_indices: Set[int] = set()
+
+    def reset_used_queries(self) -> None:
+        """Reset tracking of used queries. Call between dataset splits."""
+        self._used_query_indices.clear()
+
+    def _load_canonical_programs(self, path: Path) -> List[str]:
+        """
+        Load canonical programs from file.
+
+        Args:
+            path: Path to functions.txt
+
+        Returns:
+            List of program strings
+        """
+        programs = []
+        with open(path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    programs.append(line)
+        return programs
+
+    def _extract_functions_from_program_str(self, program_str: str) -> Set[str]:
+        """
+        Extract grammar function names from a program string.
+
+        Uses regex to find function names that match the grammar.
+
+        Args:
+            program_str: The program as a string
+
+        Returns:
+            Set of function names used in the program
+        """
+        found_functions = set()
+
+        for name in self.grammar_names:
+            # Use word boundary regex to match function names
+            # Need to handle Lisp syntax: functions appear after '(' or whitespace
+            pattern = r'(?<=\()\s*' + re.escape(name) + r'\s+|(?<=\s)' + re.escape(name) + r'(?=\s|\))'
+            if re.search(pattern, program_str):
+                found_functions.add(name)
+
+        return found_functions
+
+    def _generate_io_pairs(self, program_node: ASTNode, n: int) -> List[IOPair]:
+        """
+        Generate I/O pairs by compiling and executing program on random inputs.
+
+        Compiles the program to a native function, then generates random list
+        inputs and evaluates the compiled function on them.
+        Uses similar methodology to Rule's approach.
+
+        Args:
+            program_node: The parsed program AST
+            n: Number of I/O pairs to generate
+
+        Returns:
+            List of IOPair objects
+        """
+        io_pairs = []
+        attempts = 0
+        max_attempts = n * 100  # Allow many attempts to find valid I/O pairs
+
+        # Track seen inputs and outputs for diversity
+        seen_inputs = set()
+        seen_outputs = set()
+
+        # Compile the program to a native function
+        try:
+            program_func = self.compiler.compile(program_node)
+        except Exception as e:
+            print(f"Failed to compile program: {e}")
+            return []
+
+        while len(io_pairs) < n and attempts < max_attempts:
+            # Generate random input list
+            # Vary length and values to get diverse tests
+            list_length = self.rng.randint(0, 15)
+            input_list = [self.rng.randint(-10, 99) for _ in range(list_length)]
+
+            # Skip if we've seen this input
+            input_tuple = tuple(input_list)
+            if input_tuple in seen_inputs:
+                attempts += 1
+                continue
+
+            try:
+                # Apply the compiled function to the input
+                output = program_func(input_list)
+
+                # Check output is a list
+                if isinstance(output, list):
+                    # Check for diversity (avoid duplicate outputs if possible)
+                    output_tuple = tuple(output)
+
+                    # Accept if output is novel, or if we're struggling to find pairs
+                    if output_tuple not in seen_outputs or len(io_pairs) < n // 2:
+                        io_pairs.append(IOPair(input=input_list, output=output))
+                        seen_inputs.add(input_tuple)
+                        seen_outputs.add(output_tuple)
+            except Exception:
+                # Evaluation failed, skip this input
+                pass
+
+            attempts += 1
+
+        return io_pairs
+
+    def _sampled_to_pi_example(
+        self,
+        sampled_program: SampledProgram,
+        symbol_mapping: Dict[str, str]
+    ) -> PIExample:
+        """
+        Convert a sampled program to a PIExample.
+
+        For validation, symbol_mapping should always be identity.
+
+        Args:
+            sampled_program: SampledProgram from RuleSampler
+            symbol_mapping: Symbol mapping (identity for validation)
+
+        Returns:
+            PIExample with canonical and shuffled forms
+        """
+        # Convert I/O pairs
+        io_pairs = [
+            IOPair(input=inp, output=out)
+            for inp, out in sampled_program.io_pairs
+        ]
+
+        # Get canonical program string
+        program_canonical = sampled_program.program_str
+
+        # Apply symbol mapping (should be identity for validation)
+        program_shuffled = apply_symbol_mapping(program_canonical, symbol_mapping)
+
+        # Extract functions used
+        functions_used = sampled_program.program.function_names() & self.grammar_names
+
+        return PIExample(
+            io_pairs=io_pairs,
+            program_canonical=program_canonical,
+            program_shuffled=program_shuffled,
+            functions_used=functions_used
+        )
+
+    def generate_episode(
+        self,
+        episode_id: int,
+        allow_query_reuse: bool = False
+    ) -> Optional[MetaLearningEpisode]:
+        """
+        Generate a single validation episode.
+
+        The episode consists of:
+        1. Support examples generated randomly
+        2. A query selected from canonical programs that only uses support functions
+        3. Identity mapping (no symbol shuffling)
+
+        Args:
+            episode_id: Unique identifier for this episode
+            allow_query_reuse: If True, allow reusing canonical programs as queries
+
+        Returns:
+            MetaLearningEpisode, or None if no valid query found
+        """
+        # Identity mapping (no shuffling for validation)
+        identity_mapping = {name: name for name in self.grammar_names}
+
+        try:
+            # Step 1: Generate support examples using full grammar
+            sampled_support = self.sampler.sample(
+                target_type=self.target_type,
+                n=self.n_support,
+                depth=self.max_program_depth
+            )
+
+            # Convert to PIExamples
+            support_examples = [
+                self._sampled_to_pi_example(prog, identity_mapping)
+                for prog in sampled_support
+            ]
+
+            # Step 2: Collect functions used in support
+            support_functions: Set[str] = set()
+            for ex in support_examples:
+                support_functions.update(ex.functions_used)
+
+            # Step 3: Collect support program strings
+            support_program_strs = {ex.program_canonical for ex in support_examples}
+
+            # Step 4: Find valid query programs from canonical set
+            valid_query_indices = []
+
+            for idx, prog_str in enumerate(self.canonical_programs):
+                # Skip if already used (unless reuse is allowed)
+                if not allow_query_reuse and idx in self._used_query_indices:
+                    continue
+
+                # Extract functions from this program
+                prog_functions = self._extract_functions_from_program_str(prog_str)
+
+                # Check if only uses support functions
+                if not prog_functions.issubset(support_functions):
+                    continue
+
+                # Check if different from support programs
+                if prog_str in support_program_strs:
+                    continue
+
+                # Valid query candidate
+                valid_query_indices.append(idx)
+
+            # No valid queries found
+            if not valid_query_indices:
+                return None
+
+            # Step 5: Select a random valid query
+            query_idx = self.rng.choice(valid_query_indices)
+            query_str = self.canonical_programs[query_idx]
+
+            # Mark as used
+            self._used_query_indices.add(query_idx)
+
+            # Step 6: Parse query program and generate I/O pairs
+            try:
+                query_node = parse(query_str)
+            except Exception as e:
+                print(f"Failed to parse canonical program {query_idx}: {e}")
+                # Unmark as used since we failed
+                self._used_query_indices.discard(query_idx)
+                return None
+
+            # Generate I/O pairs for query
+            query_io_pairs = self._generate_io_pairs(query_node, self.n_io)
+
+            if len(query_io_pairs) < self.n_io:
+                print(f"Warning: Only generated {len(query_io_pairs)}/{self.n_io} "
+                      f"I/O pairs for query {query_idx}")
+                # Accept with fewer I/O pairs if we got at least some
+                if len(query_io_pairs) == 0:
+                    # Unmark as used since we failed
+                    self._used_query_indices.discard(query_idx)
+                    return None
+
+            # Extract functions from query
+            query_functions = self._extract_functions_from_program_str(query_str)
+
+            # Create query example
+            query_example = PIExample(
+                io_pairs=query_io_pairs,
+                program_canonical=query_str,
+                program_shuffled=query_str,  # No shuffling
+                functions_used=query_functions
+            )
+
+            return MetaLearningEpisode(
+                episode_id=episode_id,
+                symbol_mapping=identity_mapping,
+                support_functions=support_functions,
+                support_functions_count=len(support_functions),
+                support_examples=support_examples,
+                query=query_example
+            )
+
+        except (ValueError, KeyError) as e:
+            # Sampling failed
+            print(f"Episode generation failed: {e}")
+            return None
+
+    def generate_dataset(
+        self,
+        n_episodes: int,
+        output_dir: Path,
+        split: str = 'validation',
+        allow_query_reuse: bool = False
+    ):
+        """
+        Generate a validation dataset.
+
+        Args:
+            n_episodes: Number of episodes to generate
+            output_dir: Directory to save the episodes
+            split: Dataset split name (default: 'validation')
+            allow_query_reuse: If True, allow reusing canonical programs
+        """
+        output_dir = Path(output_dir) / split
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"Generating {n_episodes} {split} episodes...")
+        print(f"Output directory: {output_dir}")
+        print(f"Parameters: n_support={self.n_support}, n_io={self.n_io}, "
+              f"max_depth={self.max_program_depth}")
+        print(f"Composer: {self.composer_name}, Uniqueness: {self.uniqueness_mode.value}")
+        print(f"Using canonical programs from functions.txt (no shuffling)")
+
+        successful = 0
+        attempts = 0
+        max_attempts = n_episodes * 20  # Allow more attempts since we need matching
+
+        while successful < n_episodes and attempts < max_attempts:
+            episode = self.generate_episode(
+                episode_id=successful,
+                allow_query_reuse=allow_query_reuse
+            )
+
+            attempts += 1
+
+            if episode is not None:
+                # Save episode to JSON
+                output_path = output_dir / f"episode_{successful:06d}.json"
+                with open(output_path, 'w') as f:
+                    json.dump(episode.to_dict(), f, indent=2)
+
+                successful += 1
+
+                if successful % 10 == 0:
+                    print(f"Generated {successful}/{n_episodes} episodes "
+                          f"({attempts} attempts)")
+
+        if successful < n_episodes:
+            print(f"Warning: Only generated {successful}/{n_episodes} episodes "
+                  f"after {attempts} attempts")
+            print(f"This may happen if canonical programs don't match support functions frequently")
+        else:
+            print(f"Successfully generated {n_episodes} {split} episodes!")
+
+
 def main():
     """Main entry point for dataset generation."""
     parser = argparse.ArgumentParser(
@@ -532,6 +950,12 @@ def main():
         type=int,
         default=100,
         help='Number of evaluation episodes (default: 100)'
+    )
+    parser.add_argument(
+        '--n-validation',
+        type=int,
+        default=200,
+        help='Number of validation episodes (default: 200)'
     )
 
     # Episode structure parameters
@@ -552,7 +976,7 @@ def main():
     parser.add_argument(
         '--max-program-depth',
         type=int,
-        default=4,
+        default=6,
         help='Maximum depth for generated programs (default: 4)'
     )
     parser.add_argument(
@@ -615,6 +1039,12 @@ def main():
         default=10,
         help='Max attempts to find a novel query per episode (default: 10)'
     )
+    parser.add_argument(
+        '--canonical-programs',
+        type=str,
+        default='src/data/rule/functions.txt',
+        help='Path to canonical programs for validation (default: src/data/rule/functions.txt)'
+    )
 
     args = parser.parse_args()
 
@@ -627,8 +1057,31 @@ def main():
     # Set up output directory
     output_dir = Path(args.output_dir) / f"{args.composer}_seed{args.seed}"
 
-    # Create dataset generator
-    generator = DatasetGenerator(
+    # Generate validation set using canonical programs
+    print("\n" + "=" * 80)
+    print("VALIDATION SET")
+    print("=" * 80)
+
+    validation_generator = ValidationDatasetGenerator(
+        seed=args.seed,
+        canonical_programs_path=Path(args.canonical_programs),
+        n_support=args.n_support,
+        n_io=args.n_io,
+        max_program_depth=args.max_program_depth,
+        gold_grammar=DefaultGrammar,
+        composer_name=args.composer,
+        uniqueness_mode=uniqueness_mode
+    )
+
+    validation_generator.generate_dataset(
+        n_episodes=args.n_validation,
+        output_dir=output_dir,
+        split='validation',
+        allow_query_reuse=False
+    )
+
+    # Create training dataset generator
+    training_generator = DatasetGenerator(
         seed=args.seed,
         n_support=args.n_support,
         n_io=args.n_io,
@@ -647,24 +1100,11 @@ def main():
     print("\n" + "=" * 80)
     print("TRAINING SET")
     print("=" * 80)
-    generator.generate_dataset(
+    training_generator.generate_dataset(
         n_episodes=args.n_train,
         output_dir=output_dir,
         split='train',
         first_is_identity=False
-    )
-
-    # Generate evaluation set
-    # Reset seen queries so eval can have independent programs
-    generator.reset_seen_queries()
-    print("\n" + "=" * 80)
-    print("EVALUATION SET")
-    print("=" * 80)
-    generator.generate_dataset(
-        n_episodes=args.n_eval,
-        output_dir=output_dir,
-        split='eval',
-        first_is_identity=True
     )
 
     print("\n" + "=" * 80)
@@ -675,9 +1115,11 @@ def main():
     print(f"Output directory: {output_dir}")
     print(f"Training episodes: {args.n_train}")
     print(f"Evaluation episodes: {args.n_eval}")
+    print(f"Validation episodes: {args.n_validation} (from canonical programs)")
     print(f"Noise: {args.noise} -> {args.max_noise} (warmup: {args.noise_warmup_episodes} episodes)")
     print(f"Strict uniqueness: {args.strict_uniqueness_episodes} episodes (0 = always strict)")
     print(f"First eval episode uses identity mapping (no symbol shuffling)")
+    print(f"Validation uses canonical programs from {args.canonical_programs} (no shuffling)")
 
 
 if __name__ == '__main__':

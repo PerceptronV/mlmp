@@ -19,7 +19,7 @@ class ProgramDataset(Dataset):
     def __init__(self, data_dir: Path):
         self.tokeniser = Tokeniser()
         self.data_dir = data_dir
-        self.files = list(data_dir.glob('*.json'))
+        self.files = sorted(data_dir.glob('episode_*.json'))
 
         assert len(self.files) > 0, f"No files found in {data_dir}"
         sample = self.load_episode(self.files[0])
@@ -65,7 +65,10 @@ class ProgramDataset(Dataset):
         file_idx = idx // self.n_io
         n_io_shown = (idx % self.n_io) + 1
         x, y = self.tokenise_episode(self.load_episode(self.files[file_idx]), n_io_shown)
-        return x + y
+        # loss mask is has length of seq_len - 1 (you don't predict first token)
+        # and is 1 at the last len(y) - 1 positions (the ones after <start>)
+        loss_mask = [0] * len(x) + [1] * (len(y) - 1)
+        return x + y, loss_mask
     
     def compute_max_lengths(self, verbose: bool = False):
         if self.maxx is None or self.maxy is None or self.maxtotal is None:
@@ -97,13 +100,33 @@ class ProgramDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = ProgramDataset(Path('datasets/template_seed42/train'))
-    print(f"Max lengths: {dataset.compute_max_lengths(verbose=True)}\n")
+    dataset = input('Enter dataset directory (datasets/query_first_template_seed42/train): ').strip()
+    if dataset == '':
+        dataset = 'datasets/query_first_template_seed42/train'
+    dataset = ProgramDataset(Path(dataset))
+
+    flag = input('Compute max lengths? (y/N): ').lower()
+    if flag == 'y':
+        print(f"Max lengths: {dataset.compute_max_lengths(verbose=True)}\n")
 
     while 1:
-        idx = int(input('Enter index (-1 to exit): '))
-        if idx == -1:
+        try:
+            idx = int(input('Enter index (CTRL+C to exit): '))
+        except KeyboardInterrupt:
             break
-        ep = dataset[idx]
-        print(f"Length: {len(ep)}")
-        print(' ' + dataset.tokeniser.detokenise(ep))
+        except ValueError:
+            print('Invalid index. Please enter a valid integer.')
+            continue
+        if idx < 0 or idx >= len(dataset):
+            print(f'Index out of range [0, {len(dataset)-1}]. Please enter a valid index.')
+            continue
+
+        ep, loss_mask = dataset[idx]
+        loss_mask = [0] + loss_mask # add 0 to the start to match the length of the sequence
+        print(f"Length: {len(ep)}", end='\n ')
+        for tok, mask in zip(ep, loss_mask):
+            prtstr = dataset.tokeniser.vocab.itos[tok]
+            if mask:
+                prtstr = f'\033[92m{prtstr}\033[0m'
+            print(prtstr, end=' ')
+        print()

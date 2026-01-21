@@ -7,7 +7,7 @@ from typing import Optional
 
 
 class AttentionBlock(nn.Module):
-    def __init__(self, d_embed: int, d_model: int, n_heads: int, dropout: float = 0.0):
+    def __init__(self, d_embed: int, d_model: int, n_heads: int, dropout: float = 0.0, max_seq_len: int = 8192):
         super().__init__()
         self.d_embed = d_embed
         self.d_model = d_model
@@ -21,7 +21,7 @@ class AttentionBlock(nn.Module):
         self.v = nn.Linear(d_embed, d_model)
         self.o = nn.Linear(d_model, d_embed)
 
-        self.pos_emb = RotaryPositionalEmbeddings(self.d_head)
+        self.pos_emb = RotaryPositionalEmbeddings(self.d_head, max_seq_len=max_seq_len)
 
         self.norm = nn.LayerNorm(d_embed)
         self.dropout = nn.Dropout(dropout)
@@ -75,7 +75,7 @@ class FeedForwardBlock(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    def __init__(self, d_embed: int, d_model: int, n_heads: int, d_ff: int, dropout: float = 0.0):
+    def __init__(self, d_embed: int, d_model: int, n_heads: int, d_ff: int, dropout: float = 0.0, max_seq_len: int = 8192):
         super().__init__()
         self.d_embed = d_embed
         self.d_model = d_model
@@ -83,7 +83,7 @@ class DecoderBlock(nn.Module):
         self.d_ff = d_ff
         self.dropout = dropout
 
-        self.attention = AttentionBlock(d_embed, d_model, n_heads, dropout)
+        self.attention = AttentionBlock(d_embed, d_model, n_heads, dropout, max_seq_len=max_seq_len)
         self.feed_forward = FeedForwardBlock(d_embed, d_ff, dropout)
 
         # Suggested: buffer mask to avoid recomputation
@@ -119,6 +119,7 @@ class DecoderOnlyTransformer(nn.Module):
         n_heads: int,
         n_layers: int,
         dropout: float = 0.0,
+        max_seq_len: int = 8192,
     ):
         super().__init__()
         self.n_tokens = n_tokens
@@ -127,22 +128,25 @@ class DecoderOnlyTransformer(nn.Module):
         self.n_heads = n_heads
         self.d_ff = 4 * d_model
         self.n_layers = n_layers
+        self.max_seq_len = max_seq_len
         self.dropout = dropout
 
         self.embed = nn.Embedding(self.n_tokens, self.d_embed)
         self.layers = nn.ModuleList([
-            DecoderBlock(self.d_embed, self.d_model, self.n_heads, self.d_ff, self.dropout)
+            DecoderBlock(self.d_embed, self.d_model, self.n_heads, self.d_ff, self.dropout, max_seq_len=self.max_seq_len)
             for _ in range(self.n_layers)
         ])
         self.norm = nn.LayerNorm(self.d_embed)
         self.project = nn.Linear(self.d_embed, self.n_tokens, bias=False)
     
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None, return_all_logits: bool = False):
         # x has shape (B, L)
         x = self.embed(x) # (B, L, d_embed)
         for layer in self.layers:
             x = layer(x, mask) # (B, L, d_embed)
         x = self.norm(x)
+        if return_all_logits:
+            return self.project(x) # (B, L, n_tokens)
         last = x[:, -1, :] # (B, d_embed)
         return self.project(last) # (B, n_tokens)
     

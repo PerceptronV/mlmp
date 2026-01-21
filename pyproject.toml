@@ -7,6 +7,11 @@ name = "mlmp"
 version = "0.1.0"
 description = "Metalearning metaprogram search for efficient program induction"
 requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.8.0",
+    "wandb>=0.20.0",
+    "tqdm>=4.65.0",
+]
 
 [project.scripts]
 generate-dataset = "data.generate_dataset:main"

@@ -21,6 +21,7 @@ from .template import TemplateComposer
 from .empirical import EmpiricalComposer
 from .hybrid import HybridComposer
 from .hierarchical import HierarchicalComposer
+from .template_with_inverse import CoverageGuidedComposer
 from .utils.strategies import (
     Strategy,
     LiteralStrategy,
@@ -44,6 +45,7 @@ from ..grammar import Grammar
 COMPOSERS: dict[str, Type[Composer]] = {
     'random': RandomComposer,
     'template': TemplateComposer,
+    'template_coverage': CoverageGuidedComposer,
     'empirical': EmpiricalComposer,
     'hybrid': HybridComposer,
     'hierarchical': HierarchicalComposer,
@@ -126,6 +128,10 @@ def get_composer(
         if noise is not None:
             return COMPOSERS[name](seed, grammar, noise=noise)
         return COMPOSERS[name](seed, grammar)
+    if name == 'template_coverage':
+        if noise is not None:
+            return COMPOSERS[name](seed, grammar, noise=noise)
+        return COMPOSERS[name](seed, grammar)
     return COMPOSERS[name](seed, grammar)
 
 
@@ -139,6 +145,7 @@ __all__ = [
     'Composer',
     'RandomComposer',
     'TemplateComposer',
+    'CoverageGuidedComposer',
     'EmpiricalComposer',
     'HybridComposer',
     'HierarchicalComposer',
