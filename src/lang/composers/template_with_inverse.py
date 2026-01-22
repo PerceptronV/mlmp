@@ -359,14 +359,16 @@ class CoverageGuidedComposer(TemplateComposer):
         - As coverage progresses, pressure on uncovered functions increases
         - When 100% coverage is achieved, cycle resets (in _update_coverage)
 
-        Formula for uncovered functions:
-            bias = 1 + coverage_ratio * max_pressure
+        Formula for uncovered functions (aggressive, non-linear):
+            bias = 1 + (coverage_ratio ** 1.5) * max_pressure
         Where coverage_ratio = covered_fns / total_fns
 
-        This means:
+        This non-linear formula builds pressure more aggressively:
         - At 0% coverage: bias = 1 (no extra pressure)
-        - At 50% coverage: bias = 1 + 0.5 * max_pressure
-        - At 90% coverage: bias = 1 + 0.9 * max_pressure (very high)
+        - At 50% coverage: bias = 1 + 0.35 * max_pressure (starting to build)
+        - At 80% coverage: bias = 1 + 0.72 * max_pressure (strong pressure)
+        - At 90% coverage: bias = 1 + 0.85 * max_pressure (very strong)
+        - At 95% coverage: bias = 1 + 0.93 * max_pressure (extreme pressure)
 
         For covered functions: slight reduction to favor uncovered ones.
         """
@@ -388,13 +390,15 @@ class CoverageGuidedComposer(TemplateComposer):
             covered_fns = sum(1 for c in self._coverage_counts.values() if c > 0)
             coverage_ratio = covered_fns / total_fns if total_fns > 0 else 0
 
-            # Maximum pressure multiplier (scales with coverage_strength)
-            max_pressure = 20.0 * self.coverage_strength
-
             if fn_count == 0:
-                # Uncovered function: pressure increases with cycle progress
-                # More functions covered = more pressure on remaining uncovered ones
-                bias = 1.0 + (coverage_ratio * max_pressure)
+                # Uncovered function: very aggressive bias that grows with coverage
+                # Using square root provides strong, consistent pressure
+                # At 50%: sqrt(0.5) * 500 * 3 = 1061x
+                # At 75%: sqrt(0.75) * 500 * 3 = 1299x
+                # At 90%: sqrt(0.9) * 500 * 3 = 1423x
+                import math
+                max_pressure = 500.0 * self.coverage_strength
+                bias = 1.0 + math.sqrt(coverage_ratio) * max_pressure
             else:
                 # Covered function: slight reduction to favor uncovered
                 # As cycle progresses, covered functions get relatively less weight
@@ -409,11 +413,11 @@ class CoverageGuidedComposer(TemplateComposer):
     ) -> dict[str, float]:
         """
         Apply coverage bias to a weight dictionary.
-        
+
         Args:
             weights: Dict of item -> weight
             item_to_functions: Dict of item -> set of functions it uses
-        
+
         Returns:
             New weights dict with coverage bias applied
         """
@@ -444,13 +448,11 @@ class CoverageGuidedComposer(TemplateComposer):
                     biased[item] = weight * max_bias
                     continue
             
-            # For non-required: use geometric mean of function biases
-            bias_product = 1.0
-            for fn in functions:
-                bias_product *= self._compute_coverage_bias(fn)
-            
-            # Geometric mean
-            aggregate_bias = bias_product ** (1.0 / len(functions))
+            # Use arithmetic mean of function biases (less dilution than geometric)
+            # Geometric mean caused excessive dilution: (1000*0.5*0.5)^(1/3) = 7.9x
+            # Arithmetic mean gives: (1000+0.5+0.5)/3 = 333x (much better!)
+            bias_sum = sum(self._compute_coverage_bias(fn) for fn in functions)
+            aggregate_bias = bias_sum / len(functions) if functions else 1.0
             biased[item] = weight * aggregate_bias
         
         return biased
@@ -1045,6 +1047,13 @@ class CoverageGuidedComposer(TemplateComposer):
     ) -> ASTNode:
         """
         Generate list access patterns with coverage-guided accessor selection.
+        
+        Generates diverse patterns including:
+        - (singleton (accessor x))
+        - (cons (accessor x) x)
+        - (repeat (accessor x) n)
+        - (filter (λ (y) (< y (accessor x))) x)
+        - (map (λ (y) (+ y (accessor x))) x)
         """
         input_node = VariableNode(input_var)
         
@@ -1061,10 +1070,7 @@ class CoverageGuidedComposer(TemplateComposer):
         # Choose accessor with coverage bias
         accessor = self._choose_accessor_with_bias(accessors)
         
-        # Build the expression
-        has_singleton = self._has_function('singleton')
-        has_cons = self._has_function('cons')
-        
+        # Build the accessor expression
         if accessor == 'nth':
             idx = self.rng.randint(0, 3)
             access_expr = ApplicationNode(
@@ -1077,14 +1083,65 @@ class CoverageGuidedComposer(TemplateComposer):
                 [VariableNode(input_var)]
             )
         
-        # Wrap in singleton if available
-        if has_singleton:
+        # Build list of available patterns for diversity
+        patterns = []
+        
+        # Pattern 1: (singleton (accessor x))
+        if self._has_function('singleton'):
+            patterns.append('singleton')
+        
+        # Pattern 2: (cons (accessor x) x) - prepend accessed element
+        if self._has_function('cons'):
+            patterns.append('cons_prepend')
+        
+        # Pattern 3: (repeat (accessor x) n) - repeat accessed element (capped)
+        if self._has_function('repeat') and self._has_function('min'):
+            patterns.append('repeat_accessor')
+        
+        # Pattern 4: (filter (λ (y) (< y (accessor x))) x) - filter by accessor
+        if self._has_function('filter') and self._has_function('<'):
+            patterns.append('filter_by_accessor')
+        
+        # Pattern 5: (map (λ (y) (+ y (accessor x))) x) - transform by accessor
+        if self._has_function('map') and self._has_function('+'):
+            patterns.append('map_with_accessor')
+        
+        if not patterns:
+            return input_node
+        
+        # Choose pattern randomly
+        pattern = self.rng.choice(patterns)
+        
+        elem_var = self._fresh_var_name()
+        elem_node = VariableNode(elem_var)
+        
+        if pattern == 'singleton':
             return ApplicationNode(VariableNode('singleton'), [access_expr])
-        elif has_cons:
-            return ApplicationNode(
-                VariableNode('cons'),
-                [access_expr, ListNode([])]
-            )
+        
+        elif pattern == 'cons_prepend':
+            # (cons (accessor x) x)
+            return ApplicationNode(VariableNode('cons'), [access_expr, input_node])
+        
+        elif pattern == 'repeat_accessor':
+            # (repeat (accessor x) (min 5 (length x))) - repeat up to 5 times
+            len_expr = ApplicationNode(VariableNode('length'), [input_node])
+            capped = ApplicationNode(VariableNode('min'), [NumberNode(5), len_expr])
+            return ApplicationNode(VariableNode('repeat'), [access_expr, capped])
+        
+        elif pattern == 'filter_by_accessor':
+            # (filter (λ (y) (< y (accessor x))) x)
+            pred_body = ApplicationNode(VariableNode('<'), [elem_node, access_expr])
+            pred = LambdaNode(elem_var, pred_body)
+            return ApplicationNode(VariableNode('filter'), [pred, input_node])
+        
+        elif pattern == 'map_with_accessor':
+            # (map (λ (y) (+ y (accessor x))) x)
+            ops = ['+', '-', '%']
+            available_ops = [op for op in ops if self._has_function(op)]
+            op = self._choose_with_coverage_bias(available_ops) if available_ops else '+'
+            transform_body = ApplicationNode(VariableNode(op), [elem_node, access_expr])
+            transform = LambdaNode(elem_var, transform_body)
+            return ApplicationNode(VariableNode('map'), [transform, input_node])
         
         return input_node
     
@@ -1098,6 +1155,13 @@ class CoverageGuidedComposer(TemplateComposer):
     ) -> ASTNode:
         """
         Generate aggregation patterns with coverage-guided selection.
+        
+        Generates diverse patterns including:
+        - (singleton (agg x))
+        - (repeat 1 (agg x))
+        - (filter (λ (y) (< y (agg x))) x)
+        - (map (λ (y) (+ y (agg x))) x)
+        - (take (min (length x) (agg x)) x)
         """
         input_node = VariableNode(input_var)
         
@@ -1115,15 +1179,96 @@ class CoverageGuidedComposer(TemplateComposer):
         
         agg_expr = ApplicationNode(VariableNode(aggregator), [input_node])
         
-        # Wrap to return list
+        # Build list of available patterns
+        patterns = []
+        
+        # Pattern 1: (singleton (agg x)) - always available if singleton exists
         if self._has_function('singleton'):
+            patterns.append('singleton')
+        
+        # Pattern 2: (repeat 1 (agg x)) - creates variable length output
+        if self._has_function('repeat'):
+            patterns.append('repeat_const')
+        
+        # Pattern 3: (filter (λ (y) (< y (agg x))) x) - filter by agg
+        if self._has_function('filter') and self._has_function('<'):
+            patterns.append('filter_by_agg')
+        
+        # Pattern 4: (map (λ (y) (+ y (agg x))) x) - transform by agg
+        if self._has_function('map') and self._has_function('+'):
+            patterns.append('map_with_agg')
+        
+        # Pattern 5: (take (min (length x) n) x) where n uses agg
+        if self._has_function('take') and self._has_function('min') and self._has_function('length'):
+            patterns.append('take_by_agg')
+        
+        # Pattern 6: (repeat agg1 agg2) - two aggregators
+        if self._has_function('repeat') and len(aggregators) >= 2:
+            patterns.append('repeat_two_aggs')
+        
+        if not patterns:
+            return input_node
+        
+        # Choose pattern randomly (with some weighting toward variety)
+        pattern = self.rng.choice(patterns)
+        
+        elem_var = self._fresh_var_name()
+        elem_node = VariableNode(elem_var)
+        
+        if pattern == 'singleton':
             return ApplicationNode(VariableNode('singleton'), [agg_expr])
-        elif self._has_function('repeat') and len(aggregators) >= 2:
-            # (repeat agg1 agg2)
+        
+        elif pattern == 'repeat_const':
+            # (repeat 1 (min (agg x) 15)) - repeat 1 up to 15 times (capped to avoid memory issues)
+            const = NumberNode(1)
+            if self._has_function('min'):
+                capped_count = ApplicationNode(VariableNode('min'), [agg_expr, NumberNode(15)])
+                return ApplicationNode(VariableNode('repeat'), [const, capped_count])
+            else:
+                # Fallback to singleton if min not available
+                return ApplicationNode(VariableNode('singleton'), [agg_expr])
+        
+        elif pattern == 'filter_by_agg':
+            # (filter (λ (y) (< y (agg x))) x)
+            pred_body = ApplicationNode(VariableNode('<'), [elem_node, agg_expr])
+            pred = LambdaNode(elem_var, pred_body)
+            return ApplicationNode(VariableNode('filter'), [pred, input_node])
+        
+        elif pattern == 'map_with_agg':
+            # (map (λ (y) (+ y (agg x))) x) or (map (λ (y) (% y (agg x))) x)
+            # Choose operator with coverage bias
+            ops = ['+', '-', '%']
+            available_ops = [op for op in ops if self._has_function(op)]
+            if available_ops:
+                op = self._choose_with_coverage_bias(available_ops)
+            else:
+                op = '+'
+            transform_body = ApplicationNode(VariableNode(op), [elem_node, agg_expr])
+            transform = LambdaNode(elem_var, transform_body)
+            return ApplicationNode(VariableNode('map'), [transform, input_node])
+        
+        elif pattern == 'take_by_agg':
+            # (take (min (length x) (% (agg x) 10)) x)
+            # Use modulo to keep take count reasonable
+            len_expr = ApplicationNode(VariableNode('length'), [input_node])
+            if self._has_function('%'):
+                mod_agg = ApplicationNode(VariableNode('%'), [agg_expr, NumberNode(10)])
+                min_expr = ApplicationNode(VariableNode('min'), [len_expr, mod_agg])
+            else:
+                min_expr = ApplicationNode(VariableNode('min'), [len_expr, agg_expr])
+            return ApplicationNode(VariableNode('take'), [min_expr, input_node])
+        
+        elif pattern == 'repeat_two_aggs':
+            # (repeat agg1 (min agg2 15)) - cap repeat count to avoid memory issues
             other_aggs = [a for a in aggregators if a != aggregator]
             other = self._choose_aggregator_with_bias(other_aggs)
             other_expr = ApplicationNode(VariableNode(other), [input_node])
-            return ApplicationNode(VariableNode('repeat'), [agg_expr, other_expr])
+            if self._has_function('min'):
+                capped_count = ApplicationNode(VariableNode('min'), [other_expr, NumberNode(15)])
+                return ApplicationNode(VariableNode('repeat'), [agg_expr, capped_count])
+            else:
+                # Fallback to singleton
+                return ApplicationNode(VariableNode('singleton'), [agg_expr])
         
         return input_node
     
@@ -1308,21 +1453,59 @@ class CoverageGuidedComposer(TemplateComposer):
             return ApplicationNode(VariableNode('repeat'), [elem, NumberNode(count)])
         
         elif pattern == 'flatten':
-            if self._has_function('map') and self._has_function('singleton'):
-                # (flatten (map (λ y (singleton y)) x))
-                elem_var = self._fresh_var_name()
-                singleton_expr = ApplicationNode(VariableNode('singleton'), [VariableNode(elem_var)])
-                lambda_node = LambdaNode(elem_var, singleton_expr)
+            # Choose among diverse flatten patterns
+            flatten_patterns = []
+            
+            # Pattern 1: (flatten (map (λ y (repeat y 2)) x)) - duplicate each element
+            if self._has_function('map') and self._has_function('repeat'):
+                flatten_patterns.append('repeat_each')
+            
+            # Pattern 2: (flatten (zip x (reverse x))) - interleave with reverse
+            if self._has_function('zip') and self._has_function('reverse'):
+                flatten_patterns.append('zip_reverse')
+            
+            # Pattern 3: (flatten (map (λ y (cons y (singleton y))) x)) - duplicate pairs
+            if self._has_function('map') and self._has_function('cons') and self._has_function('singleton'):
+                flatten_patterns.append('cons_singleton')
+            
+            # Pattern 4: (flatten (zip x x)) - double each element via zip
+            if self._has_function('zip'):
+                flatten_patterns.append('zip_self')
+            
+            if not flatten_patterns:
+                return input_node
+            
+            fp = self.rng.choice(flatten_patterns)
+            elem_var = self._fresh_var_name()
+            
+            if fp == 'repeat_each':
+                # (flatten (map (λ y (repeat y 2)) x))
+                repeat_expr = ApplicationNode(VariableNode('repeat'), 
+                    [VariableNode(elem_var), NumberNode(2)])
+                lambda_node = LambdaNode(elem_var, repeat_expr)
                 map_expr = ApplicationNode(VariableNode('map'), [lambda_node, input_node])
                 return ApplicationNode(VariableNode('flatten'), [map_expr])
-            elif self._has_function('zip'):
+            
+            elif fp == 'zip_reverse':
                 # (flatten (zip x (reverse x)))
-                if self._has_function('reverse'):
-                    rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
-                    zip_expr = ApplicationNode(VariableNode('zip'), [input_node, rev_expr])
-                else:
-                    zip_expr = ApplicationNode(VariableNode('zip'), [input_node, input_node])
+                rev_expr = ApplicationNode(VariableNode('reverse'), [input_node])
+                zip_expr = ApplicationNode(VariableNode('zip'), [input_node, rev_expr])
                 return ApplicationNode(VariableNode('flatten'), [zip_expr])
+            
+            elif fp == 'cons_singleton':
+                # (flatten (map (λ y (cons y (singleton y))) x))
+                singleton_expr = ApplicationNode(VariableNode('singleton'), [VariableNode(elem_var)])
+                cons_expr = ApplicationNode(VariableNode('cons'), 
+                    [VariableNode(elem_var), singleton_expr])
+                lambda_node = LambdaNode(elem_var, cons_expr)
+                map_expr = ApplicationNode(VariableNode('map'), [lambda_node, input_node])
+                return ApplicationNode(VariableNode('flatten'), [map_expr])
+            
+            elif fp == 'zip_self':
+                # (flatten (zip x x))
+                zip_expr = ApplicationNode(VariableNode('zip'), [input_node, input_node])
+                return ApplicationNode(VariableNode('flatten'), [zip_expr])
+            
             return input_node
         
         elif pattern == 'range':

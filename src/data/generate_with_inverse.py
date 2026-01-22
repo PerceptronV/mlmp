@@ -228,10 +228,15 @@ class QueryFirstDatasetGenerator:
         self.noise_anneal_episodes = noise_anneal_episodes if noise_anneal_episodes is not None else 50000
         
         # Create query composer (use coverage-guided to ensure all functions are covered)
-        # Shared coverage tracking initialized early (needed before query_composer)
-        self._shared_coverage_counts: Counter = Counter()
-        self._coverage_lock = threading.Lock()
-        self._shared_cycle = [0]  # Shared cycle counter for cyclical coverage
+        # Shared coverage tracking for QUERY programs only (not support)
+        # This ensures cyclical coverage specifically for queries
+        self._query_coverage_counts: Counter = Counter()
+        self._query_coverage_lock = threading.Lock()
+        self._query_cycle = [0]  # Shared cycle counter for query coverage
+
+        # Required function rotation state for forcing rare functions at high coverage
+        self._rotation_index = [0]  # Shared index for round-robin rotation
+        self._rotation_interval = 3  # Set required function every 3rd episode at high coverage
 
         # Initial noise depends on whether annealing is enabled
         initial_noise = self.noise_start if noise_annealing else noise
@@ -240,7 +245,7 @@ class QueryFirstDatasetGenerator:
             grammar=gold_grammar,
             noise=initial_noise,
             coverage_strength=coverage_strength,
-            shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
+            shared_coverage=(self._query_coverage_counts, self._query_coverage_lock, self._query_cycle)
         )
         
         # Create query sampler
@@ -373,6 +378,46 @@ class QueryFirstDatasetGenerator:
             self._episodes_generated += 1
             return True
     
+    def _get_required_function_for_rotation(self, episode_num: int) -> Optional[str]:
+        """
+        Get a required function for explicit rotation at high coverage.
+
+        After reaching 75% coverage, this picks one uncovered function every
+        N episodes to explicitly require (using round-robin rotation).
+
+        This forces rare functions to appear, bypassing template weight limitations.
+
+        Args:
+            episode_num: Current episode number (for rotation timing)
+
+        Returns:
+            Function name to require, or None if rotation not needed
+        """
+        with self._query_coverage_lock:
+            total_fns = len(self.grammar_names)
+            covered_fns = sum(1 for c in self._query_coverage_counts.values() if c > 0)
+            coverage_ratio = covered_fns / total_fns if total_fns > 0 else 0
+
+            # Only use rotation at >75% coverage to force rare functions
+            if coverage_ratio <= 0.75:
+                return None
+
+            # Get uncovered functions
+            uncovered = list(self.grammar_names - set(fn for fn, c in self._query_coverage_counts.items() if c > 0))
+            if not uncovered:
+                return None  # All covered
+
+            # Check if this episode should have a required function
+            # Use rotation interval to avoid requiring every single episode
+            if episode_num % self._rotation_interval != 0:
+                return None
+
+            # Round-robin through uncovered functions
+            idx = self._rotation_index[0] % len(uncovered)
+            self._rotation_index[0] += 1
+
+            return uncovered[idx]
+
     def _generate_symbol_mapping(
         self,
         use_identity: bool = False,
@@ -445,13 +490,13 @@ class QueryFirstDatasetGenerator:
         
         # Create coverage-guided composer for support generation
         # Use higher coverage strength for better function coverage
-        # Share coverage tracking across episodes for better global coverage
+        # Support uses own coverage tracking (separate from query cyclical coverage)
         support_composer = CoverageGuidedComposer(
             seed=support_seed,
             grammar=self.gold_grammar,
             noise=self.noise,
             coverage_strength=max(self.coverage_strength, 3.0),
-            shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
+            shared_coverage=None  # Support has independent coverage tracking
         )
         
         # Create sampler for support
@@ -594,6 +639,15 @@ class QueryFirstDatasetGenerator:
             semantic_variant_info = semantic_grammar.get_variant_info()
 
         try:
+            # Check if we should explicitly require a function at high coverage
+            # Use current episode count for rotation timing
+            with self._lock:
+                current_episode = self._episodes_generated
+
+            required_fn = self._get_required_function_for_rotation(current_episode)
+            if required_fn:
+                self.query_composer.set_required_functions({required_fn})
+
             # Step 1: Generate query using full grammar
             # If semantic variations enabled, use semantic grammar for execution
             if semantic_grammar is not None:
@@ -611,8 +665,6 @@ class QueryFirstDatasetGenerator:
             for candidate in query_candidates:
                 if self._try_accept_query(candidate.program_str):
                     query_sampled = candidate
-                    # Update coverage tracking ONLY for accepted queries
-                    self.query_composer.update_coverage_from_program(candidate.program)
                     break
 
             if query_sampled is None:
@@ -633,6 +685,9 @@ class QueryFirstDatasetGenerator:
 
             if support_examples is None:
                 return None
+
+            # Update coverage tracking ONLY after episode fully succeeds
+            self.query_composer.update_coverage_from_program(query_sampled.program)
 
             # Collect all support functions
             support_functions: Set[str] = set()
@@ -703,16 +758,25 @@ class QueryFirstDatasetGenerator:
             semantic_variant_info = semantic_grammar.get_variant_info()
         
         try:
+            # Check if we should explicitly require a function at high coverage
+            # Use progress_episode_num for rotation timing
+            required_fn = self._get_required_function_for_rotation(progress_episode_num or 0)
+
             # Create thread-local composer and sampler for query generation
             # Use coverage-guided to ensure all functions are covered
-            # Pass shared coverage tracking so coverage accumulates across ALL queries
+            # Pass shared QUERY coverage tracking (cyclical coverage for queries only)
             query_composer = CoverageGuidedComposer(
                 seed=episode_seed,
                 grammar=self.gold_grammar,
                 noise=current_noise,
                 coverage_strength=self.coverage_strength,
-                shared_coverage=(self._shared_coverage_counts, self._coverage_lock, self._shared_cycle)
+                shared_coverage=(self._query_coverage_counts, self._query_coverage_lock, self._query_cycle)
             )
+
+            # Set required function if rotation dictates
+            if required_fn:
+                query_composer.set_required_functions({required_fn})
+
             query_sampler = RuleSampler(
                 composer=query_composer,
                 uniqueness_mode=self.uniqueness_mode,
@@ -723,7 +787,7 @@ class QueryFirstDatasetGenerator:
                 # Use semantic grammar for execution if semantic variations enabled
                 execution_grammar=semantic_grammar
             )
-            
+
             # Step 1: Generate query using full grammar
             query_candidates = query_sampler.sample(
                 target_type=self.target_type,
@@ -736,17 +800,15 @@ class QueryFirstDatasetGenerator:
             for candidate in query_candidates:
                 if self._try_accept_query(candidate.program_str):
                     query_sampled = candidate
-                    # Update coverage tracking ONLY for accepted queries
-                    query_composer.update_coverage_from_program(candidate.program)
                     break
-            
+
             if query_sampled is None:
                 return None
-            
+
             # Step 2: Extract query functions
             query_example = self._sampled_to_pi_example(query_sampled, symbol_mapping)
             query_functions = query_example.functions_used
-            
+
             # Step 3: Generate support with coverage (use derived seed)
             support_seed = local_rng.randint(0, 2**31 - 1)
             support_examples = self._generate_support_with_coverage(
@@ -757,9 +819,12 @@ class QueryFirstDatasetGenerator:
                 support_seed=support_seed,
                 execution_grammar=semantic_grammar  # Pass semantic grammar for I/O generation
             )
-            
+
             if support_examples is None:
                 return None
+
+            # Update coverage tracking ONLY after episode fully succeeds
+            query_composer.update_coverage_from_program(query_sampled.program)
             
             # Collect all support functions
             support_functions: Set[str] = set()
@@ -1399,7 +1464,7 @@ def main():
     parser.add_argument('--n-io', type=int, default=11)
     
     # Program generation parameters
-    parser.add_argument('--max-program-depth', type=int, default=6)
+    parser.add_argument('--max-program-depth', type=int, default=7)
     parser.add_argument('--composer', type=str, default='template', choices=list_composers())
     parser.add_argument('--uniqueness', type=str, default='string', choices=['string', 'behavioral'])
     
@@ -1442,7 +1507,7 @@ def main():
     
     # Uniqueness parameters
     parser.add_argument(
-        '--strict-uniqueness-episodes', type=int, default=5000,
+        '--strict-uniqueness-episodes', type=int, default=1000,
         help='Episodes with strict uniqueness before allowing controlled duplicates. '
              '0 = always strict (default: 0)'
     )
@@ -1461,9 +1526,9 @@ def main():
              'meta-learning task. NOT applied to validation (canonical semantics).'
     )
     parser.add_argument(
-        '--canonical-prob', type=float, default=0.0,
+        '--canonical-prob', type=float, default=0.01,
         help='Probability of selecting canonical variant when --semantic-variations is enabled. '
-             '0.0 = always random variants, 1.0 = always canonical (default: 0.0)'
+             '0.0 = always random variants, 1.0 = always canonical (default: 0.01)'
     )
     
     args = parser.parse_args()
@@ -1572,9 +1637,6 @@ def main():
         print(f"Noise: {args.noise:.2f} (fixed)")
     if args.semantic_variations:
         print(f"Semantic variations: ENABLED (canonical_prob={args.canonical_prob:.2f})")
-        print(f"  - Each training episode has unique function semantics")
-        print(f"  - Model must learn semantics from support examples")
-        print(f"  - Validation uses canonical semantics (not affected)")
     else:
         print(f"Semantic variations: DISABLED (standard symbol shuffling only)")
 

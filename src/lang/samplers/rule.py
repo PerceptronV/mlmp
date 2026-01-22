@@ -91,6 +91,7 @@ class RuleSampler(Sampler):
         depth_variation: int = 2,
         max_attempts_multiplier: int = 100,
         min_quality_score: float = 0.7,
+        min_quality_score_required: float = 0.3,
         execution_grammar=None
     ):
         """
@@ -113,6 +114,10 @@ class RuleSampler(Sampler):
                              Functions with lower scores are rejected as "boring"
                              (e.g., functions that always return empty list).
                              Default 0.7 filters out degenerate functions.
+            min_quality_score_required: Lower quality threshold for programs
+                             containing required functions. Some required functions
+                             (like aggregators) produce constant-length outputs
+                             which score lower. Default 0.3.
             execution_grammar: Optional grammar to use for program execution.
                              If None, uses the composer's grammar.
                              This allows using variant semantics for I/O generation
@@ -134,6 +139,7 @@ class RuleSampler(Sampler):
         self.depth_variation = depth_variation
         self.max_attempts_multiplier = max_attempts_multiplier
         self.min_quality_score = min_quality_score
+        self.min_quality_score_required = min_quality_score_required
 
         # Execution cache: maps (program_str, input_tuple) -> output or None
         self._execution_cache: dict[tuple[str, tuple[int, ...]], Optional[list[int]]] = {}
@@ -638,8 +644,19 @@ class RuleSampler(Sampler):
                 )
 
                 # Filter out "boring" functions with low-quality I/O pairs
+                # Use lower threshold for programs containing required functions
                 quality_score = self._score_io_set(selected_io_pairs)
-                if quality_score < self.min_quality_score:
+                
+                # Check if program contains required functions (lower quality ok)
+                min_score = self.min_quality_score
+                required_fns = getattr(self.composer, '_required_functions', None)
+                if required_fns:
+                    program_fns = program.function_names()
+                    if program_fns & required_fns:
+                        # Program has a required function - use lower threshold
+                        min_score = self.min_quality_score_required
+                
+                if quality_score < min_score:
                     continue
 
                 # Check if identity-like
