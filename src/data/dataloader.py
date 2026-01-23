@@ -16,10 +16,17 @@ from ..data.tokeniser import (
 
 
 class ProgramDataset(Dataset):
-    def __init__(self, data_dir: Path):
+    def __init__(
+        self,
+        data_dir: Path,
+        include_support_programs: bool = True,
+        include_query_program: bool = True,
+    ):
         self.tokeniser = Tokeniser()
         self.data_dir = data_dir
         self.files = sorted(data_dir.glob('episode_*.json'))
+        self.include_support_programs = include_support_programs
+        self.include_query_program = include_query_program
 
         assert len(self.files) > 0, f"No files found in {data_dir}"
         sample = self.load_episode(self.files[0])
@@ -39,17 +46,38 @@ class ProgramDataset(Dataset):
         with open(file, 'r') as f:
             return json.load(f)
     
-    def tokenise_episode(self, episode: dict, n_io_shown: int):
+    def tokenise_episode(
+        self,
+        episode: dict,
+        n_io_shown: int,
+        include_support_programs: bool = True,
+        include_query_program: bool = True,
+    ):
         x = []
+        
         for ex in episode['support_examples']:
             for io in ex['io_pairs']:
                 x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to])
                 x.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
-            x.extend(self.tokeniser.tokenise_program(ex['program_shuffled']) + [self.newline] + [self.sep] + [self.newline])
+            if include_support_programs:
+                x.extend(self.tokeniser.tokenise_program(ex['program_shuffled']) + [self.newline])
+            x.extend([self.sep] + [self.newline])
+        
+        x.extend([self.sep] + [self.newline])
+        
         for io in episode['query']['io_pairs'][:n_io_shown]:
             x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to])
             x.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
-        y = [self.start] + self.tokeniser.tokenise_program(episode['query']['program_shuffled']) + [self.end]
+        
+        if include_query_program:
+            y = [self.start] + self.tokeniser.tokenise_program(episode['query']['program_shuffled']) + [self.end]
+        else:
+            y = [self.start]
+            for io in episode['query']['io_pairs'][n_io_shown:]:
+                x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to] + [self.newline])
+                y.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
+            y.append(self.end)
+
         return x, y
     
     def detokenise_episode(self, x: list[int], y: list[int]):
@@ -57,14 +85,24 @@ class ProgramDataset(Dataset):
             'x': self.tokeniser.detokenise(x),
             'y': self.tokeniser.detokenise(y)
         }
+    
+    @property
+    def max_n_io(self):
+        return self.n_io if self.include_query_program else self.n_io - 1
 
     def __len__(self):
-        return len(self.files) * self.n_io
+        return len(self.files) * self.max_n_io
     
     def __getitem__(self, idx):
-        file_idx = idx // self.n_io
-        n_io_shown = (idx % self.n_io) + 1
-        x, y = self.tokenise_episode(self.load_episode(self.files[file_idx]), n_io_shown)
+        file_idx = idx // self.max_n_io
+        n_io_shown = idx % self.max_n_io + 1
+
+        x, y = self.tokenise_episode(
+            episode=self.load_episode(self.files[file_idx]),
+            n_io_shown=n_io_shown,
+            include_support_programs=self.include_support_programs,
+            include_query_program=self.include_query_program,
+        )
         # loss mask is has length of seq_len - 1 (you don't predict first token)
         # and is 1 at the last len(y) - 1 positions (the ones after <start>)
         loss_mask = [0] * len(x) + [1] * (len(y) - 1)
@@ -77,7 +115,12 @@ class ProgramDataset(Dataset):
             maxtotal = -1
 
             for i in tqdm(range(len(self.files)), desc="Computing max lengths", disable=not verbose):
-                x, y = self.tokenise_episode(self.load_episode(self.files[i]), self.n_io)
+                x, y = self.tokenise_episode(
+                    episode=self.load_episode(self.files[i]),
+                    n_io_shown=self.max_n_io,
+                    include_support_programs=self.include_support_programs,
+                    include_query_program=self.include_query_program,
+                )
                 maxx = max(maxx, len(x))
                 maxy = max(maxy, len(y))
                 maxtotal = max(maxtotal, len(x) + len(y))
@@ -100,33 +143,59 @@ class ProgramDataset(Dataset):
 
 
 if __name__ == '__main__':
-    dataset = input('Enter dataset directory (datasets/query_first_template_seed42/train): ').strip()
-    if dataset == '':
-        dataset = 'datasets/query_first_template_seed42/train'
-    dataset = ProgramDataset(Path(dataset))
-
-    flag = input('Compute max lengths? (y/N): ').lower()
-    if flag == 'y':
-        print(f"Max lengths: {dataset.compute_max_lengths(verbose=True)}\n")
 
     while 1:
+
         try:
-            idx = int(input('Enter index (CTRL+C to exit): '))
+            dataset = input('Enter dataset directory (datasets/query_first_template_seed42_semvar/train): ').strip()
+            if dataset == '':
+                dataset = 'datasets/query_first_template_seed42_semvar/train'
+            
+            supp = input('Include support programs? (Y/n): ').lower()
+            if supp == 'n':
+                include_support_programs = False
+            else:
+                include_support_programs = True
+            
+            query = input('Include query program? (Y/n): ').lower()
+            if query == 'n':
+                include_query_program = False
+            else:
+                include_query_program = True
+            
+            dataset = ProgramDataset(
+                data_dir=Path(dataset),
+                include_support_programs=include_support_programs,
+                include_query_program=include_query_program,
+            )
+
+            flag = input('Compute max lengths? (y/N): ').lower()
+            if flag == 'y':
+                print(f"Max lengths: {dataset.compute_max_lengths(verbose=True)}\n")
+
+            while 1:
+                idx = input('\nEnter index (-1 to exit): ')
+                try:
+                    idx = int(idx)
+                except ValueError:
+                    print('Invalid index. Please enter a valid integer.')
+                    continue
+                if idx < 0:
+                    print('\n')
+                    break
+                if idx >= len(dataset):
+                    print(f'Index out of range [0, {len(dataset)-1}]. Please enter a valid index.')
+                    continue
+
+                ep, loss_mask = dataset[idx]
+                loss_mask = [0] + loss_mask # add 0 to the start to match the length of the sequence
+                print(f"Length: {len(ep)}", end='\n ')
+                for tok, mask in zip(ep, loss_mask):
+                    prtstr = dataset.tokeniser.vocab.itos[tok]
+                    if mask:
+                        prtstr = f'\033[92m{prtstr}\033[0m'
+                    print(prtstr, end=' ')
+                print()
+    
         except KeyboardInterrupt:
             break
-        except ValueError:
-            print('Invalid index. Please enter a valid integer.')
-            continue
-        if idx < 0 or idx >= len(dataset):
-            print(f'Index out of range [0, {len(dataset)-1}]. Please enter a valid index.')
-            continue
-
-        ep, loss_mask = dataset[idx]
-        loss_mask = [0] + loss_mask # add 0 to the start to match the length of the sequence
-        print(f"Length: {len(ep)}", end='\n ')
-        for tok, mask in zip(ep, loss_mask):
-            prtstr = dataset.tokeniser.vocab.itos[tok]
-            if mask:
-                prtstr = f'\033[92m{prtstr}\033[0m'
-            print(prtstr, end=' ')
-        print()
