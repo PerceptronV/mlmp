@@ -44,9 +44,10 @@ class AttentionBlock(nn.Module):
         k = self.pos_emb(k, input_pos=None)                             # (B, L, n_heads, d_head)
 
         # Reshape to (B, n_heads, L, d_head) for attention computation
-        q = q.transpose(1, 2)                                           # (B, n_heads, L, d_head)
-        k = k.transpose(1, 2)                                           # (B, n_heads, L, d_head)
-        v = v.transpose(1, 2)                                           # (B, n_heads, L, d_head)
+        # .contiguous() needed for CUDA strided batched matmul operations
+        q = q.transpose(1, 2).contiguous()                              # (B, n_heads, L, d_head)
+        k = k.transpose(1, 2).contiguous()                              # (B, n_heads, L, d_head)
+        v = v.transpose(1, 2).contiguous()                              # (B, n_heads, L, d_head)
 
         scores = q @ k.transpose(-2, -1) / (self.d_head ** 0.5)         # (B, n_heads, L, L)
         if mask is not None:
