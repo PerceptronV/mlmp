@@ -153,14 +153,14 @@ def train():
                         help='Path to validation data directory')
 
     # Model arguments
-    parser.add_argument('--d-embed', type=int, default=256, help='Embedding dimension')
-    parser.add_argument('--d-model', type=int, default=256, help='Model dimension')
-    parser.add_argument('--n-heads', type=int, default=8, help='Number of attention heads')
-    parser.add_argument('--n-layers', type=int, default=6, help='Number of decoder layers')
+    parser.add_argument('--d-embed', type=int, default=128, help='Embedding dimension')
+    parser.add_argument('--d-model', type=int, default=128, help='Model dimension')
+    parser.add_argument('--n-heads', type=int, default=4, help='Number of attention heads')
+    parser.add_argument('--n-layers', type=int, default=4, help='Number of decoder layers')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
 
     # Training arguments
-    parser.add_argument('--batch-size', type=int, default=64, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
