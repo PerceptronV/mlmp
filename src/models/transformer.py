@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchtune.modules.position_embeddings import RotaryPositionalEmbeddings
 
-from typing import Optional
 
 
 class AttentionBlock(nn.Module):
@@ -27,8 +26,7 @@ class AttentionBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
-        # mask has values of 1 for positions to blank out
+    def forward(self, x: torch.Tensor):
         B, L, _ = x.shape
         normed_x = self.norm(x)                                         # (B, L, d_embed)
         q = self.q(normed_x)                                            # (B, L, d_model)
@@ -49,11 +47,9 @@ class AttentionBlock(nn.Module):
         k = k.transpose(1, 2).contiguous()                              # (B, n_heads, L, d_head)
         v = v.transpose(1, 2).contiguous()                              # (B, n_heads, L, d_head)
 
-        scores = q @ k.transpose(-2, -1) / (self.d_head ** 0.5)         # (B, n_heads, L, L)
-        if mask is not None:
-            scores += mask
-        attn = F.softmax(scores, dim=-1)                                # (B, n_heads, L, L)
-        out = attn @ v                                                  # (B, n_heads, L, d_head)
+        # Use Flash Attention via scaled_dot_product_attention (O(L) memory instead of O(L²))
+        # is_causal=True applies causal mask efficiently without materializing the full L×L matrix
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=True)   # (B, n_heads, L, d_head)
         stream = out.transpose(1, 2).contiguous().view(B, L, self.d_model) # (B, L, d_model); contig needed for view
         return self.dropout(self.o(stream))                             # (B, L, d_embed)
     
@@ -86,27 +82,11 @@ class DecoderBlock(nn.Module):
 
         self.attention = AttentionBlock(d_embed, d_model, n_heads, dropout, max_seq_len=max_seq_len)
         self.feed_forward = FeedForwardBlock(d_embed, d_ff, dropout)
-
-        # Suggested: buffer mask to avoid recomputation
-        self.register_buffer('causal_mask', None, persistent=False)
     
-    def get_causal_mask(self, L: int, device: torch.device):
-        if self.causal_mask is None or self.causal_mask.size(-1) < L:
-            self.causal_mask = torch.triu(
-                torch.full((L, L), float('-inf'), device=device),
-                diagonal=1
-            ).unsqueeze(0).unsqueeze(0) # (1, 1, L, L)
-        return self.causal_mask[:, :, :L, :L]
-    
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
+    def forward(self, x: torch.Tensor):
         # x has shape (B, L, d_embed)
-        L = x.size(1)
-        if mask is None:
-            mask = self.get_causal_mask(L, x.device)
-        else:
-            mask = mask.to(x.device)[:, :, :L, :L]
-
-        x = x + self.attention(x, mask)
+        # Causal masking is handled by is_causal=True in scaled_dot_product_attention
+        x = x + self.attention(x)
         x = x + self.feed_forward(x)
         return x
 
@@ -140,26 +120,21 @@ class DecoderOnlyTransformer(nn.Module):
         self.norm = nn.LayerNorm(self.d_embed)
         self.project = nn.Linear(self.d_embed, self.n_tokens, bias=False)
     
-    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None, return_all_logits: bool = False):
+    def forward(self, x: torch.Tensor, return_all_logits: bool = False):
         # x has shape (B, L)
         x = self.embed(x) # (B, L, d_embed)
         for layer in self.layers:
-            x = layer(x, mask) # (B, L, d_embed)
+            x = layer(x) # (B, L, d_embed)
         x = self.norm(x)
         if return_all_logits:
             return self.project(x) # (B, L, n_tokens)
         last = x[:, -1, :] # (B, d_embed)
         return self.project(last) # (B, n_tokens)
     
-    def generate(
-        self,
-        x: torch.Tensor,
-        max_tokens: int,
-        mask: Optional[torch.Tensor] = None,
-    ):
+    def generate(self, x: torch.Tensor, max_tokens: int):
         out = torch.empty(x.size(0), 0, device=x.device) # empty tensor (B, 0)
         for _ in range(max_tokens):
-            logits = self(x, mask) # (B, n_tokens)
+            logits = self(x) # (B, n_tokens)
             next_token = torch.argmax(logits, dim=-1).unsqueeze(-1) # (B, 1)
             out = torch.cat([out, next_token], dim=1) # (B, L+1)
             x = torch.cat([x, next_token], dim=1) # (B, L+1)
