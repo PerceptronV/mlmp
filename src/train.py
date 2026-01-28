@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
@@ -13,6 +13,30 @@ import numpy as np
 
 from .models.transformer import DecoderOnlyTransformer
 from .data.dataloader import ProgramDataset
+
+
+class CyclingSampler(Sampler):
+    """Samples sequentially, wrapping around at the end of the dataset."""
+    
+    def __init__(self, data_source, num_samples: int, shuffle: bool = True):
+        self.data_source = data_source
+        self.num_samples = num_samples
+        self.shuffle = shuffle
+    
+    def __iter__(self):
+        n = len(self.data_source)
+        if self.shuffle:
+            # Shuffle the order, then cycle through it
+            order = torch.randperm(n).tolist()
+        else:
+            order = list(range(n))
+        
+        # Yield indices, cycling through the order
+        for i in range(self.num_samples):
+            yield order[i % n]
+    
+    def __len__(self):
+        return self.num_samples
 
 
 def collate_fn(batch, pad_token):
@@ -54,8 +78,9 @@ def compute_loss(model, batch, criterion, device):
     return loss, loss_masks.sum()
 
 
-def train_epoch(model, dataloader, optimiser, criterion, device, grad_clip=1.0):
+def train_epoch(model, dataloader, optimiser, criterion, device, grad_clip=1.0, use_wandb=False, global_step=0):
     """Train for one epoch."""
+    model.train()
     total_loss = 0
     total_tokens = 0
 
@@ -73,7 +98,11 @@ def train_epoch(model, dataloader, optimiser, criterion, device, grad_clip=1.0):
 
         pbar.set_postfix({'loss': batch_loss.item()})
 
-    return total_loss.item() / total_tokens
+        if use_wandb:
+            wandb.log({'train/step_loss': batch_loss.item()}, step=global_step)
+        global_step += 1
+
+    return total_loss / total_tokens, global_step
 
 
 def validate(model, dataloader, criterion, device):
@@ -162,6 +191,8 @@ def train():
     # Training arguments
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
+    parser.add_argument('--steps-per-epoch', type=int, default=1000,
+                        help='Steps per epoch (if None, use full dataset, otherwise use steps_per_epoch * batch_size samples)')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
@@ -259,13 +290,26 @@ def train():
         })
 
     # Create dataloaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        collate_fn=lambda batch: collate_fn(batch, train_dataset.pad),
-    )
+    if args.steps_per_epoch is not None:
+        # Use CyclingSampler to sample sequentially, wrapping at end of dataset
+        num_samples = args.steps_per_epoch * args.batch_size
+        train_sampler = CyclingSampler(train_dataset, num_samples=num_samples, shuffle=True)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            sampler=train_sampler,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, train_dataset.pad),
+        )
+        print(f"Using {args.steps_per_epoch} steps per epoch ({num_samples} samples)")
+    else:
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.num_workers,
+            collate_fn=lambda batch: collate_fn(batch, train_dataset.pad),
+        )
 
     val_loader = None
     if val_dataset:
@@ -323,6 +367,7 @@ def train():
     # Training loop
     print("\nStarting training...")
     best_val_loss = float('inf')
+    global_step = 0
 
     for epoch in range(start_epoch, args.epochs):
         print(f"\nEpoch {epoch + 1}/{args.epochs}")
@@ -330,7 +375,10 @@ def train():
         print(f"Learning rate: {current_lr:.6f}")
 
         # Train
-        train_loss = train_epoch(model, train_loader, optimiser, criterion, device, args.grad_clip)
+        train_loss, global_step = train_epoch(
+            model, train_loader, optimiser, criterion, device, args.grad_clip,
+            use_wandb=use_wandb, global_step=global_step
+        )
         print(f"Train loss: {train_loss:.4f}")
 
         # Validate
