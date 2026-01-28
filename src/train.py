@@ -187,6 +187,7 @@ def train():
     parser.add_argument('--n-heads', type=int, default=4, help='Number of attention heads')
     parser.add_argument('--n-layers', type=int, default=4, help='Number of decoder layers')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
+    parser.add_argument('--max-seq-len', type=int, default=None, help='Override max sequence length (default: compute from data)')
 
     # Training arguments
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
@@ -261,20 +262,24 @@ def train():
         print(f"Loading cached metadata from {metadata_path}")
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
-            max_lengths = metadata.get('max_lengths')
-            print(f"Max lengths (cached): {max_lengths}")
+        max_lengths = metadata['max_lengths']
+        print(f"Max lengths (cached): {max_lengths}")
     else:
-        # No metadata file, compute and create it
-        print("Computing max sequence length...")
-        max_lengths = train_dataset.compute_max_lengths(verbose=True)
-        print(f"Max lengths: {max_lengths}")
+        # Compute max lengths from both train and validation
+        print("Computing max sequence lengths...")
+        train_max = train_dataset.compute_max_lengths(verbose=True)
+        val_max = val_dataset.compute_max_lengths(verbose=True)
+        max_lengths = {k: max(train_max[k], val_max[k]) for k in train_max}
+        print(f"Train: {train_max}, Val: {val_max}, Combined: {max_lengths}")
         
         # Save metadata
         metadata = {
             'max_lengths': max_lengths,
+            'train_max_lengths': train_max,
+            'val_max_lengths': val_max,
             'vocab_size': n_tokens,
             'train_dataset_size': len(train_dataset),
-            'val_dataset_size': len(val_dataset) if val_dataset else 0,
+            'val_dataset_size': len(val_dataset),
         }
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
@@ -323,6 +328,8 @@ def train():
 
     # Create model
     print("Creating model...")
+    max_seq_len = args.max_seq_len if args.max_seq_len is not None else max_lengths['total']
+    print(f"Using max_seq_len: {max_seq_len}")
     model = DecoderOnlyTransformer(
         n_tokens=n_tokens,
         d_embed=args.d_embed,
@@ -330,7 +337,7 @@ def train():
         n_heads=args.n_heads,
         n_layers=args.n_layers,
         dropout=args.dropout,
-        max_seq_len=max_lengths['total'],
+        max_seq_len=max_seq_len,
     )
 
     # Count parameters
