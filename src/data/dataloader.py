@@ -93,12 +93,13 @@ class ProgramDataset(Dataset):
     def __len__(self):
         return len(self.files) * self.max_n_io
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, include_episode: bool = False):
         file_idx = idx // self.max_n_io
         n_io_shown = idx % self.max_n_io + 1
+        episode = self.load_episode(self.files[file_idx])
 
         x, y = self.tokenise_episode(
-            episode=self.load_episode(self.files[file_idx]),
+            episode=episode,
             n_io_shown=n_io_shown,
             include_support_programs=self.include_support_programs,
             include_query_program=self.include_query_program,
@@ -106,7 +107,12 @@ class ProgramDataset(Dataset):
         # loss mask is has length of seq_len - 1 (you don't predict first token)
         # and is 1 at the last len(y) - 1 positions (the ones after <start>)
         loss_mask = [0] * len(x) + [1] * (len(y) - 1)
-        return x + y, loss_mask
+        
+        if include_episode:
+            episode['n_io_shown'] = n_io_shown
+            return x + y, loss_mask, episode
+        else:
+            return x + y, loss_mask
     
     def compute_max_lengths(self, verbose: bool = False):
         if self.maxx is None or self.maxy is None or self.maxtotal is None:

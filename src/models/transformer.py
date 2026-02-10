@@ -131,13 +131,15 @@ class DecoderOnlyTransformer(nn.Module):
         last = x[:, -1, :] # (B, d_embed)
         return self.project(last) # (B, n_tokens)
     
-    def generate(self, x: torch.Tensor, max_tokens: int):
-        out = torch.empty(x.size(0), 0, device=x.device) # empty tensor (B, 0)
+    def generate(self, x: torch.Tensor, max_tokens: int, stop_token: int | None = None):
+        out = torch.empty(x.size(0), 0, dtype=torch.long, device=x.device) # empty tensor (B, 0)
         for _ in range(max_tokens):
             logits = self(x) # (B, n_tokens)
             next_token = torch.argmax(logits, dim=-1).unsqueeze(-1) # (B, 1)
             out = torch.cat([out, next_token], dim=1) # (B, L+1)
             x = torch.cat([x, next_token], dim=1) # (B, L+1)
+            if stop_token is not None and (next_token == stop_token).all():
+                break
         return out
 
 
