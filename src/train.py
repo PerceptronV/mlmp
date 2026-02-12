@@ -13,6 +13,10 @@ import numpy as np
 
 from .models.transformer import DecoderOnlyTransformer
 from .data.dataloader import ProgramDataset
+from .data.tokeniser import Tokeniser
+from .lang.parser import parse
+from .lang.compiler import JITCompiler, JITCompilationError
+from .lang.grammar import DefaultGrammar
 
 
 class CyclingSampler(Sampler):
@@ -123,6 +127,71 @@ def validate(model, dataloader, criterion, device):
     return total_loss.item() / total_tokens
 
 
+def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Compute functional accuracy on validation examples.
+
+    Iterates over dataset indices (each example = one episode + n_io_shown, as in
+    __getitem__). For each, generate a program and check if it correctly maps all
+    shown query inputs to their expected outputs.
+    """
+    model.eval()
+    tokeniser = val_dataset.tokeniser
+    compiler = JITCompiler(DefaultGrammar)
+    start_tok = val_dataset.start
+    end_tok = val_dataset.end
+
+    n_correct = 0
+    n_total = 0
+    n_examples = len(val_dataset)
+    if max_examples is not None:
+        n_examples = min(n_examples, max_examples)
+
+    with torch.no_grad():
+        for idx in tqdm(range(n_examples), desc="Accuracy"):
+            # Get example from dataset with episode info
+            seq, loss_mask, episode = val_dataset.__getitem__(idx, include_episode=True)
+            
+            # Extract context: x + [<start>]
+            # loss_mask has 0s for x tokens, 1s for y tokens (after <start>)
+            len_x = loss_mask.count(0)
+            context = seq[:len_x + 1]  # x + [<start>]
+            context_tensor = torch.tensor([context], dtype=torch.long, device=device)
+            
+            # Get n_io_shown for correctness checking
+            n_io_shown = episode['n_io_shown']
+            query_ios = episode['query']['io_pairs'][:n_io_shown]
+
+            # Generate program tokens
+            generated = model.generate(context_tensor, max_tokens=max_program_tokens, stop_token=end_tok)
+            gen_tokens = generated[0].tolist()
+
+            # Truncate at first <end> token
+            if end_tok in gen_tokens:
+                gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
+
+            # Detokenise to program string (val uses golden grammar, no inverse mapping)
+            program_str = tokeniser.detokenise(gen_tokens)
+
+            # Try parse, compile, and execute
+            correct = True
+            try:
+                ast = parse(program_str)
+                fn = compiler.compile(ast)
+                for io in query_ios:
+                    output = fn(list(io['input']))
+                    if output != io['output']:
+                        correct = False
+                        break
+            except Exception:
+                correct = False
+
+            if correct:
+                n_correct += 1
+            n_total += 1
+
+    return n_correct / n_total if n_total > 0 else 0.0
+
+
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir):
     """Save a checkpoint."""
     checkpoint_dir = Path(checkpoint_dir)
@@ -194,10 +263,12 @@ def train():
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
     parser.add_argument('--steps-per-epoch', type=int, default=1000,
                         help='Steps per epoch (if None, use full dataset, otherwise use steps_per_epoch * batch_size samples)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=2e-3, help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('--warmup-epochs', type=int, default=5, help='Number of warmup epochs')
+    parser.add_argument('--val-examples', type=int, default=None,
+                        help='Max validation examples (dataset indices) for accuracy (None = all)')
 
     # Checkpoint arguments
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory to save checkpoints')
@@ -390,6 +461,7 @@ def train():
 
         # Validate
         val_loss = train_loss  # Default to train loss if no validation set
+        val_accuracy = 0.0
         if val_loader:
             val_loss = validate(model, val_loader, criterion, device)
             print(f"Validation loss: {val_loss:.4f}")
@@ -398,12 +470,23 @@ def train():
                 best_val_loss = val_loss
                 print(f"New best validation loss: {best_val_loss:.4f}")
 
+            # Compute functional accuracy
+            val_accuracy = compute_validation_accuracy(
+                model,
+                val_dataset,
+                device,
+                max_program_tokens=80,
+                max_examples=args.val_examples,
+            )
+            print(f"Validation accuracy: {val_accuracy:.2%}")
+
         # Log metrics to wandb
         if use_wandb:
             wandb.log({
                 'epoch': epoch + 1,
                 'train/loss': train_loss,
                 'val/loss': val_loss,
+                'val/accuracy': val_accuracy,
                 'learning_rate': current_lr,
                 'best_val_loss': best_val_loss,
             })
