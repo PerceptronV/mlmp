@@ -1603,10 +1603,11 @@ class CoverageGuidedComposer(TemplateComposer):
         
         init = ListNode([])
         
+        # Generate foldi lambda: (λ (acc idx elem) body) as multi-parameter
         if use_index:
-            lambda_node = LambdaNode(acc_var, LambdaNode(idx_var, LambdaNode(elem_var, body)))
+            lambda_node = LambdaNode([acc_var, idx_var, elem_var], body)
         else:
-            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            lambda_node = LambdaNode([acc_var, elem_var], body)
         
         return ApplicationNode(VariableNode(fold_fn), [lambda_node, init, input_node])
     

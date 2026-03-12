@@ -918,10 +918,8 @@ class TemplateComposer(Composer):
             depth - 1, new_context, substitutions
         )
 
-        for param_name in reversed(param_names):
-            body = LambdaNode(param_name, body)
-
-        return body
+        # Use multi-parameter lambda instead of nested lambdas
+        return LambdaNode(param_names, body)
 
     def _generate_body_with_template(
         self,
@@ -1107,7 +1105,7 @@ class TemplateComposer(Composer):
         )
 
         if use_index:
-            lambda_node = LambdaNode(elem_var, LambdaNode(idx_var, transform_body))
+            lambda_node = LambdaNode([elem_var, idx_var], transform_body)
         else:
             lambda_node = LambdaNode(elem_var, transform_body)
 
@@ -1160,7 +1158,7 @@ class TemplateComposer(Composer):
         )
 
         if use_index:
-            lambda_node = LambdaNode(idx_var, LambdaNode(elem_var, pred_body))
+            lambda_node = LambdaNode([idx_var, elem_var], pred_body)
         else:
             lambda_node = LambdaNode(elem_var, pred_body)
 
@@ -1704,7 +1702,7 @@ class TemplateComposer(Composer):
             else:
                 body = ApplicationNode(VariableNode('append'), [acc_node, elem_node])
             init = ListNode([])
-            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            lambda_node = LambdaNode([acc_var, elem_var], body)
             return ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
 
         elif pattern == 'fold_cumsum':
@@ -1713,7 +1711,7 @@ class TemplateComposer(Composer):
             sum_expr = ApplicationNode(VariableNode('+'), [last_y, elem_node])
             body = ApplicationNode(VariableNode('append'), [acc_node, sum_expr])
             init = ApplicationNode(VariableNode('singleton'), [NumberNode(0)])
-            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            lambda_node = LambdaNode([acc_var, elem_var], body)
             fold_expr = ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
             # Optionally drop the initial 0
             if self._has_function('drop') and self.rng.random() < 0.5:
@@ -1729,14 +1727,14 @@ class TemplateComposer(Composer):
             body = IfNode(cond, then_expr, else_expr)
             init = ApplicationNode(VariableNode('take'), [NumberNode(1), input_node])
             rest = ApplicationNode(VariableNode('drop'), [NumberNode(1), input_node])
-            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            lambda_node = LambdaNode([acc_var, elem_var], body)
             return ApplicationNode(VariableNode('fold'), [lambda_node, init, rest])
 
         elif pattern == 'fold_reverse':
             # (fold (λ (y z) (cons z y)) [] x) - equivalent to reverse
             body = ApplicationNode(VariableNode('cons'), [elem_node, acc_node])
             init = ListNode([])
-            lambda_node = LambdaNode(acc_var, LambdaNode(elem_var, body))
+            lambda_node = LambdaNode([acc_var, elem_var], body)
             return ApplicationNode(VariableNode('fold'), [lambda_node, init, input_node])
 
         return input_node

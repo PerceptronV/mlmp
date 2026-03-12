@@ -1,0 +1,499 @@
+subject,beginhit,beginexp,endhit,bonus,browser,platform,codeversion,status,postquiz_difficulty,postquiz_engagement,postquiz_gender,postquiz_dob,postquiz_experience,postquiz_comments,age_yrs,total_time_s
+1,2020-07-13T14:53:22Z,2020-07-13T14:53:57Z,2020-07-13T16:18:41Z,0.21,chrome,windows,0.0.7,7,6,7,male,1987-08-10,6,good,32.891,5119
+2,2020-07-10T15:59:06Z,2020-07-10T16:06:56Z,2020-07-10T17:09:20Z,0.5,chrome,windows,0.0.7,7,7,6,male,1993-11-05,none,no it is very interesting,26.653,4214
+3,2020-07-10T17:19:07Z,2020-07-10T17:38:25Z,2020-07-10T19:09:35Z,0.47,chrome,windows,0.0.7,7,6,6,male,1989-12-26,very useful to the task instruction function,good,30.514,6628
+4,2020-07-10T17:35:31Z,2020-07-10T17:39:41Z,2020-07-10T18:32:41Z,0.42,chrome,windows,0.0.7,7,7,7,male,1984-02-02,to be a better developer,very good survey,36.41,3430
+5,2020-07-13T14:15:30Z,2020-07-13T14:24:34Z,2020-07-13T15:08:40Z,0.32,chrome,windows,0.0.7,7,4,4,female,1994-03-30,1,nothing,26.255,3190
+6,2020-07-14T17:15:44Z,2020-07-14T17:27:51Z,2020-07-14T18:05:41Z,0.4,chrome,windows,0.0.7,7,4,4,male,1962-08-12,no,no,57.885,2997
+7,2020-07-10T20:23:28Z,2020-07-10T20:23:46Z,2020-07-10T21:22:25Z,0.45,chrome,windows,0.0.7,7,3,4,male,1989-12-24,A programming for the best presented in the computer.,good,30.519,3537
+8,2020-07-13T13:29:29Z,2020-07-13T14:58:17Z,2020-07-13T15:43:20Z,0.23,chrome,windows,0.0.7,7,1,4,male,1985-12-23,good,NA,34.522,8031
+9,2020-07-14T15:40:19Z,2020-07-14T15:45:15Z,2020-07-14T17:00:26Z,0.31,chrome,windows,0.0.7,7,6,7,male,1967-02-25,1,NA,53.347,4807
+10,2020-07-09T02:11:34Z,2020-07-09T02:24:42Z,2020-07-09T03:05:14Z,0.11,chrome,windows,0.0.6,7,7,7,male,1983-06-02,nice,good,37.079,3220
+11,2020-07-14T16:17:40Z,2020-07-14T16:20:17Z,2020-07-14T17:09:13Z,0.82,chrome,chromeos,0.0.7,7,4,6,male,1992-05-22,"None, I dropped out of my coding class in college because it was too hard lol","No technical difficulties, just subtraction difficulties because I'm dumb lol, everything worked well though :)",28.11,3093
+12,2020-07-14T15:38:24Z,2020-07-14T15:44:52Z,2020-07-14T17:23:20Z,0.63,chrome,windows,0.0.7,7,2,4,male,1987-02-06,professional developer,no,33.399,6296
+13,2020-07-14T18:30:49Z,2020-07-14T18:33:15Z,2020-07-14T19:17:25Z,0.1,chrome,windows,0.0.7,7,7,7,female,NA,1,nice,NA,2796
+14,2020-07-14T22:42:09Z,2020-07-14T23:02:09Z,2020-07-15T00:16:38Z,0.35,chrome,macos,0.0.7,7,6,7,male,1981-10-10,done,Good,38.724,5669
+15,2020-07-08T17:25:42Z,2020-07-08T17:29:16Z,2020-07-08T17:58:39Z,0.48,chrome,chromeos,0.0.6,7,5,7,male,1985-11-19,very very little,it was good. I would recommend it for sure,34.615,1977
+16,2020-07-08T23:37:06Z,2020-07-08T23:37:26Z,2020-07-08T23:57:31Z,0,chrome,windows,0.0.6,5,2,2,male,NA,very easily,none,NA,1225
+17,2020-07-14T19:10:36Z,2020-07-14T19:15:20Z,2020-07-14T21:03:47Z,0.71,chrome,windows,0.0.7,7,7,6,male,1984-05-11,none,It was a challenging HIT. I would recommend it to others.,36.14,6791
+18,2020-07-10T17:23:50Z,2020-07-10T17:23:59Z,2020-07-10T17:52:34Z,0.05,chrome,windows,0.0.7,7,5,5,female,1999-07-03,nothing,good well,20.995,1724
+19,2020-07-08T16:59:38Z,2020-07-08T17:15:01Z,2020-07-08T18:15:24Z,0.72,chrome,windows,0.0.6,7,4,7,female,1968-03-16,"I took a few computer programming classes in college, but only beginner courses.","The hit went fine.  Thank you!  I found it fun, like solving a puzzle.",52.293,4546
+20,2020-07-10T18:45:04Z,2020-07-10T18:50:23Z,2020-07-10T20:11:47Z,0.8,chrome,windows,0.0.7,7,4,7,female,1975-06-18,none,the hit was too good and intresting and like to complete it again,45.036,5203
+21,2020-07-08T16:51:56Z,2020-07-08T17:00:46Z,2020-07-08T17:43:29Z,0.23,chrome,windows,0.0.6,7,7,7,female,1989-07-08,50,very well,30.981,3093
+22,2020-07-10T15:37:16Z,2020-07-10T15:41:39Z,2020-07-10T16:43:56Z,0.6,chrome,windows,0.0.7,7,7,6,male,1982-06-01,none,no,38.082,4000
+23,2020-07-10T15:38:14Z,2020-07-10T15:41:53Z,2020-07-10T17:12:55Z,0.75,chrome,windows,0.0.7,7,2,4,male,1984-10-12,very easy for me,Very interesting,35.719,5681
+24,2020-07-14T21:34:21Z,2020-07-14T21:34:34Z,2020-07-14T23:59:15Z,0.53,chrome,windows,0.0.7,7,6,4,male,1982-03-25,i will try my best,no technical problems,38.268,8694
+25,2020-07-08T21:51:14Z,2020-07-08T22:14:17Z,2020-07-08T23:53:26Z,0.42,chrome,windows,0.0.6,5,4,5,female,1991-01-06,App developer,Good and useful. No issue in survey,29.484,7332
+26,2020-07-14T21:35:49Z,2020-07-14T21:36:04Z,2020-07-14T22:37:29Z,0.69,chrome,windows,0.0.7,7,6,7,female,1988-07-14,nothing,good survey,31.964,3700
+27,2020-07-10T15:38:22Z,2020-07-10T16:03:21Z,2020-07-10T18:29:48Z,0.83,chrome,windows,0.0.7,7,4,7,male,1988-10-11,none,no technical difficulties. very engaging and fun to work with numbers. would recommend it,31.721,10286
+28,2020-07-13T14:29:01Z,2020-07-13T15:07:46Z,2020-07-13T15:40:16Z,0.52,chrome,windows,0.0.7,7,4,4,male,1992-07-15,None,good,27.962,4275
+29,2020-07-14T15:49:21Z,2020-07-14T15:51:43Z,2020-07-14T17:03:21Z,0.7,chrome,windows,0.0.7,7,4,3,female,1991-06-05,none,good work,29.071,4440
+30,2020-07-13T14:25:25Z,2020-07-13T14:29:09Z,2020-07-13T15:54:58Z,0.53,chrome,windows,0.0.7,7,4,6,male,1957-02-26,104,good,63.344,5373
+31,2020-07-13T13:55:10Z,2020-07-13T14:23:49Z,2020-07-13T15:46:36Z,0.61,chrome,windows,0.0.7,7,4,7,male,1985-04-11,c and c++,Nice survey,35.222,6686
+32,2020-07-08T19:56:17Z,2020-07-08T20:00:58Z,2020-07-08T20:38:52Z,0.1,chrome,windows,0.0.6,7,6,4,male,NA,none.,no,NA,2555
+33,2020-07-14T16:47:26Z,2020-07-14T16:56:16Z,2020-07-14T17:32:35Z,0.03,chrome,windows,0.0.7,7,3,4,male,1999-04-19,good,nothing,21.2,2709
+34,2020-07-10T19:13:34Z,2020-07-10T19:17:43Z,2020-07-10T19:55:00Z,0.5,chrome,windows,0.0.7,7,6,5,male,1989-03-01,"I majored in Information Systems in college. So I did many programming classes for my education, but I haven't actually done any programming in around 7 years so I have forgotten a lot of it.","It was frustrating when I couldn't find out any pattern at all. Especially since I was worried I would be rejected for just guessing on the sets that I literally had 0 idea on since we were threatened with rejections for not putting forth effort. I really was trying, but there were some sets that I had absolutely zero clue and was just guessing. I would recommend it to others if they are willing to be frustrated. It was fun solving the sets that I could actually find a pattern for.",31.334,2486
+35,2020-07-08T16:57:48Z,2020-07-08T17:04:13Z,2020-07-08T18:25:43Z,0.5,chrome,windows,0.0.6,7,3,7,male,1975-08-24,NONE,NICE HIT.I ENJOYED WELL.THANKS FOR INVITE ME.,44.852,5275
+36,2020-07-08T16:51:02Z,2020-07-08T16:54:05Z,2020-07-08T17:42:03Z,0.17,chrome,windows,0.0.6,7,6,6,female,1981-01-01,none,"hard, but no difficulties",39.497,3061
+37,2020-07-08T18:22:49Z,2020-07-08T18:44:07Z,2020-07-08T19:54:48Z,0.03,chrome,windows,0.0.6,7,5,4,female,1973-07-19,110,"nothing to else but i don,t know some rules",46.951,5519
+38,2020-07-13T14:20:30Z,2020-07-13T14:28:34Z,2020-07-13T15:51:39Z,0.04,chrome,windows,0.0.7,7,2,2,female,1984-09-06,good,nothing,35.817,5469
+39,2020-07-10T17:34:09Z,2020-07-10T17:35:09Z,2020-07-10T18:05:39Z,0.65,chrome,macos,0.0.7,7,5,6,female,1988-08-03,None,N/A,31.91,1890
+40,2020-07-14T16:13:33Z,2020-07-14T16:13:43Z,2020-07-14T16:30:34Z,0.28,chrome,windows,0.0.7,7,NA,5,male,1985-12-18,good,good,34.536,1021
+41,2020-07-14T20:10:58Z,2020-07-14T20:26:22Z,2020-07-14T20:51:24Z,0.01,chrome,windows,0.0.7,7,6,6,male,1990-02-09,Computer Information Systems Classes That Focus On Hands-On Learning. Engineering Technology. Transfer Credits. Computer Networking. Graduate Certificates. Nationwide Locations.,good,30.391,2426
+42,2020-07-10T16:23:54Z,2020-07-10T16:34:48Z,2020-07-10T16:49:15Z,0.01,chrome,windows,0.0.7,7,4,3,male,1998-07-14,THE HIT VERY NICE PROGRAMMING,VERY NICE,21.964,1521
+43,2020-07-10T15:39:00Z,2020-07-10T15:44:28Z,2020-07-10T16:50:14Z,0.47,chrome,windows,0.0.7,7,5,7,female,1969-02-01,None,No difficulties,51.413,4274
+44,2020-07-14T13:34:02Z,2020-07-14T13:34:55Z,2020-07-14T14:50:28Z,0.52,chrome,windows,0.0.7,7,4,5,male,1979-11-23,ten,i like this survey,40.604,4586
+45,2020-07-13T14:23:50Z,2020-07-13T14:33:26Z,2020-07-13T15:23:14Z,0.52,chrome,windows,0.0.7,7,4,4,NA,1988-08-25,Software programmer,Nothing,31.85,3564
+46,2020-07-08T17:05:55Z,2020-07-08T17:18:50Z,2020-07-08T18:06:31Z,0.58,chrome,windows,0.0.6,7,3,2,female,1980-07-13,none,none,39.967,3636
+47,2020-07-15T02:31:46Z,2020-07-15T02:32:47Z,2020-07-15T04:26:32Z,0.43,chrome,windows,0.0.7,5,2,7,male,1998-07-13,"i am honestly , i know very good",very good,21.967,6886
+48,2020-07-08T18:35:10Z,2020-07-08T18:37:14Z,2020-07-08T19:20:10Z,0.7,chrome,windows,0.0.6,7,6,7,male,1975-03-08,Did light website updating over a decade ago.  I work in Tech support and got an MCSE in 2002 but haven't really done any programming per se.  I do edit settings in computers but this is simple .txt editing oftentimes.,Intense but enjoyable (when not frustrating ;)  No technical issues.  I would recommend it as long as people can think analytically and aren't scared of numbers.,45.315,2700
+49,2020-07-14T18:30:53Z,2020-07-14T18:31:20Z,2020-07-14T19:02:00Z,0,chrome,windows,0.0.7,5,6,2,male,1988-03-08,10,no,32.315,1867
+50,2020-07-13T13:19:20Z,2020-07-13T14:22:52Z,2020-07-13T15:58:25Z,0.63,chrome,windows,0.0.7,7,5,6,female,1984-08-10,good,no,35.891,9545
+51,2020-07-14T18:46:11Z,2020-07-14T18:52:06Z,2020-07-14T19:59:03Z,0.36,chrome,windows,0.0.7,7,5,4,female,1999-09-01,40,good,20.831,4372
+52,2020-07-10T18:40:05Z,2020-07-10T18:41:45Z,2020-07-10T19:50:58Z,0.07,chrome,windows,0.0.7,7,5,4,male,1980-05-13,good,good,40.134,4253
+53,2020-07-13T14:36:16Z,2020-07-13T14:41:14Z,2020-07-13T16:15:14Z,0.34,chrome,windows,0.0.7,7,7,7,male,NA,50,very well,NA,5938
+54,2020-07-14T18:42:29Z,2020-07-14T18:45:05Z,2020-07-14T20:55:58Z,0.31,chrome,windows,0.0.7,7,6,7,male,NA,very good,none,NA,8009
+55,2020-07-10T18:27:51Z,2020-07-10T18:29:28Z,2020-07-10T18:58:43Z,0.67,chrome,chromeos,0.0.7,7,5,6,male,1985-06-16,None,"Interesting and challenging, thanks!",35.041,1852
+56,2020-07-08T17:15:26Z,2020-07-08T17:32:52Z,2020-07-08T17:49:36Z,0,chrome,windows,0.0.6,5,2,2,female,NA,very useful,none,NA,2050
+57,2020-07-14T16:19:51Z,2020-07-14T16:22:25Z,2020-07-14T17:03:39Z,0.71,chrome,windows,0.0.7,7,6,7,female,1975-05-08,None,"It was hard, but really fun to do. I would recommend it to others.",45.148,2628
+58,2020-07-10T15:49:25Z,2020-07-10T16:07:32Z,2020-07-10T17:16:54Z,0.61,chrome,windows,0.0.7,7,7,6,male,1990-05-02,none,good experiment,30.164,5249
+59,2020-07-10T15:37:16Z,2020-07-10T15:40:22Z,2020-07-10T16:25:32Z,0.42,chrome,windows,0.0.7,7,5,6,male,1983-01-19,"I did some Visual basic in College, and a little flash programming",Was something different that is for sure. My brain hurts a bit :),37.448,2896
+60,2020-07-08T18:09:50Z,2020-07-08T18:12:42Z,2020-07-08T18:58:33Z,0.01,chrome,windows,0.0.6,7,7,7,male,1985-05-10,GOOD,VERY NICE,35.142,2923
+61,2020-07-14T23:24:41Z,2020-07-14T23:29:38Z,2020-07-15T00:57:49Z,0.5,chrome,macos,0.0.7,7,6,6,male,1991-08-29,I have never programmed,"I found this very difficult and had a few sections where I could only determine a small portion of the rule, if at all. I felt very engaged, so I spent longer than I could have trying to figure out some of the rules. Hopefully I didn't take up too much of the time",28.839,5588
+62,2020-07-14T15:38:31Z,2020-07-14T15:42:09Z,2020-07-14T16:37:46Z,0.57,chrome,windows,0.0.7,7,5,5,male,1986-01-09,"Some website building, a few simple classes.","No idea what that last one was, figured out the rest.",34.475,3555
+63,2020-07-14T18:38:33Z,2020-07-14T18:40:57Z,2020-07-14T19:04:27Z,0.03,chrome,windows,0.0.7,7,6,6,male,1965-07-21,LIBERAL,NICE,54.945,1554
+64,2020-07-13T14:21:29Z,2020-07-13T14:27:17Z,2020-07-13T15:48:56Z,0.54,chrome,windows,0.0.7,7,3,7,female,1992-07-02,50,interesting,27.997,5247
+65,2020-07-10T15:42:36Z,2020-07-10T15:50:50Z,2020-07-10T18:31:12Z,0.34,edge,windows,0.0.7,7,7,7,male,1972-07-03,none,none,47.995,10116
+66,2020-07-10T15:59:51Z,2020-07-10T16:04:48Z,2020-07-10T17:16:17Z,0.67,chrome,windows,0.0.7,7,4,7,female,1963-02-09,"I have done very little computer programming - I took a couple of classes in college but that was many, many years ago and included basic, pascal and cobol (very ancient)",I felt like there was a mistake by the computer on a couple of the number sequences but I am most likely wrong.,57.391,4586
+67,2020-07-13T13:55:01Z,2020-07-13T14:18:16Z,2020-07-13T15:14:10Z,0.21,chrome,windows,0.0.7,7,4,4,male,1989-07-06,109,Good,30.986,4749
+68,2020-07-13T14:26:50Z,2020-07-13T14:44:35Z,2020-07-13T15:40:49Z,0.43,chrome,windows,0.0.7,7,5,5,male,1999-07-02,yes,it was good,20.997,4439
+69,2020-07-13T13:50:53Z,2020-07-13T14:21:51Z,2020-07-13T14:48:38Z,0.05,chrome,windows,0.0.7,7,6,5,male,1978-12-01,professional,none,41.582,3465
+70,2020-07-13T14:21:50Z,2020-07-13T14:26:52Z,2020-07-13T15:49:30Z,0.53,chrome,macos,0.0.7,7,4,4,male,1995-01-03,beginner,nothing,25.492,5260
+71,2020-07-10T18:14:31Z,2020-07-10T18:23:00Z,2020-07-10T20:55:13Z,0.51,chrome,windows,0.0.7,7,4,5,female,NA,very much,good,NA,9642
+72,2020-07-13T14:22:35Z,2020-07-13T14:24:46Z,2020-07-13T15:10:24Z,0.6,chrome,windows,0.0.7,7,5,6,male,1987-06-12,None,Good experiment,33.052,2869
+73,2020-07-13T13:13:04Z,2020-07-13T13:19:18Z,2020-07-13T14:22:59Z,0.46,chrome,windows,0.0.7,7,5,6,male,1960-09-21,Quite a bit as a researcher and grad student - it's been a while,"There were no problems with the survey, technical or otherwise.  Thanks for the opportunity.  It was fun and well done.",59.776,4195
+74,2020-07-10T16:51:36Z,2020-07-10T16:52:11Z,2020-07-10T17:09:21Z,0.14,chrome,windows,0.0.7,7,5,6,male,1989-10-28,NA,Good,30.675,1065
+75,2020-07-10T15:45:47Z,2020-07-10T15:52:35Z,2020-07-10T17:26:25Z,0.45,chrome,windows,0.0.7,7,6,7,male,1989-05-17,Very helpful.,Good and Nice.,31.123,6038
+76,2020-07-13T14:20:57Z,2020-07-13T14:24:55Z,2020-07-13T15:51:25Z,0.11,chrome,windows,0.0.7,7,6,6,female,1999-07-16,1,GOOD,20.959,5428
+77,2020-07-10T15:48:28Z,2020-07-10T15:52:16Z,2020-07-10T17:29:44Z,0.59,chrome,windows,0.0.7,7,4,7,male,1965-06-08,NA,NA,55.063,6076
+78,2020-07-13T13:22:38Z,2020-07-13T13:46:17Z,2020-07-13T15:37:45Z,0.7,chrome,windows,0.0.7,7,6,7,male,1996-09-12,None,Interesting and very engaging task.,23.801,8107
+79,2020-07-08T19:35:38Z,2020-07-08T19:38:12Z,2020-07-08T20:37:41Z,0.41,chrome,windows,0.0.6,7,7,7,male,1982-07-13,none,it's challenging but really fun. I'm fluent in English but I'm not a native. It's really hard to explain the rules I figured out. I tried my best. Thank you,37.967,3723
+80,2020-07-10T16:47:14Z,2020-07-10T16:50:34Z,2020-07-10T17:50:56Z,0.03,chrome,windows,0.0.7,7,7,4,male,1987-05-15,PROFESSIONAL,HARD,33.129,3822
+81,2020-07-13T14:36:17Z,2020-07-13T14:40:27Z,2020-07-13T15:07:59Z,0.75,firefox,windows,0.0.7,7,6,7,male,1990-06-21,I am a statistical programmer in SAS for my career.,"Initially had server overload issues, but once it started it seemed okay.",30.027,1902
+82,2020-07-08T19:51:47Z,2020-07-08T20:03:41Z,2020-07-08T20:39:38Z,0.07,chrome,windows,0.0.6,7,4,5,female,1999-03-28,None,NO,21.26,2871
+83,2020-07-10T15:56:48Z,2020-07-10T16:00:40Z,2020-07-10T16:40:42Z,0.19,chrome,windows,0.0.7,7,7,7,male,1978-05-19,only regular class in the office,very good and interesting survey,42.118,2634
+84,2020-07-13T14:27:16Z,2020-07-13T14:42:32Z,2020-07-13T15:20:42Z,0.4,chrome,windows,0.0.7,7,6,7,male,1986-11-05,11,Good,33.653,3206
+85,2020-07-10T16:12:25Z,2020-07-10T16:15:10Z,2020-07-10T16:48:47Z,0.52,chrome,windows,0.0.7,7,6,2,male,1999-02-14,None,NA,21.377,2182
+86,2020-07-10T16:29:34Z,2020-07-10T16:34:21Z,2020-07-10T18:05:08Z,0.45,chrome,windows,0.0.7,7,6,6,female,1960-08-14,None.,"Very challenging but rewarding. Anyone with the determination that likes to be challenged would definitely like this HIT. Although, I tend to be fixated on trying to figure it out so the pay rate was very low for people like me.",59.88,5734
+87,2020-07-10T17:11:04Z,2020-07-10T17:11:52Z,2020-07-10T17:36:45Z,0,chrome,windows,0.0.7,5,7,6,male,1990-05-26,like it,like it survey,30.099,1541
+88,2020-07-13T13:23:39Z,2020-07-13T15:10:03Z,2020-07-13T15:56:39Z,0.39,chrome,windows,0.0.7,7,5,7,female,1993-02-12,basic programming,It was a little bit difficult because of the complex rules that were hard to comprehend in some cases,27.383,9180
+89,2020-07-14T18:51:26Z,2020-07-14T18:55:22Z,2020-07-14T20:23:17Z,0.47,chrome,windows,0.0.7,7,5,5,male,1991-07-13,NONE,GOOD,28.967,5511
+90,2020-07-13T14:29:02Z,2020-07-13T14:32:42Z,2020-07-13T15:39:57Z,0.36,chrome,windows,0.0.7,7,2,2,female,1986-12-10,Good,No difficulties,33.557,4255
+91,2020-07-10T19:13:03Z,2020-07-10T19:18:43Z,2020-07-10T20:39:09Z,0.77,chrome,windows,0.0.7,7,6,7,female,1975-11-20,Not a whole lot. Created a few web pages about 25 years ago and that was the extent of it!,This was so much fun. I'd love to do more. Would definitely recommend it to others. Thanks for challenging my brain today :),44.612,5166
+92,2020-07-14T16:01:19Z,2020-07-14T16:04:46Z,2020-07-14T16:54:21Z,0.29,chrome,windows,0.0.7,7,6,6,female,1968-09-24,NA,none,51.768,3182
+93,2020-07-14T17:12:16Z,2020-07-14T17:52:30Z,2020-07-14T18:32:22Z,0.32,chrome,windows,0.0.7,7,6,7,female,1979-06-29,many,good,41.005,4806
+94,2020-07-13T14:21:47Z,2020-07-13T14:27:17Z,2020-07-13T14:45:12Z,0.04,chrome,windows,0.0.7,7,7,7,male,1999-05-14,10,good,21.132,1405
+95,2020-07-08T17:01:09Z,2020-07-08T17:05:04Z,2020-07-08T18:00:42Z,0.63,chrome,windows,0.0.6,7,5,7,male,1983-10-28,Casual developer. I create my own programs (small scale text processing and such) from time to time,"If possible, divulge what the computer rule was. A few of the rules seem to make no sense or are extremely difficult to figure out",36.675,3573
+96,2020-07-15T01:22:27Z,2020-07-15T01:22:56Z,2020-07-15T02:43:22Z,0.23,chrome,windows,0.0.7,7,6,7,male,1983-07-15,thanks you,good,36.962,4855
+97,2020-07-08T16:55:00Z,2020-07-08T16:58:02Z,2020-07-08T17:41:03Z,0.29,chrome,windows,0.0.6,7,6,6,female,1999-08-31,none,all good,20.833,2763
+98,2020-07-10T15:44:48Z,2020-07-10T15:58:48Z,2020-07-10T17:52:57Z,0.81,chrome,linux,0.0.7,7,5,7,male,1986-10-29,None.,I didn't have any technical difficulties. I would definitely recommend it to others. It was fun.,33.672,7689
+99,2020-07-14T19:31:20Z,2020-07-14T19:31:33Z,2020-07-14T19:51:07Z,0.46,chrome,windows,0.0.7,7,5,5,male,1982-12-18,good,good,37.536,1187
+100,2020-07-13T14:32:19Z,2020-07-13T15:08:22Z,2020-07-13T16:10:36Z,0.1,chrome,windows,0.0.7,7,7,7,male,1987-07-14,none,none,32.964,5897
+101,2020-07-13T14:24:47Z,2020-07-13T14:24:57Z,2020-07-13T15:29:13Z,0.32,chrome,windows,0.0.7,7,4,4,female,1999-07-16,1,GOOD,20.959,3866
+102,2020-07-14T20:16:21Z,2020-07-14T20:17:43Z,2020-07-14T21:43:09Z,0.41,chrome,windows,0.0.7,7,5,6,male,1999-04-25,the programming is nice,"nothing, the survey is nice",21.184,5208
+103,2020-07-10T19:46:48Z,2020-07-10T19:48:40Z,2020-07-10T20:17:48Z,0.77,chrome,windows,0.0.7,7,5,7,other,1985-01-18,A little.,I do not have any other comments.,35.451,1860
+104,2020-07-10T15:37:15Z,2020-07-10T15:38:59Z,2020-07-10T16:02:19Z,0.43,chrome,windows,0.0.7,7,5,6,female,1992-02-06,none,yes i would recommend,28.399,1504
+105,2020-07-08T18:48:59Z,2020-07-08T18:51:22Z,2020-07-08T19:41:14Z,0.35,chrome,windows,0.0.6,7,7,7,male,1959-11-30,none,I found it very difficult; sorry that I did not do well,60.585,3135
+106,2020-07-08T16:50:13Z,2020-07-08T16:53:12Z,2020-07-08T17:34:31Z,0.64,chrome,windows,0.0.6,7,4,7,male,1978-05-01,none,bibe,42.167,2658
+107,2020-07-14T18:31:21Z,2020-07-14T18:32:37Z,2020-07-14T19:05:07Z,0,chrome,windows,0.0.7,5,5,4,male,1979-10-03,good,i was really enjoy on this task,40.743,2026
+108,2020-07-13T14:44:21Z,2020-07-13T14:46:31Z,2020-07-13T15:17:54Z,0.62,chrome,windows,0.0.7,7,7,2,other,1986-01-01,Took a couple of classes,I couldn't get in for 30 minutes because there were too many people or something,34.497,2013
+109,2020-07-10T15:47:43Z,2020-07-10T16:35:03Z,2020-07-10T17:36:25Z,0.45,chrome,windows,0.0.7,7,6,7,NA,1990-04-01,none,none,30.249,6522
+110,2020-07-10T15:37:43Z,2020-07-10T15:41:22Z,2020-07-10T16:45:39Z,0.46,chrome,windows,0.0.7,7,6,7,female,1978-04-06,none,would like to do more,42.236,4076
+111,2020-07-10T16:46:03Z,2020-07-10T17:12:14Z,2020-07-10T17:52:46Z,0.77,chrome,windows,0.0.7,7,5,4,male,1986-07-17,Have knowledge of it. Because I only do work related to it.,Nothing difficulties in this task,33.956,4003
+112,2020-07-13T16:49:40Z,2020-07-13T16:49:59Z,2020-07-13T16:59:58Z,0,chrome,windows,0.0.7,5,6,NA,male,1998-10-04,1,Good survey.,21.74,618
+113,2020-07-08T16:56:23Z,2020-07-08T17:08:55Z,2020-07-08T18:50:06Z,0.51,chrome,windows,0.0.6,7,4,6,male,1984-11-26,None,Overall good,35.596,6823
+114,2020-07-10T18:38:39Z,2020-07-10T18:40:20Z,2020-07-10T19:03:54Z,0.02,chrome,windows,0.0.7,7,4,3,male,1989-02-14,good,Nothik,31.377,1515
+115,2020-07-08T18:17:28Z,2020-07-08T18:20:22Z,2020-07-08T18:46:33Z,0.72,chrome,macos,0.0.6,7,4,7,female,2001-12-05,None. I have no experience with computer programming.,I had a lot of fun doing this HIT. Thank you!!,18.571,1745
+116,2020-07-14T20:39:32Z,2020-07-14T20:51:08Z,2020-07-14T22:10:28Z,0.56,chrome,windows,0.0.7,7,4,7,female,1984-07-04,That was amazing programming.,No technical issues and very interesting experiment.,35.992,5456
+117,2020-07-10T16:57:45Z,2020-07-10T17:09:21Z,2020-07-10T17:46:59Z,0.62,chrome,windows,0.0.7,7,3,1,female,1978-08-24,thanks,thanks,41.852,2954
+118,2020-07-10T16:08:42Z,2020-07-10T16:14:53Z,2020-07-10T16:52:57Z,0.38,chrome,windows,0.0.7,7,2,5,male,1995-07-11,very much,Nothing,24.973,2655
+119,2020-07-14T18:54:16Z,2020-07-14T18:57:47Z,2020-07-14T19:26:36Z,0.78,opera,windows,0.0.7,7,3,6,male,1970-03-15,Built quite a few websites.,The HIT was interesting and I would recommend it to others. Didn't have any technical difficulties.,50.296,1940
+120,2020-07-14T15:39:28Z,2020-07-14T15:44:10Z,2020-07-14T16:05:04Z,0.04,chrome,windows,0.0.7,7,4,5,male,1972-07-20,Good,Good,47.948,1536
+121,2020-07-14T14:11:26Z,2020-07-14T14:28:33Z,2020-07-14T15:40:54Z,0.34,chrome,windows,0.0.7,7,6,6,male,1994-05-12,4,good,26.137,5368
+122,2020-07-10T21:14:56Z,2020-07-10T21:28:46Z,2020-07-10T22:13:48Z,0.09,chrome,windows,0.0.7,7,5,5,male,1988-03-03,NA,NOTHING,32.329,3532
+123,2020-07-14T18:32:28Z,2020-07-14T18:51:40Z,2020-07-14T20:36:00Z,0.41,chrome,windows,0.0.7,7,3,5,male,1990-08-30,Good program.,No difficult its very easy.,29.836,7412
+124,2020-07-13T14:21:06Z,2020-07-13T14:32:08Z,2020-07-13T15:48:49Z,0.34,chrome,windows,0.0.7,7,5,1,female,1995-07-12,5,good,24.97,5263
+125,2020-07-13T14:57:49Z,2020-07-13T15:02:12Z,2020-07-13T15:46:40Z,0.75,chrome,windows,0.0.7,7,5,7,male,1963-04-19,"I have an Associates Degree in computer programming I received in 1982, but I have not ever done it professionally or since then at all really, except for some very basic scripts dealing with DOS in the 80's.","The worked fine, there was no technical issues and it functioned properly.",57.2,2931
+126,2020-07-14T14:09:35Z,2020-07-14T14:18:01Z,2020-07-14T15:21:31Z,0.67,chrome,windows,0.0.7,7,5,5,male,1985-07-02,none,Good Survey,34.997,4316
+127,2020-07-13T14:22:54Z,2020-07-13T14:27:58Z,2020-07-13T14:57:04Z,0.32,chrome,windows,0.0.7,7,3,7,male,1990-09-09,developer,greatttt,29.809,2050
+128,2020-07-10T19:10:14Z,2020-07-10T19:14:58Z,2020-07-10T19:37:10Z,0.16,chrome,windows,0.0.7,7,5,7,female,1983-09-14,no,no,36.795,1616
+129,2020-07-10T15:47:54Z,2020-07-10T15:52:33Z,2020-07-10T16:54:06Z,0.58,chrome,windows,0.0.7,7,5,7,female,1980-12-05,None,"This was a fun and challenging HIT. I would love to see the answers for the ones I couldn't figure out. By the way, when a requester asks for my exact birthday, I expect a birthday card email, lol  ;)",39.571,3972
+130,2020-07-13T13:18:13Z,2020-07-13T13:23:40Z,2020-07-13T14:36:15Z,0.58,chrome,windows,0.0.7,7,4,7,male,1983-06-14,None,Long and confusing at first but started to get the hang of it as time went on.,37.047,4682
+131,2020-07-13T14:26:03Z,2020-07-13T14:26:58Z,2020-07-13T16:07:11Z,0.51,chrome,windows,0.0.7,7,6,6,male,1985-12-27,GOOD,GOOD,34.511,6068
+132,2020-07-13T14:18:16Z,2020-07-13T14:30:51Z,2020-07-13T15:39:08Z,0.45,chrome,windows,0.0.7,7,5,5,male,1980-02-12,10,good,40.383,4852
+133,2020-07-08T18:25:26Z,2020-07-08T18:28:06Z,2020-07-08T19:33:09Z,0.82,firefox,windows,0.0.6,7,4,7,male,1988-09-05,Just the basics.,Everything worked fine.,31.82,4063
+134,2020-07-13T14:27:00Z,2020-07-13T14:30:59Z,2020-07-13T15:18:39Z,0.35,chrome,windows,0.0.7,7,7,7,male,1971-07-08,I have zero experience programming computers.,"It took about 20 minutes to gain access to the study because of a server issue but other than that, it was great.",48.981,3099
+135,2020-07-10T16:24:06Z,2020-07-10T16:32:36Z,2020-07-10T18:05:20Z,0.85,chrome,windows,0.0.7,7,5,7,female,1964-09-01,I've taken programming classes 20 years ago but I don't know it anymore.  C++ and Pascal.  I do know little HTML.,"I truly enjoyed it.  I hate math but I found it fun because I love puzzles and logic.  I must have typed in wrong on some of the rounds after I figured it out.  For Round 8, I was correct on Question #9 and the numbers are out of order for the computer.  I believe that was an error because the other questions were in order except for that one so I believe it's wrong.  I do recommend it.   Took me longer than I thought but I liked it a lot.",55.831,6074
+136,2020-07-13T13:50:34Z,2020-07-13T14:20:55Z,2020-07-13T15:14:45Z,0.69,chrome,windows,0.0.7,7,5,7,female,1991-12-12,none,NA,28.552,5051
+137,2020-07-14T13:20:27Z,2020-07-14T13:23:42Z,2020-07-14T13:55:25Z,0.59,chrome,windows,0.0.7,7,5,7,male,1989-02-14,Very well.,none.,31.377,2098
+138,2020-07-14T18:36:32Z,2020-07-14T18:38:34Z,2020-07-14T19:46:12Z,0.64,chrome,windows,0.0.7,7,4,6,female,1977-07-05,I took a beginner programming class in college about 25 years ago,Good hit.  Kinda fun!,42.989,4180
+139,2020-07-14T15:55:30Z,2020-07-14T15:58:03Z,2020-07-14T16:35:52Z,0.63,chrome,windows,0.0.7,7,5,7,male,1978-06-20,none,interesting,42.03,2422
+140,2020-07-13T14:25:33Z,2020-07-13T14:26:55Z,2020-07-13T14:57:06Z,0.2,chrome,windows,0.0.7,7,7,6,male,1986-08-10,Built a few personal websites,Difficult but engaging!,33.891,1893
+141,2020-07-08T17:07:35Z,2020-07-08T17:34:06Z,2020-07-08T19:19:54Z,0.35,chrome,windows,0.0.6,7,6,7,male,1989-02-02,none,This study in very good,31.41,7939
+142,2020-07-08T16:50:14Z,2020-07-08T17:02:49Z,2020-07-08T18:07:35Z,0.09,chrome,windows,0.0.6,7,5,6,male,1991-12-22,NA,NA,28.525,4641
+143,2020-07-14T15:39:43Z,2020-07-14T15:59:15Z,2020-07-14T18:01:25Z,0.29,chrome,windows,0.0.7,7,4,4,female,1999-10-27,none,none,20.678,8502
+144,2020-07-14T17:41:29Z,2020-07-14T17:55:21Z,2020-07-14T18:37:29Z,0.37,chrome,windows,0.0.7,7,7,7,female,1999-07-22,none,fun but hard,20.943,3360
+145,2020-07-08T16:55:03Z,2020-07-08T16:58:31Z,2020-07-08T17:35:39Z,0.65,chrome,windows,0.0.6,7,5,5,male,1993-01-27,"Quite a bit, I work in Python.",Fun,27.426,2436
+146,2020-07-13T14:51:28Z,2020-07-13T15:21:25Z,2020-07-13T15:53:43Z,0.19,chrome,windows,0.0.7,7,6,7,male,1993-11-17,some times,interesting survey....,26.62,3735
+147,2020-07-08T17:21:49Z,2020-07-08T17:25:29Z,2020-07-08T18:02:41Z,0.27,chrome,windows,0.0.6,7,4,5,male,1995-11-24,NONE,Great survey! No issues!,24.601,2452
+148,2020-07-13T14:23:01Z,2020-07-13T14:30:15Z,2020-07-13T14:47:27Z,0.22,chrome,windows,0.0.7,7,7,7,male,1999-08-15,10,GOOD,20.877,1466
+149,2020-07-08T17:05:51Z,2020-07-08T17:18:50Z,2020-07-08T18:46:13Z,0.54,chrome,windows,0.0.6,7,6,7,male,1975-12-05,analyze data with python,No comment,44.571,6022
+150,2020-07-14T14:25:23Z,2020-07-14T14:26:42Z,2020-07-14T14:53:15Z,0.08,chrome,windows,0.0.7,7,5,6,female,1999-07-14,2,GOOD,20.964,1672
+151,2020-07-10T23:58:07Z,2020-07-10T23:59:40Z,2020-07-11T01:57:29Z,0.66,chrome,windows,0.0.7,7,5,6,female,1992-09-12,none,excellent,27.801,7162
+152,2020-07-13T14:44:21Z,2020-07-13T14:48:49Z,2020-07-13T16:02:34Z,0.49,chrome,windows,0.0.7,7,4,7,male,1971-01-05,How do I even answer this? I've been in software testing for a while and have done some as needed for test cases. I've also done some web development.,"I loved it once I found out what kind of patterns to look for from the AI. At first, I was thinking this was more along the lines of an IQ type of thinking test (which threw me way off). Fun HIT. Thank you.",49.486,4693
+153,2020-07-14T13:57:08Z,2020-07-14T14:01:23Z,2020-07-14T15:00:49Z,0.65,chrome,windows,0.0.7,7,5,7,male,1975-08-22,"Pretty much none.  I think I might have written something simple in high school, but nothing practical.",It was fine.  It was certainly challenging.  No tech issues with it.  I would certainly recommend it to anybody else.,44.858,3821
+154,2020-07-10T18:46:17Z,2020-07-10T19:00:06Z,2020-07-10T19:41:23Z,0.53,chrome,windows,0.0.7,7,4,7,male,1988-07-02,very nice,"good hit, there is no difficult.",31.997,3306
+155,2020-07-13T14:36:16Z,2020-07-13T14:44:41Z,2020-07-13T15:43:13Z,0.6,chrome,macos,0.0.7,7,6,7,male,1988-06-20,I have been a professional web developer for 4 years.,It was slow to load at the beginning but worked fine once I started the task.,32.03,4017
+156,2020-07-08T19:50:55Z,2020-07-08T19:55:18Z,2020-07-08T20:58:57Z,0.52,chrome,windows,0.0.6,7,5,7,male,1989-07-29,Develop programer,Good and interesting,30.923,4082
+157,2020-07-13T13:34:54Z,2020-07-13T14:57:22Z,2020-07-13T16:02:21Z,0.39,chrome,windows,0.0.7,7,4,7,male,1982-10-22,none,It was fair and enjoyable,37.691,8847
+158,2020-07-14T16:38:00Z,2020-07-14T16:47:33Z,2020-07-14T19:02:10Z,0.62,chrome,windows,0.0.7,7,5,4,male,1965-07-07,I tried BASIC decades ago,no technical problems - this is a good HIT if you like number puzzles and things like that.,54.984,8650
+159,2020-07-14T19:58:07Z,2020-07-14T19:59:31Z,2020-07-14T20:48:46Z,0.01,chrome,windows,0.0.7,7,7,4,male,2020-06-12,good survey,good,0.052,3039
+160,2020-07-08T17:01:35Z,2020-07-08T17:13:15Z,2020-07-08T18:32:55Z,0.24,chrome,windows,0.0.6,7,7,5,male,1992-01-06,I have a basic understanding of computer programming,"The hit was underpaid, but there were no technical issues",28.484,5480
+161,2020-07-08T20:11:25Z,2020-07-08T20:26:39Z,2020-07-08T21:05:56Z,0,chrome,windows,0.0.6,5,4,7,male,1986-07-08,very interesting,no,33.981,3271
+162,2020-07-08T17:21:26Z,2020-07-08T17:23:32Z,2020-07-08T18:13:28Z,0.53,chrome,windows,0.0.6,7,4,7,male,1981-11-30,MFA in computer-based art,no comments,38.585,3122
+163,2020-07-08T17:31:13Z,2020-07-08T17:32:17Z,2020-07-08T18:25:46Z,0.62,chrome,windows,0.0.6,7,6,3,male,1994-03-28,I took a class in high school and I've made a few very simple 4-5 line scripts for MTurk.,Would be nice if the pay was higher given the amount of time and mental effort required.,26.26,3273
+164,2020-07-14T13:39:45Z,2020-07-14T13:51:14Z,2020-07-14T14:17:35Z,0.31,chrome,windows,0.0.7,7,5,5,male,1987-12-18,Good,Good,32.536,2270
+165,2020-07-14T13:18:36Z,2020-07-14T13:19:21Z,2020-07-14T13:38:45Z,0.38,chrome,windows,0.0.7,7,5,5,male,1980-02-07,Good,Good,40.396,1209
+166,2020-07-13T13:47:43Z,2020-07-13T14:04:32Z,2020-07-13T16:07:38Z,0.73,chrome,windows,0.0.7,7,2,7,male,1992-05-30,I have build a website,NA,28.088,8395
+167,2020-07-10T15:50:47Z,2020-07-10T16:03:08Z,2020-07-10T17:28:13Z,0.35,chrome,windows,0.0.7,7,6,7,male,1988-05-24,very good.,its very interesting survey.,32.104,5846
+168,2020-07-14T19:17:03Z,2020-07-14T19:30:11Z,2020-07-14T20:26:25Z,0.56,chrome,windows,0.0.7,7,6,7,female,1970-04-07,none,very nice and no technical issue and it also a recommended one.,50.233,4162
+169,2020-07-13T13:11:56Z,2020-07-13T13:16:19Z,2020-07-13T14:57:03Z,0.35,chrome,windows,0.0.7,7,6,7,female,1990-06-02,Professional developer,none,30.079,6307
+170,2020-07-14T18:09:52Z,2020-07-14T18:11:37Z,2020-07-14T18:42:35Z,0.44,chrome,windows,0.0.7,7,7,4,male,1995-12-22,A couple courses,It was interesting albeit vert diffucult I did not have any issues and i recommend the other to not let themselves be overwhelmed by the rules,24.525,1963
+171,2020-07-13T14:39:48Z,2020-07-13T15:07:13Z,2020-07-13T15:38:17Z,0.07,chrome,windows,0.0.7,7,4,7,male,1989-07-16,5,The study was good,30.959,3509
+172,2020-07-10T22:01:54Z,2020-07-10T22:07:38Z,2020-07-10T22:39:29Z,0.51,chrome,windows,0.0.7,7,7,7,male,1987-04-21,well,like,33.195,2255
+173,2020-07-11T01:15:18Z,2020-07-11T01:21:51Z,2020-07-11T01:59:01Z,0.74,chrome,windows,0.0.7,7,4,6,male,1980-01-24,"I have taken some courses in computer programming when I was in college. I use python from time to time, and have some experience using it in a GIS environment. I have experience writing SAS code as well.",The HIT was interesting and engaging. I would recommend it with others. I am curious as to what the rule was in two of the cases where I wasn't certain of the rule.,40.434,2623
+174,2020-07-14T15:42:20Z,2020-07-14T15:45:53Z,2020-07-14T16:19:49Z,0.18,chrome,windows,0.0.7,7,6,7,female,1963-07-26,"None, just tried to build a easy website years ago","It seemed to go fine for me, it was interesting. I hope I did well, I  tried my best.",56.932,2249
+175,2020-07-13T14:36:52Z,2020-07-13T14:37:41Z,2020-07-13T15:07:43Z,0.7,chrome,windows,0.0.7,7,4,7,female,1990-10-10,none,it's very much fun. I enjoyed it. Thank you,29.724,1851
+176,2020-07-14T16:12:37Z,2020-07-14T16:13:19Z,2020-07-14T17:08:02Z,0.05,chrome,windows,0.0.7,7,6,4,female,1999-07-01,6,GOOD,21,3325
+177,2020-07-08T19:49:36Z,2020-07-08T20:10:14Z,2020-07-08T21:00:08Z,0.48,chrome,windows,0.0.6,7,7,7,male,1989-07-13,100,nothing,30.967,4232
+178,2020-07-14T15:10:56Z,2020-07-14T15:14:03Z,2020-07-14T16:01:19Z,0.65,chrome,windows,0.0.7,7,7,7,male,1979-08-22,None.,NA,40.858,3023
+179,2020-07-14T16:10:41Z,2020-07-14T16:16:57Z,2020-07-14T17:56:46Z,0.46,chrome,windows,0.0.7,7,1,2,male,1989-07-28,good,good,30.926,6365
+180,2020-07-13T14:17:44Z,2020-07-13T14:42:25Z,2020-07-13T15:51:45Z,0,chrome,windows,0.0.7,5,4,7,female,1990-11-11,5,good,29.637,5641
+181,2020-07-10T17:09:23Z,2020-07-10T17:13:44Z,2020-07-10T17:53:04Z,0.49,chrome,windows,0.0.7,7,7,7,female,1998-02-02,none,no,22.41,2621
+182,2020-07-14T13:30:05Z,2020-07-14T13:35:23Z,2020-07-14T14:34:34Z,0.08,chrome,windows,0.0.7,7,7,6,male,1989-04-20,10,good,31.197,3869
+183,2020-07-13T13:19:17Z,2020-07-13T14:50:52Z,2020-07-13T16:07:16Z,0.53,chrome,windows,0.0.7,7,4,6,female,1999-03-01,the computer programming well,interesting survey,21.334,10079
+184,2020-07-10T16:07:22Z,2020-07-10T16:13:48Z,2020-07-10T17:28:30Z,0.1,chrome,windows,0.0.7,7,7,7,male,1954-06-29,Poor,none,66.005,4868
+185,2020-07-15T02:00:34Z,2020-07-15T02:07:19Z,2020-07-15T02:39:45Z,0.16,chrome,windows,0.0.7,7,4,7,NA,1996-09-13,NA,awesome,23.798,2351
+186,2020-07-14T13:29:11Z,2020-07-14T13:30:19Z,2020-07-14T14:42:08Z,0.6,chrome,windows,0.0.7,7,4,5,male,1975-05-23,ten,i like this survey...,45.107,4377
+187,2020-07-08T16:51:22Z,2020-07-08T16:57:41Z,2020-07-08T19:09:57Z,0.77,chrome,windows,0.0.6,7,1,7,female,1968-10-02,professional developer,it is very knowledgeable and helpful to improve my skills,51.746,8315
+188,2020-07-14T13:40:13Z,2020-07-14T13:46:54Z,2020-07-14T14:01:23Z,0.09,chrome,windows,0.0.7,7,5,6,male,2019-07-14,4,good,0.964,1270
+189,2020-07-10T16:04:57Z,2020-07-10T16:36:56Z,2020-07-10T18:15:23Z,0.85,chrome,windows,0.0.7,7,7,5,male,1995-09-03,85,Very difficult,24.825,7826
+190,2020-07-14T16:02:48Z,2020-07-14T16:08:32Z,2020-07-14T17:15:21Z,0.7,chrome,windows,0.0.7,7,3,6,male,1999-07-12,5,ALL ARE GREAT.,20.97,4353
+191,2020-07-13T14:37:12Z,2020-07-13T14:39:45Z,2020-07-13T16:47:21Z,0.66,chrome,windows,0.0.7,7,7,7,female,1983-08-18,"yes,total different task",no,36.869,7809
+192,2020-07-08T18:01:23Z,2020-07-08T18:03:55Z,2020-07-08T19:35:00Z,0.48,chrome,windows,0.0.6,7,7,7,male,1988-12-02,"I did some computer programming in High School, but very early.",Extremely difficult.,31.579,5617
+193,2020-07-14T17:35:40Z,2020-07-14T17:38:38Z,2020-07-14T19:21:20Z,0.44,chrome,windows,0.0.7,7,6,6,male,1956-11-15,Ten,I like this survey.,63.626,6340
+194,2020-07-14T19:38:32Z,2020-07-14T19:38:43Z,2020-07-14T19:54:39Z,0.08,chrome,windows,0.0.7,7,4,7,male,1989-08-16,5,Good,30.874,967
+195,2020-07-14T13:24:38Z,2020-07-14T13:25:59Z,2020-07-14T14:22:09Z,0.29,chrome,windows,0.0.7,7,5,7,male,1989-07-19,very well.,no.,30.951,3451
+196,2020-07-14T21:45:13Z,2020-07-14T21:46:51Z,2020-07-14T22:32:48Z,0.43,chrome,windows,0.0.7,7,4,7,male,1971-09-15,A lot-web developer.,"Everything went smoothly, thank you!",48.792,2855
+197,2020-07-08T16:58:36Z,2020-07-08T17:03:04Z,2020-07-08T18:39:33Z,0.43,chrome,windows,0.0.6,7,7,7,male,1968-08-19,None,No,51.866,6057
+198,2020-07-10T18:49:33Z,2020-07-10T18:52:44Z,2020-07-10T19:32:39Z,0.81,firefox,macos,0.0.7,7,4,7,female,1997-07-07,No programming experience.,I thought the HIT was straightforward and even when it was difficult I was fully engrossed in figuring out the rule. I also found it well-paid for the time and effort involved.,22.984,2586
+199,2020-07-08T20:57:04Z,2020-07-08T21:00:17Z,2020-07-08T21:58:15Z,0.47,chrome,windows,0.0.6,7,7,7,male,1991-08-06,nonw,"Very difficult ,but enjoyable!",28.902,3671
+200,2020-07-14T17:34:02Z,2020-07-14T18:21:17Z,2020-07-14T19:08:34Z,0.29,chrome,windows,0.0.7,7,6,6,female,1985-07-10,NOENE,NONE,34.975,5672
+201,2020-07-13T14:07:14Z,2020-07-13T14:50:58Z,2020-07-13T15:39:50Z,0.01,chrome,windows,0.0.7,7,7,7,male,1963-10-26,none,nope,56.68,5556
+202,2020-07-08T23:03:21Z,2020-07-08T23:03:36Z,2020-07-08T23:23:12Z,0.07,chrome,windows,0.0.6,7,7,7,NA,1999-07-05,Very useful..,This survey is very interesting.,20.989,1191
+203,2020-07-10T17:26:30Z,2020-07-10T17:29:07Z,2020-07-10T18:33:26Z,0.14,chrome,windows,0.0.7,7,6,5,male,1953-03-29,good,good,67.258,4016
+204,2020-07-14T13:21:10Z,2020-07-14T13:25:24Z,2020-07-14T14:02:49Z,0.41,chrome,windows,0.0.7,7,5,7,male,1988-06-10,2,I enjoyed this HIT.Thank you,32.058,2499
+205,2020-07-14T18:22:36Z,2020-07-14T18:22:49Z,2020-07-14T18:39:47Z,0.01,chrome,windows,0.0.7,7,7,4,male,1970-04-15,10,good,50.211,1031
+206,2020-07-13T14:25:47Z,2020-07-13T14:26:33Z,2020-07-13T15:37:58Z,0.05,chrome,windows,0.0.7,7,7,7,male,1989-04-27,50,very well,31.178,4331
+207,2020-07-14T15:38:04Z,2020-07-14T15:40:40Z,2020-07-14T16:22:39Z,0.59,chrome,macos,0.0.7,7,7,7,female,1993-07-09,"I've worked in creative agencies with developers & have learned some things, but am not proficient.",I'd recommend it to others! Worth the time & good pay.,26.978,2675
+208,2020-07-10T16:32:19Z,2020-07-10T16:35:57Z,2020-07-10T17:38:46Z,0.44,chrome,windows,0.0.7,7,6,7,male,1989-02-14,professional.,interesting.,31.377,3987
+209,2020-07-10T15:42:29Z,2020-07-10T15:46:04Z,2020-07-10T16:48:30Z,0.03,chrome,windows,0.0.7,7,3,4,female,1992-07-16,NA,NA,27.959,3961
+210,2020-07-13T14:23:46Z,2020-07-13T14:29:55Z,2020-07-13T15:16:19Z,0.66,chrome,windows,0.0.7,7,4,5,male,1999-07-06,YES,THE SURVEY IS VARY NICE,20.986,3153
+211,2020-07-14T21:36:01Z,2020-07-14T21:36:13Z,2020-07-15T00:04:35Z,0.76,chrome,windows,0.0.7,7,3,NA,male,1990-04-01,i have using a Windows 10 portal. Say something is difficult task as i complete.,good and well wishes to participate in this study,30.249,8914
+212,2020-07-13T14:39:54Z,2020-07-13T14:45:20Z,2020-07-13T15:25:00Z,0.86,chrome,windows,0.0.7,7,4,7,male,1966-06-13,None,NA,54.049,2706
+213,2020-07-13T14:19:30Z,2020-07-13T14:32:09Z,2020-07-13T15:33:13Z,0.71,chrome,windows,0.0.7,7,5,7,male,1994-08-04,None,None,25.907,4423
+214,2020-07-08T20:17:57Z,2020-07-08T20:25:12Z,2020-07-08T22:23:05Z,0.63,chrome,windows,0.0.6,7,6,7,female,1989-10-06,none,enjoyably difficult but very lengthy,30.735,7508
+215,2020-07-14T17:30:15Z,2020-07-14T17:52:59Z,2020-07-14T18:59:39Z,0.61,firefox,windows,0.0.7,7,6,7,female,1987-04-13,None,NA,33.216,5364
+216,2020-07-15T04:01:01Z,2020-07-15T04:01:30Z,2020-07-15T04:40:23Z,0,chrome,windows,0.0.7,5,2,3,NA,1988-07-06,done,very interesting survey,31.986,2362
+217,2020-07-13T13:35:53Z,2020-07-13T14:53:00Z,2020-07-13T15:20:04Z,0.25,chrome,windows,0.0.7,7,5,5,male,1991-08-28,very nice,nothing,28.842,6251
+218,2020-07-15T03:32:15Z,2020-07-15T04:01:24Z,2020-07-15T05:29:57Z,0.36,chrome,windows,0.0.7,7,7,6,female,1981-10-20,25,"no, very interesting , but very hard",38.697,7062
+219,2020-07-10T15:43:03Z,2020-07-10T15:45:47Z,2020-07-10T16:57:42Z,0.48,chrome,linux,0.0.7,7,7,6,male,1980-10-07,hardly any,It seemed really difficult and took me a long time. I don't know if it was just me. I tried my best though.,39.732,4479
+220,2020-07-10T17:11:28Z,2020-07-10T17:14:48Z,2020-07-10T18:01:57Z,0.58,firefox,windows,0.0.7,7,6,7,female,1974-12-05,No experience,Challenging hit!,45.571,3029
+221,2020-07-13T14:15:24Z,2020-07-13T14:23:42Z,2020-07-13T15:36:17Z,0.46,chrome,windows,0.0.7,7,6,6,male,1985-12-27,10,GOOD,34.511,4853
+222,2020-07-14T18:39:59Z,2020-07-14T18:53:25Z,2020-07-14T20:17:43Z,0.88,chrome,windows,0.0.7,7,2,3,female,1970-04-15,Windows 10 is working on the study,Good and well wishes to participate in this study,50.211,5864
+223,2020-07-13T14:25:12Z,2020-07-13T14:29:13Z,2020-07-13T15:39:30Z,0.57,chrome,windows,0.0.7,7,6,7,male,1974-05-14,None!,"Loved it, but very hard on some of the questions!!!",46.132,4458
+224,2020-07-11T03:45:35Z,2020-07-11T03:50:22Z,2020-07-11T05:13:07Z,0.24,chrome,windows,0.0.7,7,4,6,male,1986-04-26,NONE,"NOTHING TECHNICAL ISSUE, THIS STUDY VERY MAINDFULL SURVEY",34.181,5252
+225,2020-07-13T15:14:47Z,2020-07-13T15:15:11Z,2020-07-13T16:00:43Z,0.42,chrome,windows,0.0.7,7,1,5,male,1989-01-10,109,Good,31.473,2756
+226,2020-07-10T19:39:25Z,2020-07-10T19:40:24Z,2020-07-10T21:13:21Z,0.35,chrome,windows,0.0.7,7,4,5,male,1989-07-13,no,nothing,30.967,5636
+227,2020-07-10T15:41:03Z,2020-07-10T15:48:22Z,2020-07-10T17:08:09Z,0.68,chrome,windows,0.0.7,7,4,7,female,1964-03-18,none,none,56.288,5226
+228,2020-07-10T16:55:25Z,2020-07-10T16:58:38Z,2020-07-10T17:48:17Z,0.6,firefox,windows,0.0.7,7,5,6,female,1976-03-17,"Took BASIC in high school, tried to teach myself a bit of javascript and html/css but not much.",No difficulties. It was a bit discouraging to have the harder rules as the first few rounds (I really had no idea on some of them).,44.29,3172
+229,2020-07-13T15:01:20Z,2020-07-13T15:06:08Z,2020-07-13T15:34:00Z,0.45,chrome,windows,0.0.7,7,5,6,female,1973-08-01,none,"worked well, some were challenging!",46.915,1960
+230,2020-07-14T15:51:54Z,2020-07-14T15:53:50Z,2020-07-14T16:47:58Z,0.23,chrome,windows,0.0.7,7,6,7,female,1966-05-18,none,no issues,54.121,3364
+231,2020-07-10T15:46:04Z,2020-07-10T15:51:13Z,2020-07-10T17:14:36Z,0.56,chrome,windows,0.0.7,7,6,6,male,1988-06-23,basic,It was really engaging but quite difficult,32.022,5312
+232,2020-07-13T14:39:51Z,2020-07-13T14:42:32Z,2020-07-13T16:10:14Z,0.51,chrome,windows,0.0.7,7,6,5,female,1993-06-15,None.,It was frustrating at first until i got the hang of it.,27.044,5423
+233,2020-07-10T15:42:34Z,2020-07-10T15:47:04Z,2020-07-10T16:51:02Z,0.62,chrome,macos,0.0.7,7,4,6,male,1985-02-02,Very little,No issues. I enjoyed it. There was one sequence which I really struggled with. Would be curious to what the rule was.,35.41,4108
+234,2020-07-10T16:50:27Z,2020-07-10T16:58:47Z,2020-07-10T18:05:07Z,0.56,chrome,windows,0.0.7,7,5,6,male,1971-07-18,3,nice and good experience,48.954,4480
+235,2020-07-10T15:39:43Z,2020-07-10T15:45:47Z,2020-07-10T17:27:14Z,0.72,chrome,windows,0.0.7,7,4,7,female,1959-03-25,None,You had one error on the last set. It is missing a #54 on about the 9th one (around there anyway),61.268,6451
+236,2020-07-11T02:15:58Z,2020-07-11T02:32:16Z,2020-07-11T03:07:50Z,0.04,chrome,windows,0.0.7,7,7,7,male,1984-07-03,none,I'm sorry but those were really hard,35.995,3112
+237,2020-07-08T19:49:36Z,2020-07-08T20:44:59Z,2020-07-08T21:23:35Z,0.41,firefox,windows,0.0.6,7,7,7,female,1987-11-14,None,"This HIT was different, challenging but entertaining. There were no difficulties. I think others would enjoy the challenge and I would recommend it.",32.628,5639
+238,2020-07-14T15:37:54Z,2020-07-14T15:41:33Z,2020-07-14T16:53:03Z,0.54,chrome,windows,0.0.7,7,7,7,female,1967-07-28,None,All went smoothly. Thank you for that. It was difficult but fun and engaging.,52.926,4509
+239,2020-07-10T15:50:08Z,2020-07-10T15:58:33Z,2020-07-10T16:28:12Z,0.23,chrome,windows,0.0.7,7,3,4,female,1997-11-24,nice done work,nice,22.601,2284
+240,2020-07-08T20:38:52Z,2020-07-08T20:46:39Z,2020-07-08T21:49:44Z,0.83,chrome,macos,0.0.6,7,5,6,female,1987-02-19,None,NA,33.363,4252
+241,2020-07-10T21:41:52Z,2020-07-10T21:59:31Z,2020-07-11T00:01:29Z,0.61,chrome,windows,0.0.7,7,1,7,male,1972-02-08,none,No technical difficulties.Excellent,48.393,8377
+242,2020-07-10T17:06:37Z,2020-07-10T17:09:31Z,2020-07-10T17:49:50Z,0.53,chrome,windows,0.0.7,7,5,7,male,1977-10-26,None,"Not at all, thank you",42.68,2593
+243,2020-07-10T18:25:16Z,2020-07-10T18:31:07Z,2020-07-10T19:33:09Z,0.78,chrome,windows,0.0.7,7,4,7,male,1976-06-01,I've been programming since I was eight years old,"This was fun/interesting, no difficulties encountered.",44.082,4073
+244,2020-07-14T13:26:35Z,2020-07-14T13:32:48Z,2020-07-14T15:48:29Z,0.47,chrome,windows,0.0.7,7,4,4,male,1989-05-18,The survey on very interest and understand,Good,31.121,8514
+245,2020-07-10T18:42:30Z,2020-07-10T18:51:28Z,2020-07-10T19:56:05Z,0.72,chrome,windows,0.0.7,7,6,6,male,1985-10-04,Educational background in electrical engineering. I know a little but don't consider myself very competent.,No issues. I enjoyed it a lot. Would recommend to fellow nerds.,34.74,4415
+246,2020-07-14T18:42:48Z,2020-07-14T18:50:39Z,2020-07-14T20:38:55Z,0.59,chrome,windows,0.0.7,7,6,5,female,1990-08-01,10,very good survey,29.915,6967
+247,2020-07-13T14:24:32Z,2020-07-13T14:40:43Z,2020-07-13T15:49:32Z,0.73,chrome,windows,0.0.7,7,6,7,female,1993-04-22,1,NICE,27.192,5100
+248,2020-07-13T14:46:32Z,2020-07-13T15:06:26Z,2020-07-13T16:04:44Z,0.77,chrome,windows,0.0.7,7,5,7,male,1989-07-29,Good and program developing process,All are Good,30.923,4692
+249,2020-07-14T18:59:42Z,2020-07-14T19:02:09Z,2020-07-14T20:06:34Z,0.58,chrome,windows,0.0.7,7,7,7,female,1999-07-15,Good,Nice,20.962,4012
+250,2020-07-08T16:49:26Z,2020-07-08T16:53:43Z,2020-07-08T17:35:18Z,0.7,chrome,windows,0.0.6,7,6,7,male,1981-06-14,None,All went smoothly. Thank You,39.047,2752
+251,2020-07-13T13:33:10Z,2020-07-13T14:46:14Z,2020-07-13T15:06:52Z,0.02,chrome,windows,0.0.7,7,4,7,male,1989-07-25,15,The study was good,30.934,5622
+252,2020-07-10T16:23:21Z,2020-07-10T16:28:27Z,2020-07-10T17:36:35Z,0.79,chrome,macos,0.0.7,7,3,7,male,1988-07-05,I' m a computer programmer with experience of 5+ years. I did a master's in Computer science.,No difficulties.,31.989,4394
+253,2020-07-10T15:46:03Z,2020-07-10T15:47:05Z,2020-07-10T18:19:47Z,0.41,chrome,macos,0.0.7,7,7,NA,male,1982-09-06,Limited,Difficult but interesting.,37.817,9224
+254,2020-07-13T14:17:32Z,2020-07-13T14:20:29Z,2020-07-13T15:00:22Z,0.25,chrome,windows,0.0.7,7,6,6,male,1988-05-24,very good,some technical problem and very interesting task.,32.104,2570
+255,2020-07-13T14:24:26Z,2020-07-13T14:30:37Z,2020-07-13T15:51:09Z,0.58,chrome,windows,0.0.7,7,6,7,male,1987-02-26,basic python. learned it 6 years ago,NA,33.344,5203
+256,2020-07-08T20:19:43Z,2020-07-08T20:21:46Z,2020-07-08T21:28:57Z,0.49,firefox,windows,0.0.6,7,6,7,male,1984-04-17,"I have built a few websites and done a little bit of scripting, but other than that, no computer programming.","Everything worked correctly, my math skills and pattern recognition are not great, but I think I did pretty well overall! Best of luck with your research!",36.205,4154
+257,2020-07-14T18:33:26Z,2020-07-14T18:40:16Z,2020-07-14T19:22:49Z,0.3,chrome,windows,0.0.7,7,5,6,female,1980-08-03,none,good task,39.91,2963
+258,2020-07-08T22:36:16Z,2020-07-08T23:05:53Z,2020-07-09T00:12:20Z,0.29,chrome,windows,0.0.6,7,5,6,male,1965-03-13,its very well,really very good i like it,55.301,5764
+259,2020-07-14T22:03:36Z,2020-07-14T22:08:05Z,2020-07-14T23:31:58Z,0.62,chrome,windows,0.0.7,7,6,NA,male,1989-03-19,None,n/a,31.285,5302
+260,2020-07-13T14:20:09Z,2020-07-13T14:23:46Z,2020-07-13T16:07:32Z,0.43,chrome,windows,0.0.7,7,1,1,male,1989-03-08,43,good,31.315,6443
+261,2020-07-14T18:31:17Z,2020-07-14T18:41:03Z,2020-07-14T20:22:39Z,0.79,chrome,windows,0.0.7,7,3,7,female,1994-12-14,none,good,25.546,6682
+262,2020-07-14T15:44:14Z,2020-07-14T15:48:53Z,2020-07-14T17:11:07Z,0.47,firefox,windows,0.0.7,7,4,7,male,1987-07-02,none,yes I would recommend it,32.997,5213
+263,2020-07-14T13:32:53Z,2020-07-14T13:34:58Z,2020-07-14T15:20:41Z,0.46,chrome,windows,0.0.7,7,6,5,male,1992-05-03,none,good and excellent innovative,28.162,6468
+264,2020-07-13T14:52:46Z,2020-07-13T15:11:58Z,2020-07-13T16:09:04Z,0.4,chrome,windows,0.0.7,7,7,7,female,1972-02-18,NA,NA,48.366,4578
+265,2020-07-08T16:50:48Z,2020-07-08T17:08:39Z,2020-07-08T17:46:30Z,0.49,chrome,windows,0.0.6,7,4,5,male,1989-08-17,None,Very nice task,30.872,3342
+266,2020-07-14T13:18:18Z,2020-07-14T13:19:13Z,2020-07-14T14:00:56Z,0.67,chrome,windows,0.0.7,7,5,5,male,1989-07-31,I work is good.,very good survey,30.918,2558
+267,2020-07-14T18:08:24Z,2020-07-14T18:08:34Z,2020-07-14T18:54:14Z,0.46,chrome,windows,0.0.7,7,6,5,male,1990-03-23,some questions solved,nothing,30.274,2750
+268,2020-07-10T16:12:30Z,2020-07-10T16:30:35Z,2020-07-10T18:37:06Z,0.27,chrome,windows,0.0.7,7,5,3,male,1999-04-06,NA,NA,21.236,8676
+269,2020-07-10T15:38:54Z,2020-07-10T15:50:38Z,2020-07-10T18:11:19Z,0.45,chrome,windows,0.0.7,7,4,5,female,1959-06-28,"I have done  programmers to hold at least a bachelor's degree in a field such as computer science, mathematics or information systems. Four years of directly related work experience is acceptable in place of a bachelors degree in many cases.",Interesting.,61.008,9145
+270,2020-07-11T00:19:54Z,2020-07-11T00:23:57Z,2020-07-11T01:34:25Z,0.74,chrome,windows,0.0.7,7,3,7,female,1979-12-15,I am a professional web developer.,no issues,40.544,4471
+271,2020-07-10T18:55:21Z,2020-07-10T19:03:55Z,2020-07-10T20:20:41Z,0.41,chrome,windows,0.0.7,7,4,5,male,1989-12-24,I working to the best presented in the finishing.,good,30.519,5120
+272,2020-07-10T17:11:46Z,2020-07-10T17:33:18Z,2020-07-10T19:03:11Z,0.61,chrome,windows,0.0.7,7,4,5,male,1986-03-08,None,"It was very straightforward and engaging, good pay. Thank you!",34.315,6685
+273,2020-07-13T15:05:39Z,2020-07-13T15:05:57Z,2020-07-13T16:00:28Z,0.14,chrome,windows,0.0.7,7,7,4,male,1990-05-10,Developer,Very difficult to understand,30.142,3289
+274,2020-07-10T15:40:37Z,2020-07-10T15:44:49Z,2020-07-10T18:09:25Z,0.31,chrome,windows,0.0.7,7,6,6,female,1974-09-08,none,NA,45.811,8928
+275,2020-07-14T13:21:08Z,2020-07-14T13:23:42Z,2020-07-14T13:39:22Z,0,chrome,windows,0.0.7,5,6,6,male,1987-02-12,well,liked and no technical difficulties,33.383,1094
+276,2020-07-14T15:40:55Z,2020-07-14T15:48:46Z,2020-07-14T16:43:56Z,0,chrome,windows,0.0.7,5,5,7,male,1983-04-09,Very well,"No, Very interesting survey",37.227,3781
+277,2020-07-14T17:03:12Z,2020-07-14T17:10:48Z,2020-07-14T18:20:55Z,0.51,chrome,windows,0.0.7,7,5,7,male,1994-01-05,none,mind task,26.486,4663
+278,2020-07-13T14:20:56Z,2020-07-13T14:25:17Z,2020-07-13T15:22:27Z,0.42,chrome,windows,0.0.7,7,4,7,female,1989-03-02,little,no,31.332,3691
+279,2020-07-14T19:03:28Z,2020-07-14T19:09:33Z,2020-07-14T20:13:39Z,0.07,chrome,windows,0.0.7,7,5,7,male,2020-06-12,good survey,good,0.052,4211
+280,2020-07-10T16:11:14Z,2020-07-10T16:11:32Z,2020-07-10T16:23:52Z,0,chrome,windows,0.0.7,5,6,7,male,1989-04-15,Very like the program,The survey is very interesting.,31.211,758
+281,2020-07-08T21:32:31Z,2020-07-08T21:32:45Z,2020-07-08T21:45:46Z,0,chrome,windows,0.0.6,5,6,7,male,1984-04-20,"Because writing code can be done anywhere, many programmers work",Survey is very different.,36.197,795
+282,2020-07-10T18:39:05Z,2020-07-10T18:52:16Z,2020-07-10T19:59:52Z,0.38,chrome,windows,0.0.7,7,4,5,male,1988-05-18,yes,good,32.121,4847
+283,2020-07-14T21:35:10Z,2020-07-14T21:44:18Z,2020-07-14T22:37:29Z,0.57,chrome,windows,0.0.7,7,6,6,female,1996-05-26,Ten,I like this survey,24.099,3739
+284,2020-07-14T18:41:14Z,2020-07-14T18:41:30Z,2020-07-14T19:22:35Z,0,chrome,windows,0.0.7,5,5,6,female,1974-05-01,none,good,46.167,2481
+285,2020-07-08T21:32:57Z,2020-07-08T21:39:01Z,2020-07-08T22:18:23Z,0.59,chrome,macos,0.0.6,7,6,5,male,1964-10-07,"a couple of programming courses in college a long, long, long, long time ago",fine,55.732,2726
+286,2020-07-10T21:38:42Z,2020-07-10T21:43:07Z,2020-07-10T22:22:26Z,0,chrome,windows,0.0.7,5,1,7,male,1994-06-09,7,Quite interesting survey,26.06,2624
+287,2020-07-14T13:17:48Z,2020-07-14T13:30:45Z,2020-07-14T15:15:45Z,0.34,chrome,windows,0.0.7,7,6,5,male,1985-05-30,none,nothing,35.088,7077
+288,2020-07-13T14:19:57Z,2020-07-13T14:33:41Z,2020-07-13T15:01:12Z,0.06,chrome,windows,0.0.7,7,3,6,male,1990-09-09,realy well,good engarageing surver,29.809,2475
+289,2020-07-08T17:59:54Z,2020-07-08T18:07:19Z,2020-07-08T19:28:42Z,0.11,chrome,linux,0.0.6,7,7,7,male,1983-09-21,"networking and system admin, but no programming",it was tough,36.776,5328
+290,2020-07-10T15:39:54Z,2020-07-10T15:44:28Z,2020-07-10T16:28:21Z,0.41,chrome,windows,0.0.7,7,5,4,female,1988-03-05,90%,IT IS INTERESTING,32.323,2907
+291,2020-07-13T14:21:51Z,2020-07-13T14:46:13Z,2020-07-13T15:33:26Z,0.19,chrome,windows,0.0.7,7,2,7,male,NA,10,nothing,NA,4295
+292,2020-07-08T17:07:17Z,2020-07-08T17:09:47Z,2020-07-08T18:21:44Z,0.25,chrome,windows,0.0.6,7,4,4,male,1980-07-30,good,good survey,39.921,4467
+293,2020-07-14T16:15:36Z,2020-07-14T16:20:26Z,2020-07-14T18:02:43Z,0.52,chrome,windows,0.0.7,7,6,7,male,1985-03-21,None,The HIT was great. I didn't face any technical difficulties while doing the HIT. I would recommend it to others.,35.279,6427
+294,2020-07-08T18:07:05Z,2020-07-08T18:12:36Z,2020-07-08T20:13:46Z,0.57,chrome,windows,0.0.6,7,5,7,female,1959-12-10,None.,I didn't have any technical difficulties. I would recommend it to others.,60.557,7601
+295,2020-07-10T19:09:59Z,2020-07-10T19:15:59Z,2020-07-10T20:07:45Z,0.85,chrome,windows,0.0.7,7,4,7,female,1970-04-05,Just learning to build a website right now.,Everything looks great.,50.238,3466
+296,2020-07-10T15:39:46Z,2020-07-10T15:43:26Z,2020-07-10T16:48:12Z,0.81,chrome,windows,0.0.7,7,4,7,female,1981-05-07,Some programming classes. Done simple websites.,No technical difficulties.,39.151,4106
+297,2020-07-08T20:35:41Z,2020-07-08T21:05:19Z,2020-07-08T22:08:26Z,0.44,chrome,windows,0.0.6,7,1,7,female,1983-05-25,computer programming in many levels.,This survey is very interesting.,37.101,5565
+298,2020-07-10T16:43:19Z,2020-07-10T16:52:40Z,2020-07-10T17:21:59Z,0.83,chrome,macos,0.0.7,7,3,7,female,1980-01-03,I have a BA in computer science but am not a programmer,no issues,40.492,2320
+299,2020-07-13T14:22:54Z,2020-07-13T14:24:16Z,2020-07-13T15:44:45Z,0.54,chrome,windows,0.0.7,7,5,6,female,1990-01-02,NONE,GOOD WORK,30.495,4911
+300,2020-07-13T15:02:14Z,2020-07-13T15:04:20Z,2020-07-13T15:42:01Z,0.48,chrome,windows,0.0.7,7,6,7,female,1984-08-01,A lot as I hold a computer science degree.,No technical problems.,35.915,2387
+301,2020-07-13T14:37:06Z,2020-07-13T14:39:20Z,2020-07-13T15:26:33Z,0.6,chrome,windows,0.0.7,7,6,7,female,1995-01-24,1 course of VB.net in high school,I had no difficulties.,25.434,2967
+302,2020-07-08T18:38:42Z,2020-07-08T19:04:35Z,2020-07-08T19:52:32Z,0.1,chrome,windows,0.0.6,7,4,4,female,NA,110,nothing else,NA,4430
+303,2020-07-13T15:07:49Z,2020-07-13T15:11:46Z,2020-07-13T15:47:22Z,0.69,chrome,windows,0.0.7,7,4,6,male,1964-05-06,Built a few websites using templates,No technical issues - only issue was my brain not working on a couple of them.,56.153,2373
+304,2020-07-14T16:22:45Z,2020-07-14T16:27:11Z,2020-07-14T17:01:12Z,0.57,chrome,windows,0.0.7,7,2,7,male,1996-06-20,None.,NA,24.03,2307
+305,2020-07-14T15:14:12Z,2020-07-14T15:18:33Z,2020-07-14T15:59:39Z,0.41,chrome,windows,0.0.7,7,6,7,male,1975-12-18,none,Hit was fine. some of those were very hard.,44.536,2727
+306,2020-07-13T15:18:07Z,2020-07-13T15:19:22Z,2020-07-13T16:09:26Z,0.47,chrome,windows,0.0.7,7,1,7,NA,1993-12-12,Yes,I am like for good f eel and my answer very honest for all option so please paid for this hit thank you so much.,26.552,3079
+307,2020-07-14T15:46:26Z,2020-07-14T15:46:48Z,2020-07-14T16:03:41Z,0.21,chrome,windows,0.0.7,7,5,5,male,1999-12-18,good,good,20.536,1035
+308,2020-07-14T18:50:41Z,2020-07-14T19:05:37Z,2020-07-14T20:48:00Z,0.39,chrome,windows,0.0.7,7,4,5,female,1988-01-23,I think one,No all are clear and it is interesting,32.437,7039
+309,2020-07-14T14:41:23Z,2020-07-14T14:41:37Z,2020-07-14T15:15:32Z,0.68,chrome,windows,0.0.7,7,5,7,male,1989-04-13,interesting,no.,31.216,2049
+310,2020-07-14T13:23:15Z,2020-07-14T13:23:36Z,2020-07-14T14:00:08Z,0.41,chrome,windows,0.0.7,7,6,5,male,1985-12-27,good,good,34.511,2213
+311,2020-07-15T07:06:06Z,2020-07-15T07:10:41Z,2020-07-15T08:10:57Z,0.74,chrome,windows,0.0.7,7,6,7,male,1990-08-14,took  a college class,It was an interesting and difficult task to figure out. The pay could be a little better for how annoying and long it is. I would recommend it to others.,29.88,3891
+312,2020-07-14T16:14:16Z,2020-07-14T16:19:17Z,2020-07-14T18:17:11Z,0.47,chrome,windows,0.0.7,7,7,6,female,1984-12-22,none,"very hard but challenging, my mins went blank on some but caught on to others..",35.525,7375
+313,2020-07-14T13:40:00Z,2020-07-14T13:52:42Z,2020-07-14T14:44:27Z,0.75,chrome,windows,0.0.7,7,1,2,female,1984-12-24,PROFESSIONAL DEVELOPERS,INTERSETING,35.519,3867
+314,2020-07-08T18:32:46Z,2020-07-08T18:35:53Z,2020-07-08T19:43:10Z,0.39,chrome,windows,0.0.6,7,7,6,female,1979-10-16,none,this is longer than 45 minutes.,40.708,4224
+315,2020-07-14T18:49:16Z,2020-07-14T18:59:38Z,2020-07-14T20:18:37Z,0.68,chrome,windows,0.0.7,7,4,7,male,1999-11-14,Built a website once,Was very engaging and would recommend anyone for their brain development.,20.628,5361
+316,2020-07-14T15:38:56Z,2020-07-14T15:45:18Z,2020-07-14T16:49:49Z,0.57,chrome,windows,0.0.7,7,5,7,female,1988-04-18,None.,I thought it was interesting and fun. Gave me a challenege.,32.203,4253
+317,2020-07-13T13:20:24Z,2020-07-13T14:36:50Z,2020-07-13T15:44:13Z,0.6,chrome,windows,0.0.7,7,4,7,female,1994-11-02,none,no,25.661,8629
+318,2020-07-10T15:39:34Z,2020-07-10T15:44:01Z,2020-07-10T17:10:41Z,0.48,chrome,windows,0.0.7,7,4,6,male,1987-10-18,I did many computer programming,This hit was very well and interesting. Thank you.,32.702,5467
+319,2020-07-10T16:29:18Z,2020-07-10T17:46:26Z,2020-07-10T18:13:42Z,0.6,chrome,windows,0.0.7,7,4,6,male,1998-04-29,Computer Science degree,"Very fun, no issues.",22.173,6264
+320,2020-07-15T00:55:05Z,2020-07-15T01:04:45Z,2020-07-15T01:28:19Z,0,chrome,windows,0.0.7,5,5,5,male,1980-07-23,NA,very interesting this survey.,39.94,1994
+321,2020-07-14T18:44:05Z,2020-07-14T18:47:38Z,2020-07-14T20:23:43Z,0.57,chrome,windows,0.0.7,7,3,5,male,1985-10-07,20,very interesting in this survey,34.732,5978
+322,2020-07-14T16:38:57Z,2020-07-14T16:41:52Z,2020-07-14T17:20:48Z,0.49,chrome,windows,0.0.7,7,6,4,female,1977-03-04,Built a few websites. Taken a few programming classes.,No technical difficulties. The HIT was interesting and the pay was decent. I'd probably recommend it to others.,43.326,2511
+323,2020-07-13T14:15:27Z,2020-07-13T14:17:32Z,2020-07-13T15:34:43Z,0.47,chrome,windows,0.0.7,7,5,4,male,1999-07-08,1,nothing all are good,20.981,4756
+324,2020-07-08T19:00:36Z,2020-07-08T19:03:39Z,2020-07-08T19:23:46Z,0.03,chrome,windows,0.0.6,7,4,7,male,1987-07-14,"As someone who has done both college and a bootcamp,",Survey is very exciting.,32.964,1390
+325,2020-07-13T14:38:25Z,2020-07-13T14:41:46Z,2020-07-13T15:16:27Z,0.35,chrome,windows,0.0.7,7,7,5,male,1989-04-20,I have no experience with programming anything.,"This was was one of the more mentally challenging hits I have ever accepted and done on mturk. It was fun overall, just wish I could have figured out all the rules.",31.197,2282
+326,2020-07-13T14:15:11Z,2020-07-13T14:25:18Z,2020-07-13T16:06:54Z,0.4,chrome,windows,0.0.7,7,3,2,male,1999-07-02,YES,GOOD,20.997,6703
+327,2020-07-08T17:05:22Z,2020-07-08T17:16:13Z,2020-07-08T18:00:18Z,0.07,chrome,windows,0.0.6,7,5,5,male,1999-07-08,1,no,20.981,3296
+328,2020-07-10T15:37:53Z,2020-07-10T15:42:20Z,2020-07-10T16:26:24Z,0.35,chrome,windows,0.0.7,7,4,7,male,1991-04-25,None,Nice task and thanks for the opportunity,29.184,2911
+329,2020-07-13T14:42:41Z,2020-07-13T14:43:00Z,2020-07-13T15:59:26Z,0.49,chrome,windows,0.0.7,7,1,2,male,1989-09-12,good,none,30.801,4605
+330,2020-07-10T16:34:36Z,2020-07-10T16:37:24Z,2020-07-10T17:07:45Z,0.01,chrome,windows,0.0.7,7,7,7,male,1999-05-26,like it,like it survey,21.099,1989
+331,2020-07-10T17:49:45Z,2020-07-10T17:49:50Z,2020-07-10T18:34:18Z,0,chrome,macos,0.0.7,5,1,6,female,1995-03-12,Programming,No,25.304,2673
+332,2020-07-14T16:35:51Z,2020-07-14T16:36:18Z,2020-07-14T17:04:40Z,0.08,chrome,windows,0.0.7,7,5,5,male,1980-07-10,good,good,39.975,1729
+333,2020-07-13T14:40:42Z,2020-07-13T14:49:49Z,2020-07-13T15:13:02Z,0.08,chrome,windows,0.0.7,7,4,4,female,1988-07-13,done,TOO GOOD I ENJOYED,31.967,1940
+334,2020-07-13T13:17:05Z,2020-07-13T14:30:37Z,2020-07-13T15:26:20Z,0.56,chrome,windows,0.0.7,7,4,7,female,1991-08-23,None,Fun hit loved it,28.855,7755
+335,2020-07-10T16:00:44Z,2020-07-10T16:03:19Z,2020-07-10T16:54:31Z,0.8,chrome,windows,0.0.7,7,4,7,male,1984-04-20,None.,"It was pretty enjoyable actually.  I felt really confident until the last round, which I wasn't able to solve.  I'm a math dummy, so I'm glad I was able to figure most of them out.",36.197,3227
+336,2020-07-14T16:38:13Z,2020-07-14T17:09:48Z,2020-07-14T18:05:25Z,0.57,chrome,windows,0.0.7,7,4,4,male,1988-02-22,built a website once,good experience for this study. no technical difficulties,32.355,5232
+337,2020-07-10T17:11:51Z,2020-07-10T17:16:31Z,2020-07-10T18:19:36Z,0.51,chrome,windows,0.0.7,7,4,7,male,1981-07-22,little,NA,38.943,4065
+338,2020-07-08T16:49:35Z,2020-07-08T16:53:20Z,2020-07-08T17:42:28Z,0.61,chrome,windows,0.0.6,7,7,7,male,1972-07-03,messing around on my own but no training,very difficult but no problems,47.995,3173
+339,2020-07-10T17:55:59Z,2020-07-10T17:59:06Z,2020-07-10T18:48:21Z,0.61,chrome,windows,0.0.7,7,4,7,male,1981-01-22,None.,The first word that comes to mind is refreshing. It was definitely something else. I enjoyed it.,39.44,3142
+340,2020-07-14T18:52:56Z,2020-07-14T18:54:36Z,2020-07-14T21:09:37Z,0.44,chrome,windows,0.0.7,7,3,7,male,1998-03-11,i am honestly well done  computer programming,very good,22.307,8201
+341,2020-07-13T14:41:36Z,2020-07-13T14:51:46Z,2020-07-13T15:48:55Z,0.66,chrome,windows,0.0.7,7,4,4,female,1967-08-01,ten,i like this survey,52.915,4039
+342,2020-07-13T15:30:32Z,2020-07-13T15:36:26Z,2020-07-13T16:02:21Z,0.15,chrome,windows,0.0.7,7,5,5,NA,1987-08-20,NA,NA,32.863,1909
+343,2020-07-10T15:53:22Z,2020-07-10T16:04:23Z,2020-07-10T17:42:35Z,0.24,chrome,windows,0.0.7,7,5,4,male,1951-01-24,it is very good routines experiment,no comments,69.434,6553
+344,2020-07-11T03:33:03Z,2020-07-11T03:36:18Z,2020-07-11T04:20:43Z,0.35,chrome,windows,0.0.7,7,5,5,male,NA,5,4 rounds are difficult,NA,2860
+345,2020-07-10T18:09:02Z,2020-07-10T18:46:52Z,2020-07-10T20:03:19Z,0.02,chrome,windows,0.0.7,7,7,6,male,1999-04-04,match answer,good,21.241,6857
+346,2020-07-13T14:29:31Z,2020-07-13T14:32:19Z,2020-07-13T15:16:49Z,0.41,chrome,windows,0.0.7,7,7,6,male,1961-07-01,I have written some software in my life.,Very challenging and kind of discouraging.,59,2838
+347,2020-07-14T16:26:13Z,2020-07-14T16:27:51Z,2020-07-14T17:42:49Z,0.27,chrome,windows,0.0.7,7,2,4,male,1999-07-09,none,no,20.978,4596
+348,2020-07-10T15:39:26Z,2020-07-10T15:43:33Z,2020-07-10T16:31:49Z,0.35,chrome,windows,0.0.7,7,6,3,male,1990-09-13,none,no,29.798,3143
+349,2020-07-14T19:23:21Z,2020-07-14T19:24:56Z,2020-07-14T20:32:35Z,0.58,chrome,windows,0.0.7,7,5,5,male,1981-08-03,10,VERY INTERESTING,38.91,4154
+350,2020-07-13T13:22:06Z,2020-07-13T13:55:32Z,2020-07-13T14:50:14Z,0.08,chrome,windows,0.0.7,7,2,3,male,1990-08-07,NA,NA,29.899,5288
+351,2020-07-13T14:24:18Z,2020-07-13T14:26:08Z,2020-07-13T15:18:22Z,0.47,chrome,windows,0.0.7,7,3,7,male,1990-03-11,very nice,nothing,30.307,3244
+352,2020-07-10T15:46:09Z,2020-07-10T16:10:25Z,2020-07-10T18:16:22Z,0.53,chrome,windows,0.0.7,7,3,6,male,1989-09-15,I have not done any,interesting yet technical in some few parts.would recommend to others,30.792,9013
+353,2020-07-14T19:39:56Z,2020-07-14T19:44:25Z,2020-07-14T20:05:24Z,0.45,chrome,windows,0.0.7,7,1,7,female,1999-10-01,Professional developer,"None,Nice experiment.",20.749,1528
+354,2020-07-08T18:51:04Z,2020-07-08T18:53:59Z,2020-07-08T19:38:42Z,0.63,chrome,windows,0.0.6,7,4,7,female,1988-02-11,Bachelor's degree in Computer Science.,"It was pretty fun actually, didn't have any issues.",32.385,2858
+355,2020-07-13T14:21:46Z,2020-07-13T14:23:42Z,2020-07-13T15:06:16Z,0.17,chrome,windows,0.0.7,7,7,7,female,1979-07-27,none,it was too difficult tried to catch the pattern but for each its changing,40.929,2670
+356,2020-07-08T18:04:53Z,2020-07-08T18:06:39Z,2020-07-08T18:32:26Z,0.2,chrome,windows,0.0.6,7,4,7,female,1991-10-01,None,"None,nice experiment",28.749,1653
+357,2020-07-14T15:49:09Z,2020-07-14T15:56:41Z,2020-07-14T16:50:29Z,0.91,chrome,windows,0.0.7,7,2,7,female,1986-01-18,I have done some programming for my job related activities.,It was awesome and more involved task and it involves engagement to find out the rule in an task. It was very interesting.,34.451,3680
+358,2020-07-08T19:54:41Z,2020-07-08T20:01:41Z,2020-07-08T21:22:43Z,0.62,chrome,windows,0.0.6,7,7,7,male,1957-12-02,none,NICE,62.579,5282
+359,2020-07-10T16:04:35Z,2020-07-10T16:09:39Z,2020-07-10T17:05:55Z,0.56,chrome,windows,0.0.7,7,7,7,female,1985-05-13,None.,I would recommend it to others who enjoy puzzles.,35.134,3680
+360,2020-07-14T16:43:29Z,2020-07-14T16:54:45Z,2020-07-14T18:54:03Z,0.35,chrome,windows,0.0.7,7,6,5,female,1999-07-29,Nothing,This is nice task i enjoy this task.,20.923,7834
+361,2020-07-13T14:24:14Z,2020-07-13T14:28:16Z,2020-07-13T15:22:26Z,0.43,chrome,windows,0.0.7,7,4,6,male,1987-04-12,I am studied computer as a degree and know about language.,This is one of interesting Hit. I lived it. Thank you.,33.219,3492
+362,2020-07-14T18:48:05Z,2020-07-14T18:50:15Z,2020-07-14T19:21:22Z,0,chrome,windows,0.0.7,5,7,4,female,NA,10,Good,NA,1997
+363,2020-07-11T03:06:11Z,2020-07-11T03:07:38Z,2020-07-11T03:55:39Z,0.37,chrome,windows,0.0.7,7,4,4,male,1990-08-15,they are done almost in this survey,good study in the some of the math number problem survey,29.877,2968
+364,2020-07-14T19:54:30Z,2020-07-14T19:58:39Z,2020-07-14T20:55:10Z,0.34,chrome,macos,0.0.7,7,5,4,male,1991-10-07,None,I had no technical problems. The hit itself was pretty straight forward once I understood the directions. I liked the format. Made it somewhat easy to try to figure out complex problems when you realize how the information was presented. I otherwise would not have been able to figure some of these out without being able to see the solutions in real time.,28.732,3640
+365,2020-07-14T13:19:07Z,2020-07-14T13:27:08Z,2020-07-14T14:30:33Z,0.26,chrome,windows,0.0.7,7,4,6,female,1967-12-14,no,no,52.546,4286
+366,2020-07-10T17:04:15Z,2020-07-10T17:12:14Z,2020-07-10T18:25:06Z,0.53,chrome,windows,0.0.7,7,5,7,male,1996-08-12,None,Very interesting and engaging task too.,23.885,4851
+367,2020-07-14T15:38:42Z,2020-07-14T15:45:10Z,2020-07-14T17:07:41Z,0.73,chrome,windows,0.0.7,7,5,7,male,1953-03-31,A LOT over many years.,"Even though it was a challenge, I enjoyed this task including the way it flowed.",67.252,5339
+368,2020-07-10T15:52:36Z,2020-07-10T16:01:28Z,2020-07-10T17:53:12Z,0.62,chrome,windows,0.0.7,7,7,7,male,1986-08-12,None,No,33.885,7236
+369,2020-07-10T19:22:39Z,2020-07-10T19:25:24Z,2020-07-10T20:39:25Z,0.57,chrome,windows,0.0.7,7,6,7,female,1987-03-01,None,"Frustrating at some points, but fun!",33.334,4606
+370,2020-07-11T01:54:22Z,2020-07-11T01:59:11Z,2020-07-11T02:45:01Z,0.3,chrome,windows,0.0.7,7,7,6,male,1983-05-12,"Learn about the education, practical steps, and experience you'll need to become a Computer Programmer.",good and use full survey very difficult but improve knowledge used one. like very much that survey,37.137,3039
+371,2020-07-10T18:37:42Z,2020-07-10T18:43:03Z,2020-07-10T19:47:54Z,0.84,chrome,windows,0.0.7,7,4,7,male,1986-09-18,Built ecommerce websites and phones apps,It was fun,33.784,4212
+372,2020-07-13T15:53:53Z,2020-07-13T15:55:47Z,2020-07-13T16:21:53Z,0.66,chrome,windows,0.0.7,7,5,6,female,NA,None at all,"This was a fun hit, no problems at all",NA,1680
+373,2020-07-13T14:29:02Z,2020-07-13T14:39:26Z,2020-07-13T16:23:05Z,0.72,chrome,windows,0.0.7,7,3,4,female,1999-04-14,none,no comments,21.214,6843
+374,2020-07-10T16:06:03Z,2020-07-10T16:12:59Z,2020-07-10T17:15:07Z,0.64,chrome,windows,0.0.7,7,4,5,female,1974-03-02,done,nice survey,46.332,4144
+375,2020-07-10T15:43:02Z,2020-07-10T15:52:24Z,2020-07-10T16:30:35Z,0.53,chrome,windows,0.0.7,7,5,7,female,1989-09-21,Very helpful.,Interesting and Good.,30.776,2853
+376,2020-07-10T15:44:03Z,2020-07-10T17:55:36Z,2020-07-10T18:31:08Z,0.77,chrome,windows,0.0.7,7,4,7,female,1995-08-03,11,nothing,24.91,10025
+377,2020-07-14T19:24:29Z,2020-07-14T19:25:27Z,2020-07-14T20:53:44Z,0.21,chrome,windows,0.0.7,7,2,6,male,1988-04-03,yes good,good,32.244,5355
+378,2020-07-14T18:32:02Z,2020-07-14T18:37:21Z,2020-07-14T19:54:11Z,0.7,chrome,windows,0.0.7,7,4,7,male,1980-03-06,None,Interesting but frustrating because of all the typing involving,40.321,4929
+379,2020-07-10T15:43:53Z,2020-07-10T15:52:57Z,2020-07-10T17:10:48Z,0.46,chrome,windows,0.0.7,7,5,6,male,1990-03-29,NONE,GOOD,30.258,5215
+380,2020-07-13T13:56:10Z,2020-07-13T14:23:42Z,2020-07-13T15:26:35Z,0.33,chrome,windows,0.0.7,7,6,4,female,1995-07-12,5,GOOD,24.97,5425
+381,2020-07-10T15:37:29Z,2020-07-10T15:41:08Z,2020-07-10T16:07:51Z,0.85,chrome,windows,0.0.7,7,4,7,male,1981-04-13,none,I thought it was really fun!,39.216,1822
+382,2020-07-14T19:10:54Z,2020-07-14T19:11:13Z,2020-07-14T20:16:58Z,0.25,chrome,windows,0.0.7,7,7,6,female,1995-07-20,Nothing Yet,NA,24.948,3964
+383,2020-07-14T16:06:50Z,2020-07-14T16:18:18Z,2020-07-14T17:02:38Z,0.13,chrome,windows,0.0.7,7,6,7,female,1966-04-26,2,i like very much to do,54.181,3348
+384,2020-07-13T13:14:39Z,2020-07-13T14:24:54Z,2020-07-13T15:41:43Z,0.4,chrome,windows,0.0.7,7,6,6,male,1981-06-18,C++ and little of PHP,nice but educational survey,39.036,8824
+385,2020-07-13T13:19:25Z,2020-07-13T14:36:38Z,2020-07-13T15:47:03Z,0.66,chrome,linux,0.0.7,7,4,7,male,1979-08-06,None,The hit was so interesting. And educative.,40.902,8858
+386,2020-07-14T19:09:00Z,2020-07-14T19:21:27Z,2020-07-14T19:48:46Z,0.65,chrome,windows,0.0.7,7,6,6,male,1990-04-13,Taken the recent time of programming will know,This HIT was much attractive and also a somewhat technical problem,30.216,2386
+387,2020-07-14T16:12:47Z,2020-07-14T16:13:08Z,2020-07-14T17:27:55Z,0.2,chrome,windows,0.0.7,7,7,1,female,1983-08-23,yes,no,36.855,4508
+388,2020-07-13T14:18:10Z,2020-07-13T14:42:32Z,2020-07-13T15:35:24Z,0.38,chrome,windows,0.0.7,7,2,3,male,1989-09-12,GOOD,NONE,30.801,4634
+389,2020-07-14T18:06:53Z,2020-07-14T18:07:43Z,2020-07-14T20:09:10Z,0.61,chrome,windows,0.0.7,7,5,4,female,1990-05-16,few answers correct,no issue,30.126,7337
+390,2020-07-10T18:44:57Z,2020-07-10T18:47:01Z,2020-07-10T19:43:15Z,0.7,chrome,windows,0.0.7,7,4,6,male,1999-07-17,Some basic programming knowledge.,NA,20.956,3498
+391,2020-07-08T17:04:06Z,2020-07-08T17:13:13Z,2020-07-08T17:49:42Z,0.57,chrome,windows,0.0.6,7,2,7,male,1993-06-05,2,very nice,27.071,2736
+392,2020-07-08T20:30:01Z,2020-07-08T20:48:44Z,2020-07-08T21:56:09Z,0.46,chrome,windows,0.0.6,7,6,5,male,1975-04-02,Well done,Mind Blowing,45.247,5168
+393,2020-07-08T16:59:12Z,2020-07-08T17:15:32Z,2020-07-08T18:28:34Z,0.25,chrome,windows,0.0.6,7,7,4,male,1989-04-04,Some html in highschool,No,31.241,5362
+394,2020-07-14T19:03:26Z,2020-07-14T19:03:45Z,2020-07-14T20:34:43Z,0.41,chrome,windows,0.0.7,7,6,6,male,1969-03-08,Ten,"Very interesting Survey and no technical difficulties, i recommend to my friends",51.315,5477
+395,2020-07-10T15:50:58Z,2020-07-10T15:57:29Z,2020-07-10T17:54:49Z,0.22,chrome,windows,0.0.7,7,7,7,female,1990-11-13,very little,none,29.631,7431
+396,2020-07-13T13:35:22Z,2020-07-13T15:03:14Z,2020-07-13T15:52:43Z,0.63,chrome,windows,0.0.7,7,6,7,male,1971-09-25,none,none,48.765,8241
+397,2020-07-10T21:02:48Z,2020-07-10T21:03:38Z,2020-07-10T22:01:34Z,0.37,chrome,windows,0.0.7,7,7,4,male,1971-04-23,none,no it is very interesting,49.189,3526
+398,2020-07-14T19:11:49Z,2020-07-14T19:23:59Z,2020-07-14T20:54:01Z,0.49,chrome,windows,0.0.7,7,6,5,female,1990-11-02,None,N/A,29.661,6132
+399,2020-07-10T17:37:38Z,2020-07-10T17:39:50Z,2020-07-10T18:33:02Z,0.57,chrome,windows,0.0.7,7,4,7,male,1980-11-05,5,finding  the pattern was extremly difficult for some it was easy but too difficult,39.653,3324
+400,2020-07-13T14:20:55Z,2020-07-13T14:25:05Z,2020-07-13T15:53:22Z,0.49,chrome,windows,0.0.7,7,7,7,male,1989-07-05,Python class,"Hard, but kinda fun.",30.989,5547
+401,2020-07-14T21:37:12Z,2020-07-14T21:42:50Z,2020-07-14T23:04:09Z,0.6,chrome,windows,0.0.7,7,6,7,male,1991-08-15,NONE,NICE,28.877,5217
+402,2020-07-10T16:28:50Z,2020-07-10T16:44:03Z,2020-07-10T17:31:23Z,0.47,chrome,windows,0.0.7,7,4,6,male,1991-01-24,data processor,good,29.434,3753
+403,2020-07-13T14:16:32Z,2020-07-13T14:32:09Z,2020-07-13T15:40:43Z,0.21,chrome,windows,0.0.7,7,6,5,male,1989-03-15,good,good,31.296,5051
+404,2020-07-13T14:52:10Z,2020-07-13T14:55:17Z,2020-07-13T15:37:38Z,0.27,chrome,windows,0.0.7,7,3,3,male,1999-06-03,None,no,21.077,2728
+405,2020-07-13T14:18:15Z,2020-07-13T14:26:56Z,2020-07-13T15:58:26Z,0.17,chrome,windows,0.0.7,7,6,6,female,1987-08-09,10,good,32.893,6011
+406,2020-07-10T16:33:57Z,2020-07-10T16:38:00Z,2020-07-10T17:31:28Z,0.81,chrome,windows,0.0.7,7,3,7,female,1959-09-20,None.,"Loved it! It was mildly challenging, so it made me feel smart without forcing me to exert too much effort ;-)",60.779,3451
+407,2020-07-14T18:33:14Z,2020-07-14T18:39:40Z,2020-07-14T20:24:16Z,0.5,chrome,windows,0.0.7,7,7,6,female,1985-04-09,GOOD,NICE,35.227,6662
+408,2020-07-14T13:17:23Z,2020-07-14T13:17:36Z,2020-07-14T13:38:25Z,0.07,chrome,windows,0.0.7,7,5,5,male,2019-07-14,2,good,0.964,1262
+409,2020-07-10T17:37:46Z,2020-07-10T17:48:34Z,2020-07-10T18:26:47Z,0,chrome,macos,0.0.7,5,2,6,male,1989-11-13,Built website,It was good.,30.631,2941
+410,2020-07-10T19:15:09Z,2020-07-10T19:16:13Z,2020-07-10T20:37:32Z,0.48,chrome,windows,0.0.7,7,5,7,male,1999-07-22,none,very good,20.943,4943
+411,2020-07-10T15:44:45Z,2020-07-10T16:19:45Z,2020-07-10T16:57:42Z,0.13,chrome,macos,0.0.7,7,2,5,male,1956-10-02,nothing,good,63.746,4377
+412,2020-07-08T21:15:23Z,2020-07-08T21:20:21Z,2020-07-08T22:22:42Z,0.74,firefox,windows,0.0.6,7,6,7,female,1984-01-07,None,Good experience. No issues.,36.481,4039
+413,2020-07-13T14:22:34Z,2020-07-13T14:26:06Z,2020-07-13T15:15:39Z,0.75,chrome,windows,0.0.7,7,4,7,female,1990-09-02,I've taken several introductory classes but I've never gone beyond the basics.,"It was a little long, but it was interesting. It would have been nice to know the answer to round 6.",29.828,3185
+414,2020-07-13T14:21:48Z,2020-07-13T14:28:16Z,2020-07-13T14:50:39Z,0.02,chrome,windows,0.0.7,7,5,6,male,1965-07-22,LIBERAL,NO,54.943,1731
+415,2020-07-13T13:50:20Z,2020-07-13T14:29:09Z,2020-07-13T15:31:49Z,0.81,chrome,windows,0.0.7,7,6,7,male,1996-08-12,None,Very interesting and very engaging task. No technical difficulties.,23.885,6089
+416,2020-07-10T15:42:49Z,2020-07-10T16:24:19Z,2020-07-10T17:49:56Z,0.46,chrome,windows,0.0.7,7,5,4,male,1988-04-10,I am fully understand the instruction and how to do this task information gather to find the solution.,excellent this work and i am more enjoyed.,32.225,7627
+417,2020-07-14T19:05:06Z,2020-07-14T19:06:01Z,2020-07-14T20:15:57Z,0.39,chrome,windows,0.0.7,7,4,4,male,1981-03-03,Very good programming,No difficult easy experiment,39.329,4251
+418,2020-07-13T14:35:03Z,2020-07-13T15:02:57Z,2020-07-13T15:33:13Z,0,chrome,windows,0.0.7,5,5,5,male,NA,very  good,good,NA,3490
+419,2020-07-10T15:46:27Z,2020-07-10T15:53:02Z,2020-07-10T16:44:58Z,0.38,chrome,windows,0.0.7,7,5,6,female,1990-04-12,built a website once.,It is interesting survey.,30.219,3511
+420,2020-07-14T16:23:14Z,2020-07-14T16:25:27Z,2020-07-14T16:42:31Z,0.01,chrome,windows,0.0.7,7,4,5,male,1972-07-23,Good,Good,47.94,1157
+421,2020-07-13T13:21:06Z,2020-07-13T14:21:10Z,2020-07-13T15:54:03Z,0.16,chrome,windows,0.0.7,7,6,7,NA,1989-09-08,100,none,30.811,9177
+422,2020-07-10T17:57:25Z,2020-07-10T18:04:11Z,2020-07-10T18:27:07Z,0.32,chrome,windows,0.0.7,7,6,6,male,1983-05-23,none.,NA,37.107,1782
+423,2020-07-10T15:45:42Z,2020-07-10T16:07:30Z,2020-07-10T18:33:00Z,0.47,chrome,windows,0.0.7,7,5,3,female,1990-07-11,good level programming it him this work,very good decision study of him,29.973,10038
+424,2020-07-10T16:06:49Z,2020-07-10T16:13:01Z,2020-07-10T17:51:56Z,0.29,chrome,windows,0.0.7,7,3,4,male,1999-07-21,88,no,20.945,6307
+425,2020-07-14T18:31:35Z,2020-07-14T18:51:18Z,2020-07-14T21:13:15Z,0.47,chrome,windows,0.0.7,7,1,6,male,1978-04-14,This program is very best,Nothing,42.214,9700
+426,2020-07-14T13:23:03Z,2020-07-14T13:23:24Z,2020-07-14T14:17:57Z,0.64,chrome,windows,0.0.7,7,5,4,male,1973-05-17,none,good,47.123,3294
+427,2020-07-13T14:17:07Z,2020-07-13T14:20:11Z,2020-07-13T15:24:47Z,0.23,chrome,windows,0.0.7,7,4,7,male,1999-03-12,no,nice,21.304,4060
+428,2020-07-10T20:42:46Z,2020-07-10T20:43:47Z,2020-07-10T21:18:14Z,0.37,chrome,windows,0.0.7,7,7,6,male,1991-03-13,I have watched some videos and had some friends who did programming in the past but that is it!,This hit was difficult because you had to use math and figure out the sequence/rule! It was still fun and I would recommend it to other people!,29.301,2128
+429,2020-07-14T21:32:12Z,2020-07-14T21:41:02Z,2020-07-14T22:00:10Z,0.06,chrome,windows,0.0.7,7,6,5,male,1982-05-06,95,very development this survey,38.153,1678
+430,2020-07-10T17:34:27Z,2020-07-10T17:37:17Z,2020-07-10T18:10:55Z,0.49,firefox,linux,0.0.7,7,3,6,female,1993-07-29,I took a 200 level Matlab course in college but that was some time ago.,NA,26.923,2188
+431,2020-07-10T17:12:49Z,2020-07-10T17:30:46Z,2020-07-10T19:11:31Z,0.63,chrome,windows,0.0.7,7,5,4,male,1965-05-20,none,excellent,55.115,7122
+432,2020-07-08T16:56:49Z,2020-07-08T16:58:10Z,2020-07-08T17:18:27Z,0.46,chrome,macos,0.0.6,7,5,5,female,1997-07-02,none,good,22.997,1298
+433,2020-07-14T17:12:33Z,2020-07-14T17:13:42Z,2020-07-14T17:56:34Z,0.47,chrome,windows,0.0.7,7,4,2,male,1989-04-26,good,nothing,31.181,2641
+434,2020-07-10T15:53:34Z,2020-07-10T16:04:18Z,2020-07-10T16:48:22Z,0.01,chrome,windows,0.0.7,7,5,5,male,1989-12-10,very well for this,Good,30.557,3288
+435,2020-07-10T16:42:53Z,2020-07-10T16:43:23Z,2020-07-10T17:23:35Z,0.08,chrome,windows,0.0.7,7,5,5,male,1989-05-14,10,good,31.132,2442
+436,2020-07-13T14:15:25Z,2020-07-13T14:24:16Z,2020-07-13T15:23:12Z,0.09,chrome,windows,0.0.7,7,6,6,NA,1999-07-18,good,good,20.954,4067
+437,2020-07-10T19:24:51Z,2020-07-10T19:27:33Z,2020-07-10T21:12:05Z,0.61,chrome,windows,0.0.7,7,7,7,male,1986-11-12,NONE,NO,33.634,6434
+438,2020-07-08T19:26:43Z,2020-07-08T19:28:02Z,2020-07-08T20:12:31Z,0.01,chrome,windows,0.0.6,7,7,7,male,1972-07-11,10,good,47.973,2748
+439,2020-07-14T18:33:15Z,2020-07-14T18:37:46Z,2020-07-14T20:09:09Z,0.29,chrome,windows,0.0.7,7,5,5,male,1999-07-13,none,good,20.967,5754
+440,2020-07-10T17:46:01Z,2020-07-10T17:47:09Z,2020-07-10T18:44:41Z,0.57,chrome,windows,0.0.7,7,1,7,female,1984-07-02,3,This task is very interesting. very clear.,35.997,3520
+441,2020-07-14T13:28:25Z,2020-07-14T13:37:22Z,2020-07-14T15:14:54Z,0.47,chrome,windows,0.0.7,7,5,4,male,1990-03-05,2,Great survey,30.323,6389
+442,2020-07-10T16:47:21Z,2020-07-10T16:54:23Z,2020-07-10T18:02:50Z,0.5,chrome,windows,0.0.7,7,5,7,male,1979-01-02,I am beginner level.,All went smooth.,41.495,4529
+443,2020-07-08T17:07:14Z,2020-07-08T17:16:18Z,2020-07-08T18:10:13Z,0.06,chrome,macos,0.0.6,7,7,4,male,1985-07-16,litle bit knowledge,no thanks,34.959,3779
+444,2020-07-13T13:54:29Z,2020-07-13T14:24:16Z,2020-07-13T15:27:34Z,0.56,chrome,windows,0.0.7,7,4,3,female,1952-10-31,Good activiyt,Nice survey and mind thinking is normal,67.667,5585
+445,2020-07-13T14:55:17Z,2020-07-13T14:57:56Z,2020-07-13T15:19:04Z,0.67,chrome,windows,0.0.7,7,4,7,male,1987-12-16,none,I had no issues,32.541,1427
+446,2020-07-14T13:58:55Z,2020-07-14T14:06:15Z,2020-07-14T15:07:15Z,0.28,chrome,windows,0.0.7,7,2,2,male,1990-06-05,It is some difficult in computer programming.,Good task.,30.071,4100
+447,2020-07-09T03:28:25Z,2020-07-09T03:29:04Z,2020-07-09T03:55:36Z,0.01,chrome,windows,0.0.6,7,2,2,female,NA,very useful,none,NA,1631
+448,2020-07-10T15:43:10Z,2020-07-10T15:46:26Z,2020-07-10T17:22:51Z,0.79,chrome,windows,0.0.7,7,4,5,male,1991-07-13,none,very interesting,28.967,5981
+449,2020-07-13T13:11:32Z,2020-07-13T14:45:14Z,2020-07-13T15:56:37Z,0.07,chrome,windows,0.0.7,7,5,5,male,1987-10-24,HAVE MAKE IT PROPERLY,EASY TO ANSWERED,32.686,9905
+450,2020-07-10T18:23:12Z,2020-07-10T18:30:54Z,2020-07-10T19:35:09Z,0.7,chrome,windows,0.0.7,7,4,7,female,1972-10-31,None,No problems. It was fun to do,47.667,4317
+451,2020-07-13T13:24:54Z,2020-07-13T14:19:22Z,2020-07-13T15:20:32Z,0.31,chrome,windows,0.0.7,7,5,4,male,1988-04-10,very much,excellent,32.225,6938
+452,2020-07-10T16:45:31Z,2020-07-10T16:49:31Z,2020-07-10T17:41:48Z,0.75,firefox,windows,0.0.7,7,4,5,male,1977-08-26,"Not much. I know a little bit of javascript and ahk, but I'm not a programmer.",Everything was fine. Thank you.,42.847,3377
+453,2020-07-13T13:12:01Z,2020-07-13T13:14:44Z,2020-07-13T14:15:15Z,0.55,chrome,windows,0.0.7,7,7,4,male,1989-10-30,Built a website once in High School.,This HIT was really difficult for me because I am really bad at math. I would probably recommend it to others.,30.669,3794
+454,2020-07-10T18:39:08Z,2020-07-10T18:47:38Z,2020-07-10T20:48:55Z,0.61,chrome,windows,0.0.7,7,6,7,male,1988-10-23,I have built my own website. It's a portfolio for my art/ place where costumers can buy my artwork.,"This was very engaging, as well as challenging. Some of the rules were easy to pick up on, but others just seemed completely random. Overall I'd say this was a quality survey.",31.689,7787
+455,2020-07-14T22:49:40Z,2020-07-14T22:57:47Z,2020-07-14T23:17:49Z,0,chrome,windows,0.0.7,5,4,5,male,1989-02-14,GOOD,NICE,31.377,1689
+456,2020-07-08T16:58:05Z,2020-07-08T17:08:33Z,2020-07-08T19:38:58Z,0.55,chrome,windows,0.0.6,7,4,7,male,1978-07-10,basic computer programming,nothing technical difficulties,41.975,9653
+457,2020-07-10T15:52:22Z,2020-07-10T15:53:42Z,2020-07-10T16:38:08Z,0.62,chrome,windows,0.0.7,7,5,7,female,1980-04-27,built a wix website,engaging,40.178,2746
+458,2020-07-13T14:21:13Z,2020-07-13T14:32:53Z,2020-07-13T15:42:18Z,0.31,chrome,windows,0.0.7,7,4,5,male,1980-04-03,"Proficient computing, and programming.",good experiment,40.244,4865
+459,2020-07-08T17:41:26Z,2020-07-08T17:42:58Z,2020-07-08T18:19:05Z,0.41,chrome,windows,0.0.6,7,6,5,male,1990-09-17,None,"Really unique and engaging HIT. Don't think I have ever done a HIT like this and it was really thought-provoking, thank you!",29.787,2259
+460,2020-07-10T18:38:53Z,2020-07-10T18:43:28Z,2020-07-10T19:31:32Z,0.73,chrome,windows,0.0.7,7,5,7,male,1972-08-30,I did some programming as a teenager and took some college programming classes.,"No problems. Enjoyed the HIT quite a bit. I wish that you would show the answers to the questions at the end, as the one I couldn't solve still bothers me. :)",47.836,3159
+461,2020-07-13T13:11:01Z,2020-07-13T13:14:41Z,2020-07-13T14:20:06Z,0.32,chrome,windows,0.0.7,7,6,7,male,1990-02-06,full,none,30.399,4145
+462,2020-07-13T14:23:08Z,2020-07-13T14:35:03Z,2020-07-13T15:33:12Z,0.6,chrome,windows,0.0.7,7,6,7,male,1985-09-28,1,nice and interesting,34.757,4204
+463,2020-07-13T14:47:32Z,2020-07-13T14:51:47Z,2020-07-13T15:59:01Z,0.47,chrome,windows,0.0.7,7,3,5,male,1989-07-11,very interests on program,Good,30.973,4289
+464,2020-07-10T16:40:36Z,2020-07-10T16:46:33Z,2020-07-10T17:25:42Z,0.09,chrome,windows,0.0.7,7,5,6,male,1990-07-07,non,good,29.984,2706
+465,2020-07-08T17:12:02Z,2020-07-08T17:14:37Z,2020-07-08T17:49:12Z,0.74,firefox,windows,0.0.6,7,5,6,female,1993-12-15,None,Everything was good,26.544,2230
+466,2020-07-13T14:16:35Z,2020-07-13T14:37:40Z,2020-07-13T15:55:05Z,0.45,chrome,windows,0.0.7,7,3,3,female,1975-11-13,Good,Nice,44.631,5910
+467,2020-07-10T15:37:43Z,2020-07-10T15:41:06Z,2020-07-10T16:36:42Z,0.75,firefox,windows,0.0.7,7,3,7,female,1988-01-01,none,It was fine as it was,32.497,3539
+468,2020-07-10T16:39:15Z,2020-07-10T17:10:46Z,2020-07-10T18:25:02Z,0.62,chrome,windows,0.0.7,7,1,7,male,1990-02-05,None,Excellent,30.402,6347
+469,2020-07-08T18:55:31Z,2020-07-08T18:58:10Z,2020-07-08T19:18:24Z,0.26,firefox,windows,0.0.6,7,7,7,male,1988-09-03,None,"No difficulties, I would recommend it, because it was very stimulating.",31.825,1373
+470,2020-07-14T13:28:10Z,2020-07-14T13:52:58Z,2020-07-14T15:02:30Z,0.41,chrome,windows,0.0.7,7,4,7,female,NA,NA,NA,NA,5660
+471,2020-07-08T16:54:54Z,2020-07-08T16:55:04Z,2020-07-08T17:07:04Z,0.09,chrome,windows,0.0.6,7,7,7,male,1987-01-25,a little bit,NA,33.432,730
+472,2020-07-08T17:20:50Z,2020-07-08T18:02:52Z,2020-07-08T18:53:57Z,0.06,chrome,windows,0.0.6,7,7,6,female,1984-02-02,Very useful.,This survey is very interesting.,36.41,5587
+473,2020-07-14T13:40:51Z,2020-07-14T13:43:40Z,2020-07-14T14:34:40Z,0.2,chrome,windows,0.0.7,7,6,2,male,1987-03-16,5,good,33.293,3229
+474,2020-07-13T13:52:16Z,2020-07-13T14:19:26Z,2020-07-13T16:09:58Z,0.11,chrome,windows,0.0.7,7,7,7,female,1983-07-02,basic,no,36.997,8262
+475,2020-07-13T13:16:32Z,2020-07-13T13:20:24Z,2020-07-13T14:15:17Z,0.84,firefox,linux,0.0.7,7,6,7,male,1999-07-19,"Only very little Python experience, simple console output calculators and stuff.","Brilliant HIT, I genuinely want a game like this for fun. Very enjoyable.",20.951,3525
+476,2020-07-14T14:50:38Z,2020-07-14T14:50:58Z,2020-07-14T15:33:35Z,0.41,chrome,windows,0.0.7,7,1,7,male,1991-07-14,None,Nice task and thanks for the opportunity,28.964,2577
+477,2020-07-10T19:00:47Z,2020-07-10T19:09:39Z,2020-07-10T19:53:22Z,0.09,chrome,windows,0.0.7,7,4,7,male,1980-12-12,I am also professional developer and making a design,I am like for good feel for this study mostly very honest for all question answer me so please paid this hit thank you so much please paid hit.,39.552,3155
+478,2020-07-13T14:36:51Z,2020-07-13T14:37:28Z,2020-07-13T15:21:27Z,0.75,chrome,windows,0.0.7,7,7,7,male,1986-03-11,No Experience,No,34.307,2676
+479,2020-07-10T16:51:49Z,2020-07-10T17:09:29Z,2020-07-10T17:53:02Z,0.38,chrome,windows,0.0.7,7,5,5,female,1977-10-04,it is easy study,thanks,42.74,3673
+480,2020-07-10T15:49:40Z,2020-07-10T15:52:46Z,2020-07-10T16:19:58Z,0.82,chrome,windows,0.0.7,7,4,6,male,1990-12-07,None,"Fine. No. Yes, but bonus-ing is too low.",29.566,1818
+481,2020-07-13T13:22:06Z,2020-07-13T14:42:32Z,2020-07-13T16:07:15Z,0.34,chrome,windows,0.0.7,7,5,5,male,NA,none,nice,NA,9909
+482,2020-07-13T13:19:54Z,2020-07-13T14:28:36Z,2020-07-13T15:31:13Z,0.03,chrome,windows,0.0.7,7,4,2,male,2019-07-13,good,good,0.967,7879
+483,2020-07-14T19:02:30Z,2020-07-14T19:08:51Z,2020-07-14T20:56:33Z,0.14,chrome,windows,0.0.7,7,6,7,male,1988-06-21,Some coding,NA,32.027,6843
+484,2020-07-10T18:05:12Z,2020-07-10T18:07:41Z,2020-07-10T19:48:19Z,0.27,chrome,windows,0.0.7,7,7,7,male,1990-10-18,good,good,29.702,6187
+485,2020-07-08T18:25:16Z,2020-07-08T18:33:58Z,2020-07-08T19:53:21Z,0.45,chrome,windows,0.0.6,7,7,7,female,1997-11-18,None,No difficulties,22.617,5285
+486,2020-07-14T17:41:13Z,2020-07-14T17:44:21Z,2020-07-14T19:09:37Z,0.44,chrome,windows,0.0.7,7,5,6,female,1984-01-31,web developer,NA,36.415,5304
+487,2020-07-13T14:24:54Z,2020-07-13T14:28:08Z,2020-07-13T15:28:21Z,0.52,chrome,windows,0.0.7,7,5,6,male,1989-07-26,No. I work new and good,good,30.932,3807
+488,2020-07-14T16:20:35Z,2020-07-14T16:31:43Z,2020-07-14T17:22:56Z,0.28,chrome,windows,0.0.7,7,5,6,male,1993-03-03,Nope,Some what difficult but enjoyable.,27.329,3741
+489,2020-07-14T15:57:52Z,2020-07-14T16:09:32Z,2020-07-14T17:31:53Z,0.22,chrome,windows,0.0.7,7,7,5,male,1988-06-13,10 rounds of counting programming done to participate.,very nice hit. No technical difficulties. very nice survey.,32.049,5641
+490,2020-07-10T18:16:45Z,2020-07-10T18:26:55Z,2020-07-10T18:45:12Z,0.03,chrome,windows,0.0.7,7,4,4,male,1990-07-10,none,good survey,29.975,1707
+491,2020-07-10T18:52:37Z,2020-07-10T18:59:27Z,2020-07-10T20:05:52Z,0.76,chrome,windows,0.0.7,7,4,7,female,1981-09-05,None,None,38.82,4395
+492,2020-07-13T13:10:37Z,2020-07-13T13:14:04Z,2020-07-13T14:15:07Z,0.73,chrome,windows,0.0.7,7,7,6,male,1980-09-08,some but not a lot,it went pretty easy. would recommend to others.,39.811,3870
+493,2020-07-10T15:57:09Z,2020-07-10T16:04:57Z,2020-07-10T18:36:00Z,0.47,chrome,windows,0.0.7,7,7,7,male,1985-05-25,yes,interesting,35.101,9531
+494,2020-07-14T20:17:59Z,2020-07-14T20:22:16Z,2020-07-14T21:03:22Z,0.81,chrome,windows,0.0.7,7,6,6,female,1989-11-25,none,no problems,30.598,2723
+495,2020-07-14T13:39:08Z,2020-07-14T13:39:50Z,2020-07-14T15:10:49Z,0.59,chrome,windows,0.0.7,7,5,4,male,1968-12-26,The survey on very interest and understanding question,Good,51.514,5501
+496,2020-07-10T15:51:36Z,2020-07-10T15:59:22Z,2020-07-10T16:53:52Z,0.57,firefox,windows,0.0.7,7,7,7,male,1987-05-05,None.,"The actual task worked smoothly, but I refreshed the HIT landing page on MTurk and it had given me an error.",33.156,3736
+497,2020-07-10T15:37:31Z,2020-07-10T15:41:59Z,2020-07-10T16:39:44Z,0.63,chrome,windows,0.0.7,7,5,7,male,1995-10-08,none,it took long but I liked trying to figure out each rule,24.73,3733
+498,2020-07-13T13:14:53Z,2020-07-13T13:18:14Z,2020-07-13T14:20:07Z,0.41,chrome,windows,0.0.7,7,4,7,female,1998-07-02,Professional Developer,It was fun,21.997,3914

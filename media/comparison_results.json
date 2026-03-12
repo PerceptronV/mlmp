@@ -1,0 +1,222 @@
+{
+  "random": {
+    "composer": "random",
+    "stats": {
+      "num_programs": 30,
+      "type_check_rate": 1.0,
+      "compile_rate": 1.0,
+      "uses_input_rate": 0.9333333333333333,
+      "avg_size": 114.03333333333333,
+      "min_size": 19,
+      "max_size": 283,
+      "avg_depth": 7.0,
+      "min_depth": 7,
+      "max_depth": 7,
+      "function_usage": {
+        "third": 21,
+        "first": 20,
+        "+": 19,
+        "min": 19,
+        "take": 17,
+        "length": 17,
+        "%": 17,
+        "max": 17,
+        "product": 16,
+        "mapi": 15
+      },
+      "unique_functions_used": 57,
+      "avg_variability": 0.0038461538461538464,
+      "high_variability_rate": 0.0,
+      "total_time": 0.41321516036987305,
+      "avg_time": 0.013773838678995768
+    },
+    "sample_programs": [
+      "(if false (\u03bb (x) (range (+ (min (cut_vals 4 [])) (* (second []) (- 69 57))) (nth (sum []) (mapi (\u03bb (y z) y) (repeat 43 48))) (+ (fold (\u03bb (a b) b) (length x) (unique [])) (nth (min x) (splice x 5 x))))) (if (is_in (filter (if (== 46 45) (\u03bb (c) true) (\u03bb (d) true)) (cons (% 81 28) (take 99 []))) (sum (mapi (\u03bb (e f) 72) (reverse [])))) (if (== (foldi (\u03bb (g h i) g) (* 33 54) (reverse [])) (* (sum []) (+ 14 20))) (if (== (if false 70 1) (nth 68 [])) (if (== 20 92) (\u03bb (j) []) (\u03bb (k) [])) (if (is_odd 81) (\u03bb (l) []) (\u03bb (m) []))) (if (is_in (flatten []) (second [])) (\u03bb (n) (unique n)) (\u03bb (o) (cons 10 [])))) (\u03bb (p) (singleton (product (slice 60 21 []))))))",
+      "(if (not (== (third (cut_val (first []) (reverse []))) (== (if true (is_odd 90) (first [])) (fold (\u03bb (x y) true) (== true false) (append [] true))))) (\u03bb (z) (if (not (is_even (max z))) (find (\u03bb (a) (or true true)) (take (+ 59 9) (cut_idx 70 []))) (range (length []) (if (third []) (/ 51 21) (* 33 58)) (* (max z) (min z))))) (\u03bb (b) b))",
+      "(\u03bb (x) (if (last (singleton (and (if true true true) (is_odd 30)))) (range (count (if (is_odd 10) (\u03bb (y) y) (\u03bb (z) z)) (concat (takelast 50 []) (take 96 []))) 79 (count (if (if false false true) (\u03bb (a) false) (\u03bb (b) b)) (cut_slice 70 (- 17 13) (slice 36 91 [])))) (mapi (if (is_even (- 6 54)) (if (if true false false) (\u03bb (c d) 1) (\u03bb (e f) f)) (if (< 47 18) (\u03bb (g h) 46) (\u03bb (i j) j))) (filter (if (> 13 71) (\u03bb (k) true) (\u03bb (l) true)) (sort (\u03bb (m) 3) (cons false []))))))",
+      "(if (nth (* (sum (if (nth 28 []) (range 29 84 42) (if false [] []))) (product (find (\u03bb (x) false) (cons false [])))) (takelast (/ (sum (if true [] [])) (* (max []) (sum []))) (reverse (reverse (take 8 []))))) (if (second (cut_slice (+ (product []) (max [])) (product (if false [] [])) (slice (- 0 26) (/ 83 56) (cut_idx 60 [])))) (if (last (cut_slice (- 79 96) (- 25 5) (concat [] []))) (\u03bb (y) (range (length []) (max []) (- 0 98))) (if (nth (- 89 6) (drop 15 [])) (if (first []) (\u03bb (z) z) (\u03bb (a) a)) (if (is_even 70) (\u03bb (b) []) (\u03bb (c) [])))) (if (is_in (replace (min []) (== false false) (insert true 49 [])) (third (if false [] []))) (\u03bb (d) (find (\u03bb (e) e) (splice [] 0 []))) (\u03bb (f) (range (product f) (% 77 62) (- 3 85))))) (if (not (> (length (repeat true 75)) (max []))) (if (< (length (if true [] [])) (foldi (\u03bb (g h i) i) (/ 60 69) (if true [] []))) (if (third (flatten [])) (\u03bb (j) []) (\u03bb (k) (range 27 32 21))) (if (is_in (takelast 20 []) (< 39 48)) (\u03bb (l) (range 88 31 98)) (\u03bb (m) (range 72 44 84)))) (\u03bb (n) (map (\u03bb (o) (product n)) (repeat (is_in [] true) (/ 83 68))))))",
+      "(if (is_even (sum (takelast (% (* 35 31) (length [])) (splice (insert 41 27 []) (* 76 35) (cut_vals 24 []))))) (if (or (is_odd (max (droplast 2 []))) (> (max (concat [] [])) (last (swap 42 58 [])))) (\u03bb (x) (repeat (* (+ 97 24) (* 92 97)) (last (append [] 29)))) (\u03bb (y) (replace (min (repeat 6 89)) (foldi (\u03bb (z a b) b) (+ 36 56) (insert 32 61 [])) (if (and true false) (singleton 71) (slice 79 66 []))))) (if (> (nth (second (cut_vals 94 [])) (map (\u03bb (c) 10) (range 9 52 76))) (third (if (> 58 29) (flatten []) (droplast 25 [])))) (if (not (is_in (cut_slice 21 76 []) (third []))) (\u03bb (d) (splice (take 64 d) (first d) (reverse d))) (if true (if (is_odd 2) (\u03bb (e) e) (\u03bb (f) [])) (if (and false false) (\u03bb (g) []) (\u03bb (h) [])))) (\u03bb (i) (splice (filter (\u03bb (j) false) (droplast 97 i)) (third (concat [] i)) (cut_val (second i) (droplast 52 []))))))",
+      "(if (second (droplast (% (if (== false false) (if true 39 70) (/ 14 15)) (min [])) (unique (replace (max []) (not false) (cut_vals true []))))) (\u03bb (x) (mapi (\u03bb (y z) (count (\u03bb (a) a) (concat [] []))) (sort (\u03bb (b) (+ 44 97)) (droplast (/ 24 30) (drop 99 []))))) (\u03bb (c) (range (foldi (\u03bb (d e f) (sum c)) (min []) (sort (\u03bb (g) 42) (reverse []))) (% (max (if false c c)) (if (third []) (length []) (if false 80 97))) (length (droplast (length []) (take 29 []))))))",
+      "(\u03bb (x) (singleton (length (filteri (\u03bb (y z) (not true)) (replace (if false 67 87) (max []) (if true [] x))))))",
+      "(\u03bb (x) (cut_slice (third (splice (filteri (\u03bb (y z) true) (if false x [])) (/ (min []) (% 30 45)) (takelast (sum []) (unique x)))) (/ (nth (max (takelast 77 x)) (mapi (\u03bb (a b) b) (cons 28 x))) (length (splice (takelast 17 x) (product x) (concat [] x)))) (reverse (singleton (% (length []) (+ 46 34))))))",
+      "(if (== (count (\u03bb (x) (fold (\u03bb (y z) true) (if false false false) [])) (droplast (second (take 74 [])) (slice (% 60 71) (/ 82 59) (reverse [])))) (first (range (count (\u03bb (a) true) (append [] 47)) (length (takelast 53 [])) (max (reverse []))))) (if (is_even (sum (insert (nth 56 []) (min []) (take 82 [])))) (\u03bb (b) (cons (+ (min []) (nth 76 b)) (if (== 72 97) (cut_vals 29 []) (repeat 0 18)))) (if (not (is_in (repeat 16 30) (last []))) (\u03bb (c) (repeat (first []) (if false 13 28))) (if (if (is_even 66) (> 3 61) (is_odd 13)) (\u03bb (d) (reverse [])) (\u03bb (e) (drop 35 e))))) (if (is_odd (first (take (/ 55 89) (repeat 98 27)))) (\u03bb (f) (filteri (\u03bb (g h) (is_odd g)) (splice (concat [] []) (sum f) (cut_idx 10 [])))) (\u03bb (i) (splice (flatten (if false [] [])) (product (flatten [])) (find (\u03bb (j) false) (insert 27 61 []))))))",
+      "(\u03bb (x) (filter (\u03bb (y) (is_in (takelast (max x) (unique x)) (length (droplast 84 x)))) (insert (* (min (concat [] [])) (fold (\u03bb (z a) z) (+ 3 67) (cons 43 []))) (% (% (sum x) (product [])) (product (if false x []))) (cut_vals (/ (length []) (first [])) (splice (cut_idx 5 []) (sum []) (range 98 32 15))))))"
+    ]
+  },
+  "empirical": {
+    "composer": "empirical",
+    "stats": {
+      "num_programs": 30,
+      "type_check_rate": 0.6666666666666666,
+      "compile_rate": 1.0,
+      "uses_input_rate": 0.9333333333333333,
+      "avg_size": 13.066666666666666,
+      "min_size": 2,
+      "max_size": 63,
+      "avg_depth": 5.366666666666666,
+      "min_depth": 2,
+      "max_depth": 9,
+      "function_usage": {
+        "is_in": 5,
+        "unique": 4,
+        "filteri": 4,
+        "reverse": 4,
+        "filter": 4,
+        "fold": 4,
+        "not": 4,
+        "is_even": 4,
+        "cons": 3,
+        "sort": 3
+      },
+      "unique_functions_used": 42,
+      "avg_variability": 0.4602564102564103,
+      "high_variability_rate": 0.5,
+      "total_time": 0.12323641777038574,
+      "avg_time": 0.004107880592346192
+    },
+    "sample_programs": [
+      "(\u03bb (x) [])",
+      "(\u03bb (x) (cons 2 (cons 1 (cons 2 x))))",
+      "(\u03bb (x) (takelast (last x) (sort (\u03bb (y) y) (cut_idx 1 (drop 10 x)))))",
+      "(\u03bb (x) (swap 4 6 x))",
+      "(\u03bb (x) (append (unique x) (length x)))",
+      "(\u03bb (x) (mapi (\u03bb (y) (\u03bb (z) z)) (cut_slice 7 7 (swap 1 10 []))))",
+      "(\u03bb (x) (concat x (take 2 (unique x))))",
+      "(\u03bb (x) (flatten (zip (filteri (\u03bb (y) (\u03bb (z) (is_in x 3))) x) (reverse (filteri (\u03bb (a) (\u03bb (b) false)) x)))))",
+      "(\u03bb (x) (filter (\u03bb (y) (fold (\u03bb (z) (\u03bb (a) (== 9 a))) (is_in x 0) (sort (\u03bb (b) y) x))) x))",
+      "(\u03bb (x) (droplast 3 x))"
+    ]
+  },
+  "template": {
+    "composer": "template",
+    "stats": {
+      "num_programs": 30,
+      "type_check_rate": 1.0,
+      "compile_rate": 1.0,
+      "uses_input_rate": 1.0,
+      "avg_size": 9.433333333333334,
+      "min_size": 5,
+      "max_size": 24,
+      "avg_depth": 4.466666666666667,
+      "min_depth": 3,
+      "max_depth": 7,
+      "function_usage": {
+        "cons": 6,
+        "min": 6,
+        "singleton": 6,
+        "first": 5,
+        "map": 4,
+        "repeat": 4,
+        "max": 4,
+        "%": 3,
+        "fold": 3,
+        "append": 3
+      },
+      "unique_functions_used": 33,
+      "avg_variability": 0.8025641025641026,
+      "high_variability_rate": 0.9333333333333333,
+      "total_time": 0.0010547637939453125,
+      "avg_time": 3.515879313151042e-05
+    },
+    "sample_programs": [
+      "(\u03bb (x) (cons 94 x))",
+      "(\u03bb (x) (filteri (\u03bb (b c) (< (% c 2) 8)) (mapi (\u03bb (y z) (* y 9)) x)))",
+      "(\u03bb (x) (fold (\u03bb (y z) (cons z y)) [] x))",
+      "(\u03bb (x) (fold (\u03bb (y z) (if (> z (last y)) (append y z) y)) (take 1 x) (drop 1 x)))",
+      "(\u03bb (x) (singleton (min x)))",
+      "(\u03bb (x) (append x (first x)))",
+      "(\u03bb (x) (filteri (\u03bb (a b) (is_odd a)) (map (\u03bb (y) (+ y 7)) x)))",
+      "(\u03bb (x) (map (\u03bb (a) (if (== a 24) 1 0)) (filter (\u03bb (y) (== (% y 10) 1)) x)))",
+      "(\u03bb (x) (append x (first x)))",
+      "(\u03bb (x) (zip x (reverse x)))"
+    ]
+  },
+  "mcts": {
+    "composer": "mcts",
+    "stats": {
+      "num_programs": 30,
+      "type_check_rate": 1.0,
+      "compile_rate": 1.0,
+      "uses_input_rate": 0.9666666666666667,
+      "avg_size": 53.233333333333334,
+      "min_size": 2,
+      "max_size": 104,
+      "avg_depth": 6.633333333333334,
+      "min_depth": 2,
+      "max_depth": 7,
+      "function_usage": {
+        "nth": 15,
+        "max": 15,
+        "concat": 12,
+        "length": 12,
+        "last": 12,
+        "-": 12,
+        "%": 12,
+        "drop": 12,
+        "+": 12,
+        "third": 11
+      },
+      "unique_functions_used": 55,
+      "avg_variability": 0.06923076923076923,
+      "high_variability_rate": 0.06666666666666667,
+      "total_time": 0.212310791015625,
+      "avg_time": 0.0070770263671875
+    },
+    "sample_programs": [
+      "(\u03bb (x) (cons (product (range (- (- 8 4) (last x)) (* (product []) (nth 10 x)) (% (third x) (length [])))) (swap (min (concat (reverse x) (singleton 6))) (length x) (cut_slice (% (first []) (% 2 4)) (* (product x) (nth 6 [])) (find (\u03bb (y) true) (range 2 3 8))))))",
+      "(\u03bb (x) (singleton (sum (singleton (max (range 1 6 6))))))",
+      "(\u03bb (x) (range (min []) (third (cut_slice (count (\u03bb (y) false) (drop 3 [])) (min (concat x x)) (cut_slice (last x) (second x) (swap 4 5 x)))) (first (append (cons (last x) (swap 7 1 x)) (max (append x 9))))))",
+      "(\u03bb (x) (swap (count (\u03bb (y) (or (or true true) (is_even 2))) (concat (insert (max x) (nth 4 x) (cut_val 6 x)) (cut_val (min []) (drop 9 [])))) (last (find (\u03bb (z) (> z z)) (flatten []))) (replace (length x) (last (unique (slice 9 9 x))) (unique x))))",
+      "(\u03bb (x) (filteri (\u03bb (y z) (is_odd (if (or false false) (sum []) (nth z [])))) (takelast (+ (third (drop 10 [])) (count (\u03bb (a) true) (cut_val 5 x))) (concat (cut_idx (first x) []) x))))",
+      "(\u03bb (x) (map (\u03bb (y) (% (length (replace 2 y [])) (+ (min []) (product [])))) (cut_val (if (third (swap 2 10 [])) true (> (length []) (* 1 4))) (slice (- (max []) (/ 5 1)) (* (sum x) (+ 2 6)) (flatten (if true [] []))))))",
+      "(\u03bb (x) x)",
+      "(\u03bb (x) (concat x x))",
+      "(\u03bb (x) (slice (last (insert (first (append x 9)) (max x) (if (if true false true) (slice 0 6 x) (repeat 7 6)))) (- (min (if (< 9 1) (concat x x) (droplast 9 x))) (foldi (\u03bb (y z a) 1) (last (unique x)) (unique (replace 8 0 [])))) (drop (+ (/ (nth 2 x) (product [])) 4) (range (foldi (\u03bb (b c d) d) (nth 1 x) (reverse x)) (sum (reverse [])) (/ (product x) (if true 0 7))))))",
+      "(\u03bb (x) (cut_idx (second (cons (+ (+ 5 7) (last [])) (unique (cons 7 x)))) (reverse (unique (filter (\u03bb (y) false) (takelast 3 []))))))"
+    ]
+  },
+  "rule": {
+    "composer": "rule",
+    "stats": {
+      "num_programs": 250,
+      "type_check_rate": 1.0,
+      "compile_rate": 1.0,
+      "uses_input_rate": 0.972,
+      "avg_size": 12.14,
+      "min_size": 2,
+      "max_size": 36,
+      "avg_depth": 5.152,
+      "min_depth": 2,
+      "max_depth": 12,
+      "function_usage": {
+        "singleton": 60,
+        "first": 51,
+        "drop": 49,
+        "map": 38,
+        "cons": 35,
+        "==": 28,
+        "length": 25,
+        "last": 22,
+        "append": 22,
+        "reverse": 22
+      },
+      "unique_functions_used": 55,
+      "avg_variability": 0.6272307692307693,
+      "high_variability_rate": 0.664,
+      "total_time": 0,
+      "avg_time": 0
+    },
+    "sample_programs": [
+      "(\u03bb (x) (singleton (third x)))",
+      "(\u03bb (x) (if (> 3 (length x)) [] (singleton (third x))))",
+      "(\u03bb (x) (singleton (nth 7 x)))",
+      "(\u03bb (x) (if (> 7 (length x)) [] (singleton (nth 7 x))))",
+      "(\u03bb (x) (singleton (nth (first x) (drop 1 x))))",
+      "(\u03bb (x) (take 2 x))",
+      "(\u03bb (x) (take 2 x))",
+      "(\u03bb (x) (take 6 x))",
+      "(\u03bb (x) (take 6 x))",
+      "(\u03bb (x) (take (first x) (drop 1 x)))"
+    ]
+  }
+}

@@ -1,0 +1,267 @@
+template done
+random done
+empirical done
+mcts done
+Setting up composers...
+  Random seed: 42
+  Target depth: 6
+  Samples per composer: 30
+
+Setting up empirical composer...
+  Using program file: src/data/rule/functions.txt
+
+Training MCTS composer (1000 episodes)...
+Episode 100/1000, Avg reward (last 100): -0.206, Tree size: 322
+Episode 200/1000, Avg reward (last 100): 0.063, Tree size: 429
+Episode 300/1000, Avg reward (last 100): 0.105, Tree size: 478
+Episode 400/1000, Avg reward (last 100): 0.119, Tree size: 511
+Episode 500/1000, Avg reward (last 100): 0.131, Tree size: 540
+Episode 600/1000, Avg reward (last 100): 0.148, Tree size: 557
+Episode 700/1000, Avg reward (last 100): 0.162, Tree size: 569
+Episode 800/1000, Avg reward (last 100): 0.172, Tree size: 579
+Episode 900/1000, Avg reward (last 100): 0.179, Tree size: 602
+Episode 1000/1000, Avg reward (last 100): 0.188, Tree size: 620
+
+============================================================
+Experimenting with random composer
+============================================================
+  Generated 10/30 programs...
+  Generated 20/30 programs...
+  Generated 30/30 programs...
+
+============================================================
+Results for random
+============================================================
+
+## Generation Quality
+  Type Check Rate:     100.0%
+  Compile Rate:        100.0%
+  Uses Input Rate:     93.3%
+
+## Program Size
+  Average Size:        114.0 nodes
+  Size Range:          [19, 283]
+
+## Program Depth
+  Average Depth:       7.0
+  Depth Range:         [7, 7]
+
+## Variability
+  Average Variability: 0.004
+  High Variability:    0.0%
+
+## Function Usage (Top 10)
+  third             21 times
+  first             20 times
+  +                 19 times
+  min               19 times
+  take              17 times
+  length            17 times
+  %                 17 times
+  max               17 times
+  product           16 times
+  mapi              15 times
+
+## Performance
+  Total Time:          0.41s
+  Avg Time/Program:    13.8ms
+
+============================================================
+Experimenting with empirical composer
+============================================================
+  Generated 10/30 programs...
+  Generated 20/30 programs...
+  Generated 30/30 programs...
+
+============================================================
+Results for empirical
+============================================================
+
+## Generation Quality
+  Type Check Rate:     66.7%
+  Compile Rate:        100.0%
+  Uses Input Rate:     93.3%
+
+## Program Size
+  Average Size:        13.1 nodes
+  Size Range:          [2, 63]
+
+## Program Depth
+  Average Depth:       5.4
+  Depth Range:         [2, 9]
+
+## Variability
+  Average Variability: 0.460
+  High Variability:    50.0%
+
+## Function Usage (Top 10)
+  is_in              5 times
+  unique             4 times
+  filteri            4 times
+  reverse            4 times
+  filter             4 times
+  fold               4 times
+  not                4 times
+  is_even            4 times
+  cons               3 times
+  sort               3 times
+
+## Performance
+  Total Time:          0.12s
+  Avg Time/Program:    4.1ms
+
+============================================================
+Experimenting with template composer
+============================================================
+  Generated 10/30 programs...
+  Generated 20/30 programs...
+  Generated 30/30 programs...
+
+============================================================
+Results for template
+============================================================
+
+## Generation Quality
+  Type Check Rate:     100.0%
+  Compile Rate:        100.0%
+  Uses Input Rate:     100.0%
+
+## Program Size
+  Average Size:        9.4 nodes
+  Size Range:          [5, 24]
+
+## Program Depth
+  Average Depth:       4.5
+  Depth Range:         [3, 7]
+
+## Variability
+  Average Variability: 0.803
+  High Variability:    93.3%
+
+## Function Usage (Top 10)
+  cons               6 times
+  min                6 times
+  singleton          6 times
+  first              5 times
+  map                4 times
+  repeat             4 times
+  max                4 times
+  %                  3 times
+  fold               3 times
+  append             3 times
+
+## Performance
+  Total Time:          0.00s
+  Avg Time/Program:    0.0ms
+
+============================================================
+Experimenting with mcts composer
+============================================================
+  Generated 10/30 programs...
+  Generated 20/30 programs...
+  Generated 30/30 programs...
+
+============================================================
+Results for mcts
+============================================================
+
+## Generation Quality
+  Type Check Rate:     100.0%
+  Compile Rate:        100.0%
+  Uses Input Rate:     96.7%
+
+## Program Size
+  Average Size:        53.2 nodes
+  Size Range:          [2, 104]
+
+## Program Depth
+  Average Depth:       6.6
+  Depth Range:         [2, 7]
+
+## Variability
+  Average Variability: 0.069
+  High Variability:    6.7%
+
+## Function Usage (Top 10)
+  nth               15 times
+  max               15 times
+  concat            12 times
+  length            12 times
+  last              12 times
+  -                 12 times
+  %                 12 times
+  drop              12 times
+  +                 12 times
+  third             11 times
+
+## Performance
+  Total Time:          0.21s
+  Avg Time/Program:    7.1ms
+
+============================================================
+Results for rule
+============================================================
+
+## Generation Quality
+  Type Check Rate:     100.0%
+  Compile Rate:        100.0%
+  Uses Input Rate:     97.2%
+
+## Program Size
+  Average Size:        12.1 nodes
+  Size Range:          [2, 36]
+
+## Program Depth
+  Average Depth:       5.2
+  Depth Range:         [2, 12]
+
+## Variability
+  Average Variability: 0.627
+  High Variability:    66.4%
+
+## Function Usage (Top 10)
+  singleton         60 times
+  first             51 times
+  drop              49 times
+  map               38 times
+  cons              35 times
+  ==                28 times
+  length            25 times
+  last              22 times
+  append            22 times
+  reverse           22 times
+
+## Performance
+  Total Time:          0.00s
+  Avg Time/Program:    0.0ms
+
+============================================================
+Comparison Summary
+============================================================
+
+Metric                       random      empirical       template           mcts           rule
+-----------------------------------------------------------------------------------------------
+Type Check Rate              100.0%          66.7%         100.0%         100.0%         100.0%
+Compile Rate                 100.0%         100.0%         100.0%         100.0%         100.0%
+Uses Input Rate               93.3%          93.3%         100.0%          96.7%          97.2%
+Avg Size                     114.03          13.07           9.43          53.23          12.14
+Avg Depth                      7.00           5.37           4.47           6.63           5.15
+Avg Variability                0.00           0.46           0.80           0.07           0.63
+High Var Rate                  0.0%          50.0%          93.3%           6.7%          66.4%
+Avg Time (ms)                 13.8           4.1           0.0           7.1           0.0
+
+Results saved to media/comparison_results.json
+
+Experiment complete!
+Loading results from media/comparison_results.json
+
+Generating visualizations...
+Output directory: media/comparison_plots
+Saved: media/comparison_plots/comparison_metrics.png
+Saved: media/comparison_plots/size_vs_depth.png
+Saved: media/comparison_plots/function_usage.png
+Saved: media/comparison_plots/variability_distribution.png
+Saved: media/comparison_plots/summary_table.md
+
+✓ Visualization complete!
+  Output directory: media/comparison_plots
