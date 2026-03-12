@@ -5,6 +5,7 @@ from typing import Callable
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 from .policy import PolicyNetwork, encode_states, compute_valid_masks, build_action_vocab
 from .mdp import SynthesisState, Action, Episode, valid_actions
@@ -38,6 +39,7 @@ class TransitionDataset(Dataset):
         self.seed_constants = seed_constants
 
         # Pre-encode all states
+        print(f"  Encoding {len(transitions)} transitions...")
         states = [s for s, _ in transitions]
         self.state_data = encode_states(states, type_vocab, func_vocab)
         self.action_indices = torch.tensor(
@@ -89,7 +91,7 @@ def warm_start(
 
     # Extract all trajectories from corpus programs
     all_transitions = []
-    for prog in corpus:
+    for prog in tqdm(corpus, desc="Extracting trajectories"):
         # Use the program's actual return type to build the correct Callable type
         target_type = Callable[[list[int]], prog.type]
         wrapped = LambdaNode(["x"], prog.ast)
@@ -114,7 +116,8 @@ def warm_start(
         collate_fn=_collate_transitions,
     )
 
-    for epoch in range(epochs):
+    epoch_pbar = tqdm(range(epochs), desc="Warm-start")
+    for epoch in epoch_pbar:
         total_loss = 0.0
         n_batches = 0
         for state_batch, action_indices, valid_masks in loader:
@@ -128,9 +131,8 @@ def warm_start(
             total_loss += loss.item()
             n_batches += 1
 
-        if (epoch + 1) % 10 == 0:
-            avg = total_loss / max(n_batches, 1)
-            print(f"  Epoch {epoch+1}/{epochs}: loss = {avg:.4f}")
+        avg_loss = total_loss / max(n_batches, 1)
+        epoch_pbar.set_postfix(loss=f"{avg_loss:.4f}")
 
 
 def train_rl(
@@ -162,7 +164,8 @@ def train_rl(
 
     stats = {'novel_found': 0, 'total_generated': 0, 'buffer_min': 0.0}
 
-    for iteration in range(n_iterations):
+    pbar = tqdm(range(n_iterations), desc="RL training")
+    for iteration in pbar:
         # === Sampling Phase ===
         for _ in range(episodes_per_iter):
             episode = Episode(policy, grammar, test_suite, seed_constants, max_depth)
@@ -223,12 +226,11 @@ def train_rl(
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
             optimizer.step()
 
-        # === Logging ===
-        if (iteration + 1) % 100 == 0:
-            stats['buffer_min'] = buffer.min_reward()
-            print(
-                f"Iter {iteration+1}: buffer={len(buffer)}, "
-                f"novel={stats['novel_found']}, "
-                f"generated={stats['total_generated']}, "
-                f"buffer_min={stats['buffer_min']:.3f}"
-            )
+        # === Progress bar update ===
+        stats['buffer_min'] = buffer.min_reward()
+        pbar.set_postfix(
+            buf=len(buffer),
+            novel=stats['novel_found'],
+            gen=stats['total_generated'],
+            min_r=f"{stats['buffer_min']:.3f}",
+        )

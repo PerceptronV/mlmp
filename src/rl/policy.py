@@ -217,20 +217,31 @@ def encode_states(
     }
 
 
+def _mask_cache_key(s: SynthesisState) -> tuple:
+    """Cache key: valid actions depend on target_type, context types, and whether depth > 0."""
+    return (s.target_type, frozenset(s.context.items()), s.depth_budget > 0)
+
+
 def compute_valid_masks(
     states: list[SynthesisState] | tuple[SynthesisState, ...],
     grammar: Grammar,
     seed_constants: list[int],
     action_vocab: dict[Action, int],
 ) -> torch.BoolTensor:
-    """Compute valid action masks for a batch of states."""
+    """Compute valid action masks for a batch of states (cached by state signature)."""
     n = len(states)
     vocab_size = len(action_vocab)
     masks = torch.zeros(n, vocab_size, dtype=torch.bool)
 
+    cache: dict[tuple, torch.Tensor] = {}
     for i, s in enumerate(states):
-        for a in valid_actions(s, grammar, seed_constants):
-            if a in action_vocab:
-                masks[i, action_vocab[a]] = True
+        key = _mask_cache_key(s)
+        if key not in cache:
+            row = torch.zeros(vocab_size, dtype=torch.bool)
+            for a in valid_actions(s, grammar, seed_constants):
+                if a in action_vocab:
+                    row[action_vocab[a]] = True
+            cache[key] = row
+        masks[i] = cache[key]
 
     return masks
