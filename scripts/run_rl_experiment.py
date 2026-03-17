@@ -36,6 +36,7 @@ from src.rl.trajectory import extract_trajectory
 from src.rl.reward import compute_reward
 from src.rl.priority_queue import PriorityQueueBuffer
 from src.rl.trainer import warm_start, train_rl
+from src.utils import compute_valid_instantiations
 
 
 def main():
@@ -47,7 +48,7 @@ def main():
                         help="Path to enumerated dataset directory")
     parser.add_argument("--rl-iterations", type=int, default=1000)
     parser.add_argument("--episodes-per-iter", type=int, default=32)
-    parser.add_argument("--rl-max-depth", type=int, default=8)
+    parser.add_argument("--rl-max-depth", type=int, default=16)
     parser.add_argument("--buffer-capacity", type=int, default=50000)
     parser.add_argument("--warm-start-epochs", type=int, default=50)
     args = parser.parse_args()
@@ -56,6 +57,9 @@ def main():
     grammar = DefaultGrammar
     test_suite = DEFAULT_TEST_SUITE
     dataset_dir = Path(args.dataset_dir)
+
+    # Compute valid instantiations once
+    valid_instantiations = compute_valid_instantiations(grammar)
 
     # === Phase 1: Load programs from JSON batches ===
     print("=" * 60)
@@ -121,8 +125,8 @@ def main():
     print("Phase 2: Warm-Start")
     print("=" * 60)
 
-    action_vocab = build_action_vocab(grammar, seed_constants)
-    type_vocab = build_type_vocab(grammar)
+    action_vocab = build_action_vocab(grammar, seed_constants, valid_instantiations)
+    type_vocab = build_type_vocab(grammar, valid_instantiations)
     func_vocab = build_func_vocab(grammar)
 
     policy = PolicyNetwork(
@@ -134,6 +138,7 @@ def main():
     warm_start(
         policy, corpus, grammar, action_vocab, type_vocab, func_vocab,
         seed_constants=seed_constants, epochs=args.warm_start_epochs, batch_size=128,
+        valid_instantiations=valid_instantiations,
     )
 
     # === Phase 3: Seed buffer ===
@@ -143,13 +148,16 @@ def main():
 
     buffer = PriorityQueueBuffer(capacity=args.buffer_capacity)
     corpus_fingerprints: set[Fingerprint] = set()
-    target_type = Callable[[list[int]], list[int]]
 
     seeded = 0
     for prog in tqdm(corpus, desc="Seeding buffer"):
+        target_type = Callable[[list[int]], prog.type]
         wrapped = LambdaNode(["x"], prog.ast)
         try:
-            traj = extract_trajectory(wrapped, target_type, grammar)
+            traj = extract_trajectory(
+                wrapped, target_type, grammar,
+                valid_instantiations=valid_instantiations,
+            )
         except Exception:
             corpus_fingerprints.add(prog.fingerprint)
             continue
@@ -183,6 +191,7 @@ def main():
         lr=1e-4,
         max_depth=args.rl_max_depth,
         seed_constants=seed_constants,
+        valid_instantiations=valid_instantiations,
     )
     rl_time = time.time() - t_rl
 

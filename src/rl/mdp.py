@@ -12,7 +12,9 @@ from ..lang.ast_nodes import (
     LambdaNode, ApplicationNode, ListNode, IfNode,
 )
 from ..lang.type_utils import CallableOrig, get_args, get_origin, TypeType
-from ..utils import resolve_type
+from ..utils import resolve_type, freeze_instantiation, thaw_instantiation
+
+MAX_NESTING_DEPTH = 2
 
 
 class ActionType(Enum):
@@ -30,15 +32,17 @@ class Action:
     """An action in the synthesis MDP. Must be hashable for vocab dict."""
     action_type: ActionType
     payload: Any = None
+    instantiation: tuple | None = None
 
     def __hash__(self):
-        return hash((self.action_type, self.payload))
+        return hash((self.action_type, self.payload, self.instantiation))
 
     def __eq__(self, other):
         return (
             isinstance(other, Action)
             and self.action_type == other.action_type
             and self.payload == other.payload
+            and self.instantiation == other.instantiation
         )
 
 
@@ -61,18 +65,23 @@ class SynthesisState:
     arg_index: int | None = None
     siblings: list[tuple[ASTNode, Any]] = field(default_factory=list)
     depth_budget: int = 8
+    nesting_depth: int = 0
 
 
 def valid_actions(
     state: SynthesisState,
     grammar: Grammar,
     seed_constants: list[int],
+    valid_instantiations: dict | None = None,
 ) -> list[Action]:
     """
     Enumerate all valid actions from the current state.
 
     An action is valid if it can produce a term of state.target_type
     given the current context and depth budget.
+
+    When valid_instantiations is provided, emits one APPLY action per
+    (function, instantiation) pair whose return type matches target_type.
     """
     actions = []
     t = state.target_type
@@ -84,7 +93,7 @@ def valid_actions(
     if t == bool:
         actions.append(Action(ActionType.LITERAL_BOOL, True))
         actions.append(Action(ActionType.LITERAL_BOOL, False))
-    if get_origin(t) == list or t == list:
+    if t in {list[int], list[bool], list[list[int]]}:
         actions.append(Action(ActionType.LITERAL_EMPTY_LIST, None))
 
     # Variables in context with matching type
@@ -94,11 +103,32 @@ def valid_actions(
 
     # Function applications (only if depth budget > 0)
     if state.depth_budget > 0:
-        for func_name in grammar.names:
-            func_info = grammar[func_name]
-            resolved_ret = resolve_type(func_info['ret_type'])
-            if resolved_ret == t:
-                actions.append(Action(ActionType.APPLY, func_name))
+        if valid_instantiations is not None:
+            for func_name in grammar.names:
+                func_info = grammar[func_name]
+                arg_types_raw = func_info['arg_types']
+
+                # Check nesting constraint for higher-order functions
+                is_ho = any(get_origin(at) == CallableOrig for at in arg_types_raw)
+                if is_ho and state.nesting_depth >= MAX_NESTING_DEPTH:
+                    continue
+
+                for inst in valid_instantiations[func_name]:
+                    resolved_ret = resolve_type(func_info['ret_type'], instantiation=inst)
+                    if resolved_ret == t:
+                        frozen = freeze_instantiation(inst)
+                        actions.append(Action(ActionType.APPLY, func_name, frozen))
+        else:
+            # Legacy path: fixed T1=int, T2=int
+            for func_name in grammar.names:
+                func_info = grammar[func_name]
+                resolved_ret = resolve_type(func_info['ret_type'])
+                if resolved_ret == t:
+                    arg_types = func_info['arg_types']
+                    is_ho = any(get_origin(at) == CallableOrig for at in arg_types)
+                    if is_ho and state.nesting_depth >= MAX_NESTING_DEPTH:
+                        continue
+                    actions.append(Action(ActionType.APPLY, func_name))
 
         # If-expression
         actions.append(Action(ActionType.IF, None))
@@ -118,12 +148,14 @@ class Episode:
     top-down. Records the full trajectory for training.
     """
 
-    def __init__(self, policy, grammar, test_suite, seed_constants, max_depth=6):
+    def __init__(self, policy, grammar, test_suite, seed_constants, max_depth=6,
+                 valid_instantiations=None):
         self.policy = policy
         self.grammar = grammar
         self.test_suite = test_suite
         self.seed_constants = seed_constants
         self.max_depth = max_depth
+        self.valid_instantiations = valid_instantiations
         self.trajectory: list[tuple[SynthesisState, Action]] = []
 
     def run(self) -> tuple[ASTNode | None, list[tuple[SynthesisState, Action]]]:
@@ -147,7 +179,9 @@ class Episode:
 
     def _generate(self, state: SynthesisState) -> ASTNode | None:
         """Recursively generate an AST node by querying the policy."""
-        actions = valid_actions(state, self.grammar, self.seed_constants)
+        actions = valid_actions(
+            state, self.grammar, self.seed_constants, self.valid_instantiations,
+        )
         if not actions:
             return None
 
@@ -173,7 +207,12 @@ class Episode:
     def _generate_application(self, state, action):
         func_name = action.payload
         func_info = self.grammar[func_name]
-        arg_types = [resolve_type(t) for t in func_info['arg_types']]
+
+        if action.instantiation is not None:
+            inst = thaw_instantiation(action.instantiation)
+            arg_types = [resolve_type(t, instantiation=inst) for t in func_info['arg_types']]
+        else:
+            arg_types = [resolve_type(t) for t in func_info['arg_types']]
 
         arg_nodes = []
         for i, arg_type in enumerate(arg_types):
@@ -184,6 +223,7 @@ class Episode:
                 arg_index=i,
                 siblings=[(n, None) for n in arg_nodes],
                 depth_budget=state.depth_budget - 1,
+                nesting_depth=state.nesting_depth,
             )
             arg_node = self._generate(child_state)
             if arg_node is None:
@@ -196,7 +236,14 @@ class Episode:
         args = get_args(state.target_type)
         param_types = args[0]
         body_type = args[1]
-        param_names = [f"_p{i}" for i in range(len(param_types))]
+        # Pick fresh param names not already in context
+        param_names = []
+        i = 0
+        while len(param_names) < len(param_types):
+            candidate = f"_p{i}"
+            if candidate not in state.context:
+                param_names.append(candidate)
+            i += 1
 
         new_context = state.context.copy()
         for pname, ptype in zip(param_names, param_types):
@@ -209,6 +256,7 @@ class Episode:
             arg_index=None,
             siblings=[],
             depth_budget=state.depth_budget - 1,
+            nesting_depth=state.nesting_depth + 1,
         )
         body_node = self._generate(body_state)
         if body_node is None:
@@ -223,6 +271,7 @@ class Episode:
             arg_index=None,
             siblings=[],
             depth_budget=state.depth_budget - 1,
+            nesting_depth=state.nesting_depth,
         )
         cond = self._generate(cond_state)
         if cond is None:
@@ -235,6 +284,7 @@ class Episode:
             arg_index=None,
             siblings=[],
             depth_budget=state.depth_budget - 1,
+            nesting_depth=state.nesting_depth,
         )
         then_node = self._generate(then_state)
         if then_node is None:
@@ -247,6 +297,7 @@ class Episode:
             arg_index=None,
             siblings=[],
             depth_budget=state.depth_budget - 1,
+            nesting_depth=state.nesting_depth,
         )
         else_node = self._generate(else_state)
         if else_node is None:

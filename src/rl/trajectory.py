@@ -9,7 +9,25 @@ from ..lang.ast_nodes import (
     LambdaNode, ApplicationNode, ListNode, IfNode,
 )
 from ..lang.type_utils import get_args, TypeType
-from ..utils import resolve_type
+from ..utils import resolve_type, freeze_instantiation
+
+
+def _infer_instantiation(
+    func_name: str,
+    target_ret_type: TypeType,
+    grammar: Grammar,
+    valid_instantiations: dict,
+) -> dict | None:
+    """
+    Given a function and the desired return type, find the instantiation
+    that produces that return type. Takes first match if ambiguous.
+    """
+    func_info = grammar[func_name]
+    for inst in valid_instantiations[func_name]:
+        resolved_ret = resolve_type(func_info['ret_type'], instantiation=inst)
+        if resolved_ret == target_ret_type:
+            return inst
+    return None
 
 
 def extract_trajectory(
@@ -18,6 +36,7 @@ def extract_trajectory(
     grammar: Grammar,
     initial_context: dict[str, TypeType] | None = None,
     initial_depth: int = 8,
+    valid_instantiations: dict | None = None,
 ) -> list[tuple[SynthesisState, Action]]:
     """
     Given a complete program AST, extract the trajectory of (state, action)
@@ -25,6 +44,9 @@ def extract_trajectory(
 
     Programs should be the open term (not lambda-wrapped). The target_type
     should be the full Callable type, e.g. Callable[[list[int]], list[int]].
+
+    When valid_instantiations is provided, APPLY actions carry frozen
+    instantiation tuples inferred from the target return type.
     """
     if initial_context is None:
         initial_context = {}
@@ -47,10 +69,21 @@ def extract_trajectory(
         elif isinstance(node, ApplicationNode):
             if isinstance(node.function, VariableNode):
                 func_name = node.function.name
-                trajectory.append((state, Action(ActionType.APPLY, func_name)))
-
                 func_info = grammar[func_name]
-                arg_types = [resolve_type(t) for t in func_info['arg_types']]
+
+                if valid_instantiations is not None:
+                    inst = _infer_instantiation(
+                        func_name, state.target_type, grammar, valid_instantiations,
+                    )
+                    if inst is None:
+                        # Fallback: use empty instantiation
+                        inst = {}
+                    frozen = freeze_instantiation(inst)
+                    trajectory.append((state, Action(ActionType.APPLY, func_name, frozen)))
+                    arg_types = [resolve_type(t, instantiation=inst) for t in func_info['arg_types']]
+                else:
+                    trajectory.append((state, Action(ActionType.APPLY, func_name)))
+                    arg_types = [resolve_type(t) for t in func_info['arg_types']]
 
                 generated_siblings = []
                 for i, (arg_node, arg_type) in enumerate(zip(node.arguments, arg_types)):
@@ -61,6 +94,7 @@ def extract_trajectory(
                         arg_index=i,
                         siblings=list(generated_siblings),
                         depth_budget=state.depth_budget - 1,
+                        nesting_depth=state.nesting_depth,
                     )
                     _walk(arg_node, child_state)
                     generated_siblings.append((arg_node, None))
@@ -83,6 +117,7 @@ def extract_trajectory(
                 arg_index=None,
                 siblings=[],
                 depth_budget=state.depth_budget - 1,
+                nesting_depth=state.nesting_depth + 1,
             )
             _walk(node.body, body_state)
 
@@ -96,6 +131,7 @@ def extract_trajectory(
                 arg_index=None,
                 siblings=[],
                 depth_budget=state.depth_budget - 1,
+                nesting_depth=state.nesting_depth,
             )
             _walk(node.condition, cond_state)
 
@@ -106,6 +142,7 @@ def extract_trajectory(
                 arg_index=None,
                 siblings=[],
                 depth_budget=state.depth_budget - 1,
+                nesting_depth=state.nesting_depth,
             )
             _walk(node.then_expr, then_state)
 
@@ -116,6 +153,7 @@ def extract_trajectory(
                 arg_index=None,
                 siblings=[],
                 depth_budget=state.depth_budget - 1,
+                nesting_depth=state.nesting_depth,
             )
             _walk(node.else_expr, else_state)
 

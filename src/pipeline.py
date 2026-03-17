@@ -17,6 +17,7 @@ from .rl.trajectory import extract_trajectory
 from .rl.reward import compute_reward
 from .rl.priority_queue import PriorityQueueBuffer
 from .rl.trainer import warm_start, train_rl
+from .utils import compute_valid_instantiations
 
 
 def save_corpus(corpus: list[TypedProgram], path: str):
@@ -47,6 +48,7 @@ def run_pipeline(
     grammar: Grammar = DefaultGrammar,
     enum_max_size: int = 5,
     enum_min_variability: float = 0.3,
+    enum_max_nesting: int = 1,
     rl_iterations: int = 10000,
     rl_max_depth: int = 8,
     buffer_capacity: int = 5000,
@@ -61,6 +63,9 @@ def run_pipeline(
 
     test_suite = DEFAULT_TEST_SUITE
 
+    # Compute valid instantiations once for the whole pipeline
+    valid_instantiations = compute_valid_instantiations(grammar)
+
     # === Phase 1: Enumeration ===
     print("=" * 60)
     print("Phase 1: Bottom-Up Enumeration")
@@ -72,6 +77,7 @@ def run_pipeline(
         seed_constants=seed_constants,
         max_size=enum_max_size,
         min_variability=enum_min_variability,
+        max_nesting=enum_max_nesting,
     )
     bank = enumerator.enumerate()
     corpus = enumerator.extract_corpus(min_variability=enum_min_variability)
@@ -87,8 +93,8 @@ def run_pipeline(
     print("Phase 2: Warm-Start via Behavioural Cloning")
     print("=" * 60)
 
-    action_vocab = build_action_vocab(grammar, seed_constants)
-    type_vocab = build_type_vocab(grammar)
+    action_vocab = build_action_vocab(grammar, seed_constants, valid_instantiations)
+    type_vocab = build_type_vocab(grammar, valid_instantiations)
     func_vocab = build_func_vocab(grammar)
 
     policy = PolicyNetwork(
@@ -100,6 +106,7 @@ def run_pipeline(
     warm_start(
         policy, corpus, grammar, action_vocab, type_vocab, func_vocab,
         seed_constants=seed_constants,
+        valid_instantiations=valid_instantiations,
     )
 
     # Seed the priority queue buffer with the enumeration corpus
@@ -110,7 +117,10 @@ def run_pipeline(
         target_type = Callable[[list[int]], prog.type]
         wrapped = LambdaNode(["x"], prog.ast)
         try:
-            traj = extract_trajectory(wrapped, target_type, grammar)
+            traj = extract_trajectory(
+                wrapped, target_type, grammar,
+                valid_instantiations=valid_instantiations,
+            )
         except Exception:
             corpus_fingerprints.add(prog.fingerprint)
             continue
@@ -137,6 +147,7 @@ def run_pipeline(
         n_iterations=rl_iterations,
         max_depth=rl_max_depth,
         seed_constants=seed_constants,
+        valid_instantiations=valid_instantiations,
     )
 
     # === Final Output ===

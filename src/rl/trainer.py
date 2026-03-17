@@ -1,11 +1,14 @@
 """Training loops: behavioural cloning warm-start and priority queue RL."""
 
+import logging
 from typing import Callable
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 from .policy import PolicyNetwork, encode_states, compute_valid_masks, build_action_vocab
 from .mdp import SynthesisState, Action, Episode, valid_actions
@@ -30,6 +33,7 @@ class TransitionDataset(Dataset):
         func_vocab: dict,
         grammar: Grammar,
         seed_constants: list[int],
+        valid_instantiations: dict | None = None,
     ):
         self.transitions = transitions
         self.action_vocab = action_vocab
@@ -37,16 +41,28 @@ class TransitionDataset(Dataset):
         self.func_vocab = func_vocab
         self.grammar = grammar
         self.seed_constants = seed_constants
+        self.valid_instantiations = valid_instantiations
+
+        # Filter out transitions whose action is missing from vocab
+        n_before = len(transitions)
+        transitions = [(s, a) for s, a in transitions if a in action_vocab]
+        n_dropped = n_before - len(transitions)
+        if n_dropped:
+            logger.warning(
+                f"Dropped {n_dropped}/{n_before} transitions with unknown actions"
+            )
+        self.transitions = transitions
 
         # Pre-encode all states
         print(f"  Encoding {len(transitions)} transitions...")
         states = [s for s, _ in transitions]
         self.state_data = encode_states(states, type_vocab, func_vocab)
         self.action_indices = torch.tensor(
-            [action_vocab.get(a, 0) for _, a in transitions], dtype=torch.long,
+            [action_vocab[a] for _, a in transitions], dtype=torch.long,
         )
         self.valid_masks = compute_valid_masks(
             states, grammar, seed_constants, action_vocab,
+            valid_instantiations=valid_instantiations,
         )
 
     def __len__(self):
@@ -77,6 +93,7 @@ def warm_start(
     epochs: int = 50,
     batch_size: int = 64,
     lr: float = 1e-3,
+    valid_instantiations: dict | None = None,
 ):
     """
     Pre-train the policy via behavioural cloning on the enumeration corpus.
@@ -96,7 +113,10 @@ def warm_start(
         target_type = Callable[[list[int]], prog.type]
         wrapped = LambdaNode(["x"], prog.ast)
         try:
-            traj = extract_trajectory(wrapped, target_type, grammar)
+            traj = extract_trajectory(
+                wrapped, target_type, grammar,
+                valid_instantiations=valid_instantiations,
+            )
             all_transitions.extend(traj)
         except Exception:
             continue  # Skip programs that fail trajectory extraction
@@ -110,6 +130,7 @@ def warm_start(
     dataset = TransitionDataset(
         all_transitions, action_vocab, type_vocab, func_vocab,
         grammar, seed_constants,
+        valid_instantiations=valid_instantiations,
     )
     loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=True,
@@ -151,6 +172,7 @@ def train_rl(
     lr: float = 1e-4,
     max_depth: int = 8,
     seed_constants: list[int] | None = None,
+    valid_instantiations: dict | None = None,
 ):
     """Main RL training loop with priority queue training."""
     if seed_constants is None:
@@ -160,7 +182,10 @@ def train_rl(
     jit = JITCompiler(grammar)
 
     # Ensure policy is set up for inference
-    policy.setup_for_inference(action_vocab, type_vocab, func_vocab, grammar, seed_constants)
+    policy.setup_for_inference(
+        action_vocab, type_vocab, func_vocab, grammar, seed_constants,
+        valid_instantiations=valid_instantiations,
+    )
 
     stats = {'novel_found': 0, 'total_generated': 0, 'buffer_min': 0.0}
 
@@ -168,7 +193,10 @@ def train_rl(
     for iteration in pbar:
         # === Sampling Phase ===
         for _ in range(episodes_per_iter):
-            episode = Episode(policy, grammar, test_suite, seed_constants, max_depth)
+            episode = Episode(
+                policy, grammar, test_suite, seed_constants, max_depth,
+                valid_instantiations=valid_instantiations,
+            )
             ast, trajectory = episode.run()
             stats['total_generated'] += 1
 
@@ -198,7 +226,8 @@ def train_rl(
             all_transitions = []
             for reward, program, trajectory in batch:
                 for state, action in trajectory:
-                    all_transitions.append((state, action, reward))
+                    if action in action_vocab:
+                        all_transitions.append((state, action, reward))
 
             if not all_transitions:
                 continue
@@ -206,11 +235,12 @@ def train_rl(
             states, actions, rewards = zip(*all_transitions)
             state_batch = encode_states(states, type_vocab, func_vocab)
             action_indices = torch.tensor(
-                [action_vocab.get(a, 0) for a in actions], dtype=torch.long,
+                [action_vocab[a] for a in actions], dtype=torch.long,
             )
             reward_weights = torch.tensor(rewards, dtype=torch.float32)
             valid_masks = compute_valid_masks(
                 states, grammar, seed_constants, action_vocab,
+                valid_instantiations=valid_instantiations,
             )
 
             log_probs = policy(state_batch, valid_masks)
