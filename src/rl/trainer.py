@@ -102,7 +102,7 @@ def warm_start(
     policy to predict each action given the corresponding state.
     """
     if seed_constants is None:
-        seed_constants = [0, 1, 2, 3]
+        seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
 
@@ -176,7 +176,7 @@ def train_rl(
 ):
     """Main RL training loop with priority queue training."""
     if seed_constants is None:
-        seed_constants = [0, 1, 2, 3]
+        seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
     jit = JITCompiler(grammar)

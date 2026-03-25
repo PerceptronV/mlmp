@@ -176,11 +176,11 @@ class BottomUpEnumerator:
         min_variability: float = 0.3,
         input_var_name: str = "x",
         input_type: TypeType = list[int],
-        max_nesting: int = 1,
+        max_nesting: int = 2,
     ):
         self.grammar = grammar
         self.test_suite = test_suite if test_suite is not None else DEFAULT_TEST_SUITE
-        self.seed_constants = seed_constants if seed_constants is not None else [0, 1, 2, 3]
+        self.seed_constants = seed_constants if seed_constants is not None else [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         self.max_size = max_size
         self.min_variability = min_variability
         self.input_var_name = input_var_name
@@ -515,7 +515,7 @@ class BottomUpEnumerator:
 
                     # Skip higher-order functions if at max nesting
                     # nesting_depth tracks current lambda depth (1 = first lambda body)
-                    # max_nesting=1 means allow HOFs at depth 1 but not depth 2
+                    # max_nesting=2 means allow HOFs at depth 1 and 2 but not depth 3
                     if ho_indices and nesting_depth > self.max_nesting:
                         continue
 

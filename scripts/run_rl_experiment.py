@@ -53,7 +53,7 @@ def main():
     parser.add_argument("--warm-start-epochs", type=int, default=50)
     args = parser.parse_args()
 
-    seed_constants = [0, 1, 2, 3]
+    seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     grammar = DefaultGrammar
     test_suite = DEFAULT_TEST_SUITE
     dataset_dir = Path(args.dataset_dir)

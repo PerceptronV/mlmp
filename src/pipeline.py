@@ -48,7 +48,7 @@ def run_pipeline(
     grammar: Grammar = DefaultGrammar,
     enum_max_size: int = 5,
     enum_min_variability: float = 0.3,
-    enum_max_nesting: int = 1,
+    enum_max_nesting: int = 2,
     rl_iterations: int = 10000,
     rl_max_depth: int = 8,
     buffer_capacity: int = 5000,
@@ -59,7 +59,7 @@ def run_pipeline(
     Full pipeline: enumeration -> warm-start -> RL exploration.
     """
     if seed_constants is None:
-        seed_constants = [0, 1, 2, 3]
+        seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     test_suite = DEFAULT_TEST_SUITE
 
