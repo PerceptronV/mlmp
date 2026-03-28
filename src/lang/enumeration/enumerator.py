@@ -5,13 +5,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Iterator
 
-from ..lang.grammar import Grammar, DefaultGrammar, T1, T2
-from ..lang.ast_nodes import (
+from ..grammar import Grammar, DefaultGrammar, T1, T2
+from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode,
 )
-from ..lang.compiler import JITCompiler
-from ..lang.type_utils import (
+from ..compiler import JITCompiler
+from ..type_utils import (
     CallableOrig, get_args, get_origin,
     SubstitutionTable, substitute_type_vars, matchable, TypeType,
 )

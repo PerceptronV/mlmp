@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from ..lang.compiler import JITCompiler
-from ..lang.ast_nodes import ASTNode, LambdaNode
+from ..compiler import JITCompiler
+from ..ast_nodes import ASTNode, LambdaNode
 
 
 DEFAULT_TEST_SUITE: list[list[int]] = [

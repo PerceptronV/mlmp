@@ -54,21 +54,21 @@ from typing import Callable
 
 from tqdm import tqdm
 
-from src.enumeration.fingerprint import Fingerprint, compute_fingerprint
-from src.enumeration.test_suite import DEFAULT_TEST_SUITE
+from src.lang.enumeration.fingerprint import Fingerprint, compute_fingerprint
+from src.lang.enumeration.test_suite import DEFAULT_TEST_SUITE
 from src.lang.grammar import DefaultGrammar
 from src.lang.ast_nodes import ASTNode, NumberNode, LambdaNode
 from src.lang.parser import parse
 from src.lang.compiler import JITCompiler
-from src.rl.policy import (
+from src.lang.rl.policy import (
     PolicyNetwork, build_action_vocab, build_type_vocab, build_func_vocab,
 )
-from src.rl.trajectory import extract_trajectory
-from src.rl.mdp import valid_actions
-from src.rl.reward import compute_reward
-from src.rl.priority_queue import PriorityQueueBuffer
-from src.rl.trainer import warm_start, train_rl
-from src.enumeration.enumerator import TypedProgram
+from src.lang.rl.trajectory import extract_trajectory
+from src.lang.rl.mdp import valid_actions
+from src.lang.rl.reward import compute_reward
+from src.lang.rl.priority_queue import PriorityQueueBuffer
+from src.lang.rl.trainer import warm_start, train_rl
+from src.lang.enumeration.enumerator import TypedProgram
 
 
 def collect_constants(node: ASTNode) -> set[int]:

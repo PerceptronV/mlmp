@@ -3,7 +3,7 @@
 import heapq
 import random
 
-from ..lang.ast_nodes import ASTNode
+from ..ast_nodes import ASTNode
 from ..enumeration.fingerprint import Fingerprint
 
 

@@ -3,12 +3,12 @@
 from typing import Callable
 
 from .mdp import SynthesisState, Action, ActionType
-from ..lang.grammar import Grammar
-from ..lang.ast_nodes import (
+from ..grammar import Grammar
+from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode,
 )
-from ..lang.type_utils import get_args, TypeType
+from ..type_utils import get_args, TypeType
 from ..utils import resolve_type, freeze_instantiation
 
 
@@ -76,8 +76,10 @@ def extract_trajectory(
                         func_name, state.target_type, grammar, valid_instantiations,
                     )
                     if inst is None:
-                        # Fallback: use empty instantiation
-                        inst = {}
+                        raise ValueError(
+                            f"No instantiation of '{func_name}' produces "
+                            f"return type {state.target_type}"
+                        )
                     frozen = freeze_instantiation(inst)
                     trajectory.append((state, Action(ActionType.APPLY, func_name, frozen)))
                     arg_types = [resolve_type(t, instantiation=inst) for t in func_info['arg_types']]

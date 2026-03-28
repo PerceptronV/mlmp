@@ -4,9 +4,9 @@ import json
 import os
 from typing import Callable
 
-from .lang.grammar import Grammar, DefaultGrammar
-from .lang.ast_nodes import ASTNode, LambdaNode
-from .lang.compiler import JITCompiler
+from .grammar import Grammar, DefaultGrammar
+from .ast_nodes import ASTNode, LambdaNode
+from .compiler import JITCompiler
 from .enumeration.enumerator import BottomUpEnumerator, TypedProgram
 from .enumeration.test_suite import DEFAULT_TEST_SUITE
 from .enumeration.fingerprint import Fingerprint

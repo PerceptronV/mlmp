@@ -15,9 +15,9 @@ from .mdp import SynthesisState, Action, Episode, valid_actions
 from .trajectory import extract_trajectory
 from .reward import compute_reward
 from .priority_queue import PriorityQueueBuffer
-from ..lang.grammar import Grammar
-from ..lang.ast_nodes import LambdaNode
-from ..lang.compiler import JITCompiler
+from ..grammar import Grammar
+from ..ast_nodes import LambdaNode
+from ..compiler import JITCompiler
 from ..enumeration.fingerprint import Fingerprint, compute_fingerprint
 from ..enumeration.enumerator import TypedProgram
 
@@ -211,8 +211,8 @@ def train_rl(
 
             reward = compute_reward(fp, corpus_fingerprints)
             if reward > 0:
-                inserted = buffer.insert(reward, closed_ast, trajectory, fp)
-                if inserted and fp not in corpus_fingerprints:
+                buffer.insert(reward, closed_ast, trajectory, fp)
+                if fp not in corpus_fingerprints:
                     corpus_fingerprints.add(fp)
                     stats['novel_found'] += 1
 

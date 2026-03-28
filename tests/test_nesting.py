@@ -3,26 +3,26 @@
 import pytest
 from typing import Callable
 
-from src.enumeration.enumerator import (
+from src.lang.enumeration.enumerator import (
     BottomUpEnumerator, ProgramBank, ContextualBank, TypedProgram,
     _fresh_param_names, PROBE_VALUES,
 )
-from src.enumeration.fingerprint import Fingerprint, FingerprintTable
-from src.enumeration.test_suite import DEFAULT_TEST_SUITE
+from src.lang.enumeration.fingerprint import Fingerprint, FingerprintTable
+from src.lang.enumeration.test_suite import DEFAULT_TEST_SUITE
 from src.lang.grammar import DefaultGrammar
 from src.lang.ast_nodes import (
     VariableNode, NumberNode, ApplicationNode, LambdaNode,
 )
 from src.lang.type_utils import CallableOrig, get_origin
-from src.rl.mdp import (
+from src.lang.rl.mdp import (
     SynthesisState, Action, ActionType, valid_actions, MAX_NESTING_DEPTH,
 )
-from src.rl.trajectory import extract_trajectory
-from src.rl.policy import (
+from src.lang.rl.trajectory import extract_trajectory
+from src.lang.rl.policy import (
     StateEncoder, encode_states, build_type_vocab, build_func_vocab,
     build_action_vocab,
 )
-from src.utils import resolve_type
+from src.lang.utils import resolve_type
 
 
 # ─── ContextualBank tests ───────────────────────────────────────────

@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .mdp import SynthesisState, Action, ActionType, valid_actions
-from ..lang.grammar import Grammar
-from ..lang.type_utils import CallableOrig, TypeType
+from ..grammar import Grammar
+from ..type_utils import CallableOrig, TypeType
 from ..utils import resolve_type, freeze_instantiation, TYPE_UNIVERSE
 
 

@@ -3,15 +3,15 @@
 import itertools
 from typing import TypeVar
 
-from .lang.ast_nodes import (
+from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode,
 )
-from .lang.type_utils import (
+from .type_utils import (
     SubstitutionTable, substitute_type_vars, TypeType,
     CallableOrig, get_origin, get_free_types,
 )
-from .lang.grammar import T1, T2
+from .grammar import T1, T2
 
 # ---------------------------------------------------------------------------
 # Type universe constants

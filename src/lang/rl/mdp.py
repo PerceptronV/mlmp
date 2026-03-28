@@ -6,12 +6,12 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable
 
-from ..lang.grammar import Grammar
-from ..lang.ast_nodes import (
+from ..grammar import Grammar
+from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode,
 )
-from ..lang.type_utils import CallableOrig, get_args, get_origin, TypeType
+from ..type_utils import CallableOrig, get_args, get_origin, TypeType
 from ..utils import resolve_type, freeze_instantiation, thaw_instantiation
 
 MAX_NESTING_DEPTH = 2
