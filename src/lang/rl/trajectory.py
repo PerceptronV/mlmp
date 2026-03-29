@@ -6,7 +6,7 @@ from .mdp import SynthesisState, Action, ActionType
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, ListNode, IfNode,
+    LambdaNode, ApplicationNode, ListNode, IfNode, IntHoleNode,
 )
 from ..type_utils import get_args, TypeType
 from ..utils import resolve_type, freeze_instantiation
@@ -54,7 +54,10 @@ def extract_trajectory(
     trajectory: list[tuple[SynthesisState, Action]] = []
 
     def _walk(node: ASTNode, state: SynthesisState):
-        if isinstance(node, NumberNode):
+        if isinstance(node, IntHoleNode):
+            trajectory.append((state, Action(ActionType.INT_HOLE, None)))
+
+        elif isinstance(node, NumberNode):
             trajectory.append((state, Action(ActionType.LITERAL_INT, node.value)))
 
         elif isinstance(node, BooleanNode):

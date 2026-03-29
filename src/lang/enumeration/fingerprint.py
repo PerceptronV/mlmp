@@ -82,7 +82,7 @@ def compute_fingerprint(
         Fingerprint or None if compilation fails
     """
     try:
-        compiled = jit.compile(closed_ast)
+        compiled, _ = jit.compile(closed_ast)
     except Exception:
         return None
 

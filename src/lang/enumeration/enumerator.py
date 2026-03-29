@@ -8,14 +8,14 @@ from typing import Iterator
 from ..grammar import Grammar, DefaultGrammar, T1, T2
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, ListNode,
+    LambdaNode, ApplicationNode, ListNode, IntHoleNode,
 )
 from ..compiler import JITCompiler
 from ..type_utils import (
     CallableOrig, get_args, get_origin,
     SubstitutionTable, substitute_type_vars, matchable, TypeType,
 )
-from ..utils import program_size, resolve_type, compute_valid_instantiations, PROBE_VALUES
+from ..utils import program_size, resolve_type, compute_valid_instantiations, PROBE_VALUES, RANDINT_PROBE_SEQUENCE
 from .fingerprint import Fingerprint, FingerprintTable, make_hashable, FAIL, compute_fingerprint
 from .filters import passes_quality_filter
 from .test_suite import DEFAULT_TEST_SUITE
@@ -28,6 +28,7 @@ class TypedProgram:
     type: TypeType
     fingerprint: Fingerprint | None
     size: int
+    substitution: list[int] | None = None
 
 
 class ProgramBank:
@@ -204,10 +205,9 @@ class BottomUpEnumerator:
 
     def _enumerate_base_case(self):
         """Populate the bank with all size-1 atoms."""
-        # Integer constants
-        for c in self.seed_constants:
-            node = NumberNode(c)
-            self._try_add(node, int, size=1)
+        # Integer hole (replaces concrete integer constant seeds)
+        hole_node = IntHoleNode()
+        self._try_add(hole_node, int, size=1)
 
         # Boolean constants
         for b in [True, False]:
@@ -265,7 +265,7 @@ class BottomUpEnumerator:
         closed = LambdaNode([self.input_var_name], closed)
 
         try:
-            compiled = self.jit.compile(closed)
+            compiled, _ = self.jit.compile(closed)
         except Exception:
             return None
 

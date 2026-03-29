@@ -192,7 +192,7 @@ class ListNode(ASTNode):
 class IfNode(ASTNode):
     """
     Represents a conditional expression: (if condition then_expr else_expr)
-    
+
     Note: While 'if' could be treated as a regular function, we give it
     special treatment for potential optimisations and clarity.
     """
@@ -200,10 +200,10 @@ class IfNode(ASTNode):
     then_expr: ASTNode
     else_expr: ASTNode
     ast_type: str = "If"
-        
+
     def __repr__(self) -> str:
         return f"If({self.condition}, {self.then_expr}, {self.else_expr})"
-    
+
     def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
         if inline:
             cond_str = self.condition.pretty_print(0, True)
@@ -217,7 +217,7 @@ class IfNode(ASTNode):
             result += self.else_expr.pretty_print(indent + 1, False) + "\n"
             result += f"  " * indent + ")"
             return result
-    
+
     def function_names(self) -> Set[str]:
         fn = set()
         fn.update(self.condition.function_names())
@@ -226,9 +226,24 @@ class IfNode(ASTNode):
         return fn
 
 
+@dataclass
+class IntHoleNode(ASTNode):
+    """An integer hole: a position to be filled with a concrete integer."""
+    ast_type: str = "IntHole"
+
+    def __repr__(self) -> str:
+        return "int_hole"
+
+    def pretty_print(self, indent: int = 0, inline: bool = True) -> str:
+        return "int_hole" if inline else "  " * indent + "int_hole"
+
+    def function_names(self) -> Set[str]:
+        return set()
+
+
 # Type alias for any AST expression
-Expression = Union[NumberNode, BooleanNode, VariableNode, LambdaNode, 
-                   ApplicationNode, ListNode, IfNode]
+Expression = Union[NumberNode, BooleanNode, VariableNode, LambdaNode,
+                   ApplicationNode, ListNode, IfNode, IntHoleNode]
 
 
 def pretty_print(node: ASTNode, indent: int = 0, inline: bool = True) -> str:

@@ -5,7 +5,7 @@ from typing import TypeVar
 
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, ListNode, IfNode,
+    LambdaNode, ApplicationNode, ListNode, IfNode, IntHoleNode,
 )
 from .type_utils import (
     SubstitutionTable, substitute_type_vars, TypeType,
@@ -27,6 +27,10 @@ PROBE_VALUES = {
     list[int]: [[], [1], [2, 1, 3]],
     list[bool]: [[], [True], [True, False]],
 }
+
+RANDINT_PROBE_SEQUENCE: list[int] = [5, 3, 7, 2, 9, 0, 8, 1, 6, 4]
+
+Substitution = list[int]  # hole values indexed by pre-order traversal position
 
 # ---------------------------------------------------------------------------
 # Instantiation helpers
@@ -98,7 +102,7 @@ def program_size(node: ASTNode) -> int:
     For ApplicationNode, the function name is subsumed into the node cost of 1,
     so (length x) = 1 + 1 = 2, (+ x 1) = 1 + 1 + 1 = 3.
     """
-    if isinstance(node, (NumberNode, BooleanNode, VariableNode)):
+    if isinstance(node, (NumberNode, BooleanNode, VariableNode, IntHoleNode)):
         return 1
     elif isinstance(node, ListNode):
         if not node.elements:
@@ -120,7 +124,7 @@ def free_variables(node: ASTNode, bound: set[str] | None = None) -> set[str]:
     if bound is None:
         bound = set()
 
-    if isinstance(node, (NumberNode, BooleanNode)):
+    if isinstance(node, (NumberNode, BooleanNode, IntHoleNode)):
         return set()
     elif isinstance(node, VariableNode):
         return set() if node.name in bound else {node.name}

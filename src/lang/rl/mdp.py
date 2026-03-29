@@ -9,7 +9,7 @@ from typing import Any, Callable
 from ..grammar import Grammar
 from ..ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, ListNode, IfNode,
+    LambdaNode, ApplicationNode, ListNode, IfNode, IntHoleNode,
 )
 from ..type_utils import CallableOrig, get_args, get_origin, TypeType
 from ..utils import resolve_type, freeze_instantiation, thaw_instantiation
@@ -25,6 +25,7 @@ class ActionType(Enum):
     APPLY = auto()
     LAMBDA = auto()
     IF = auto()
+    INT_HOLE = auto()
 
 
 @dataclass(frozen=True)
@@ -88,8 +89,7 @@ def valid_actions(
 
     # Literals
     if t == int:
-        for c in seed_constants:
-            actions.append(Action(ActionType.LITERAL_INT, c))
+        actions.append(Action(ActionType.INT_HOLE, None))
     if t == bool:
         actions.append(Action(ActionType.LITERAL_BOOL, True))
         actions.append(Action(ActionType.LITERAL_BOOL, False))
@@ -190,6 +190,8 @@ class Episode:
 
         if action.action_type == ActionType.LITERAL_INT:
             return NumberNode(action.payload)
+        elif action.action_type == ActionType.INT_HOLE:
+            return IntHoleNode()
         elif action.action_type == ActionType.LITERAL_BOOL:
             return BooleanNode(action.payload)
         elif action.action_type == ActionType.LITERAL_EMPTY_LIST:

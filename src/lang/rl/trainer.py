@@ -16,10 +16,11 @@ from .trajectory import extract_trajectory
 from .reward import compute_reward
 from .priority_queue import PriorityQueueBuffer
 from ..grammar import Grammar
-from ..ast_nodes import LambdaNode
+from ..ast_nodes import LambdaNode, IntHoleNode
 from ..compiler import JITCompiler
-from ..enumeration.fingerprint import Fingerprint, compute_fingerprint
+from ..enumeration.fingerprint import Fingerprint, FingerprintTable, make_hashable, FAIL, compute_fingerprint
 from ..enumeration.enumerator import TypedProgram
+from ..utils import RANDINT_PROBE_SEQUENCE
 
 
 class TransitionDataset(Dataset):
@@ -80,6 +81,78 @@ def _collate_transitions(batch):
     for key in state_dicts[0]:
         collated_state[key] = torch.stack([s[key] for s in state_dicts])
     return collated_state, torch.stack(action_indices), torch.stack(valid_masks)
+
+
+def _count_holes(node) -> int:
+    """Count the number of IntHoleNodes in an AST via pre-order traversal."""
+    if isinstance(node, IntHoleNode):
+        return 1
+    elif hasattr(node, '__dataclass_fields__'):
+        total = 0
+        for field_name in node.__dataclass_fields__:
+            child = getattr(node, field_name)
+            if hasattr(child, 'ast_type'):  # ASTNode
+                total += _count_holes(child)
+            elif isinstance(child, list):
+                for item in child:
+                    if hasattr(item, 'ast_type'):  # ASTNode
+                        total += _count_holes(item)
+        return total
+    return 0
+
+
+def _fill_in_sketch(
+    sketch_ast,
+    seed_constants: list[int],
+    test_suite: list,
+    jit: JITCompiler,
+    known_fingerprints: set,
+    n_samples: int = 10,
+):
+    """
+    Given a sketch AST (which may contain IntHoleNodes), sample substitutions
+    and return the best (fn, concrete_ast, fp) by reward.
+
+    Returns (fn, concrete_ast, fp) or (None, None, None) if all attempts fail.
+    """
+    import random
+    from ..rl.reward import compute_reward
+
+    k = _count_holes(sketch_ast)
+    if k == 0:
+        # No holes — compile directly and fingerprint via probe sequence
+        try:
+            fn, concrete_ast = jit.compile(sketch_ast)
+            return fn, concrete_ast, None  # caller will fingerprint
+        except Exception:
+            return None, None, None
+
+    best_reward = -1
+    best_fn = None
+    best_ast = None
+    best_fp = None
+
+    for _ in range(n_samples):
+        sigma = [random.choice(seed_constants) for _ in range(k)]
+        try:
+            fn, concrete_ast = jit.compile(sketch_ast, sigma)
+            outputs = []
+            for inp in test_suite:
+                try:
+                    outputs.append(make_hashable(fn(inp)))
+                except Exception:
+                    outputs.append(FAIL)
+            fp = Fingerprint(tuple(outputs))
+            reward = compute_reward(fp, known_fingerprints)
+            if reward > best_reward:
+                best_reward = reward
+                best_fn = fn
+                best_ast = concrete_ast
+                best_fp = fp
+        except Exception:
+            continue
+
+    return best_fn, best_ast, best_fp
 
 
 def warm_start(
@@ -197,20 +270,32 @@ def train_rl(
                 policy, grammar, test_suite, seed_constants, max_depth,
                 valid_instantiations=valid_instantiations,
             )
-            ast, trajectory = episode.run()
+            sketch_ast, trajectory = episode.run()
             stats['total_generated'] += 1
 
-            if ast is None:
+            if sketch_ast is None:
                 continue
 
-            # Wrap in lambda and fingerprint
-            closed_ast = LambdaNode(["x"], ast) if not isinstance(ast, LambdaNode) else ast
-            fp = compute_fingerprint(closed_ast, test_suite, jit)
+            # Wrap sketch in lambda for fingerprinting context
+            sketch_lambda = LambdaNode(["x"], sketch_ast) if not isinstance(sketch_ast, LambdaNode) else sketch_ast
+
+            # Fill integer holes and pick best substitution by reward
+            _fn, concrete_body, fp = _fill_in_sketch(
+                sketch_lambda, seed_constants, test_suite, jit,
+                corpus_fingerprints, n_samples=10,
+            )
+
+            if fp is None:
+                # No holes: fall back to probe-based fingerprint
+                fp = compute_fingerprint(sketch_lambda, test_suite, jit)
+                concrete_body = sketch_lambda
+
             if fp is None:
                 continue
 
             reward = compute_reward(fp, corpus_fingerprints)
             if reward > 0:
+                closed_ast = concrete_body if concrete_body is not None else sketch_lambda
                 buffer.insert(reward, closed_ast, trajectory, fp)
                 if fp not in corpus_fingerprints:
                     corpus_fingerprints.add(fp)

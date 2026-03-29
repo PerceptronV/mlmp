@@ -187,7 +187,7 @@ containing exactly one representative per observational equivalence class:
 
 The bank is seeded with size-1 expressions:
 \begin{itemize}
-  \item \textbf{Integer constants} $c \in C_{\text{seed}}$ of type $\mathrm{int}$
+  \item \textbf{Integer hole} $\square_{\mathbb{Z}}$ of type $\mathrm{int}$ (see Integer Holes below)
   \item \textbf{Boolean constants} $\top, \bot$ of type $\mathrm{bool}$
   \item \textbf{Empty lists} $[\,]$ of type $\mathrm{list}[\sigma]$ for each list type $\sigma$
   \item \textbf{Input variable} $x : \mathrm{list}[\mathrm{int}]$ (since all of our
@@ -195,6 +195,33 @@ The bank is seeded with size-1 expressions:
         this is the variable that will be bound to the input list in a program like
         \texttt{length x})
 \end{itemize}
+
+\subsection{Integer Holes}
+
+Instead of seeding a fixed set of integer literals $C_{\text{seed}} = \{0,\ldots,10\}$,
+the base case includes a single \textbf{integer hole} $\square_{\mathbb{Z}}$ of type
+$\mathrm{int}$. A hole is an uninstantiated integer position; its concrete value is
+determined by a \textbf{substitution} $\sigma$, an ordered list of integers indexed by
+pre-order traversal position in the AST. Therefore, concrete programs are a tuple $(\pi, \sigma)$ where $\pi$ is a valid program sketch and $\sigma$ is the substitution of concrete values for the integer holes. This allows us to enumerate / diversify programs involving integer constants much more efficiently.
+
+\paragraph{Fingerprinting.}
+To compute the fingerprint of a sketch $\pi$ containing $k$ holes, the compiler
+substitutes the $i$-th hole (in pre-order) with
+$\mathrm{PROBE}[i \bmod |\mathrm{PROBE}|]$ where we arbitrarily chose the random sequence
+\[
+  \mathrm{PROBE} = [5, 3, 7, 2, 9, 0, 8, 1, 6, 4].
+\]
+The resulting fingerprint has length $m$ (same as concrete programs). Two sketches
+that produce identical outputs under the probe substitution are considered
+observationally equivalent and deduplicated. False equivalences are possible but
+rare given the diversity of the test suite.
+
+\paragraph{Corpus expansion.}
+After enumeration, a sketch $\pi$ can be expanded into concrete programs by
+sampling $N_{\mathrm{fill}}$ substitutions
+$\sigma \sim \mathrm{Uniform}(C_{\mathrm{seed}}^k)$ and retaining those that pass
+the quality filter. This expansion is a standalone utility; the RL pipeline works
+directly on sketches.
 
 \subsection{First-Order Applications}
 
@@ -251,12 +278,11 @@ $p$ does not crash. A program $p$ is retained iff:
 \toprule
 Parameter & Default & Role \\
 \midrule
-$s_{\max}$        & 5         & Maximum AST size enumerated \\
-$\ell_{\max}$     & 2         & Maximum lambda nesting depth for HOF arguments \\
-$C_{\text{seed}}$ & $\{0,1,\ldots,10\}$
-                             & Integer literals available as base-case expressions \\
-$\nu_{\min}$      & 0.3       & Corpus variability threshold \\
-$T$               & 10 inputs & Test suite for fingerprinting and deduplication \\
+$s_{\max}$            & 5         & Maximum AST size enumerated \\
+$\ell_{\max}$         & 2         & Maximum lambda nesting depth for HOF arguments \\
+$N_{\mathrm{fill}}$   & 10        & Random substitutions sampled per sketch during corpus expansion \\
+$\nu_{\min}$          & 0.3       & Corpus variability threshold \\
+$T$                   & 10 inputs & Test suite for fingerprinting and deduplication \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -294,7 +320,7 @@ The valid action set $\mathcal{A}(s)$ depends on $s$:
 \toprule
 Action & Condition \\
 \midrule
-Literal integer $c$  & $\tau = \mathrm{int}$ \\
+Integer hole $\square_{\mathbb{Z}}$ & $\tau = \mathrm{int}$ \\
 Literal boolean      & $\tau = \mathrm{bool}$ \\
 Empty list           & $\tau$ is a list type \\
 Variable $y$         & $y \in \mathrm{dom}(\Gamma)$ with $\Gamma(y) = \tau$ \\
@@ -408,9 +434,13 @@ outside the vocabulary are dropped.
 
 Each iteration alternates between a sampling phase and a gradient phase.
 
-\paragraph{Sampling} (32 episodes per iteration): run an episode under $\pi_\theta$;
-compute $\Phi(p)$ and $R(p)$; if $R(p) > 0$, attempt insertion into
-$\mathcal{B}_{\mathrm{buf}}$; if $\Phi(p)$ is novel, add it to $\mathcal{K}$.
+\paragraph{Sampling} (32 episodes per iteration): run an episode under $\pi_\theta$
+to obtain a sketch $\pi$ (which may contain integer holes $\square_{\mathbb{Z}}$);
+sample $N_{\mathrm{fill}} = 10$ random substitutions
+$\sigma \sim \mathrm{Uniform}(C_{\mathrm{seed}}^k)$ where $k$ is the number of holes
+in $\pi$; select the $\sigma^*$ maximising $R$; compute $\Phi(\pi[\sigma^*])$ and
+$R(\pi[\sigma^*])$; if $R > 0$, attempt insertion of the concrete program into
+$\mathcal{B}_{\mathrm{buf}}$; if $\Phi$ is novel, add it to $\mathcal{K}$.
 
 \paragraph{Gradient update} (8 steps per iteration): sample a batch from
 $\mathcal{B}_{\mathrm{buf}}$ and minimise the reward-weighted log-likelihood loss

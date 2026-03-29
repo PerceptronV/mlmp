@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .mdp import SynthesisState, Action, ActionType, valid_actions
+from ..ast_nodes import IntHoleNode
 from ..grammar import Grammar
 from ..type_utils import CallableOrig, TypeType
 from ..utils import resolve_type, freeze_instantiation, TYPE_UNIVERSE
@@ -60,9 +61,8 @@ def build_action_vocab(
     vocab = {}
     idx = 0
 
-    for c in seed_constants:
-        vocab[Action(ActionType.LITERAL_INT, c)] = idx
-        idx += 1
+    vocab[Action(ActionType.INT_HOLE, None)] = idx
+    idx += 1
     vocab[Action(ActionType.LITERAL_BOOL, True)] = idx
     idx += 1
     vocab[Action(ActionType.LITERAL_BOOL, False)] = idx

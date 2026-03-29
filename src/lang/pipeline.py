@@ -5,7 +5,7 @@ import os
 from typing import Callable
 
 from .grammar import Grammar, DefaultGrammar
-from .ast_nodes import ASTNode, LambdaNode
+from .ast_nodes import ASTNode, LambdaNode, IntHoleNode
 from .compiler import JITCompiler
 from .enumeration.enumerator import BottomUpEnumerator, TypedProgram
 from .enumeration.test_suite import DEFAULT_TEST_SUITE
@@ -42,6 +42,80 @@ def save_corpus_asts(asts: list[ASTNode], path: str):
     with open(path, 'w') as f:
         json.dump(entries, f, indent=2)
     print(f"Saved {len(entries)} programs to {path}")
+
+
+def expand_sketches(
+    sketches: list[TypedProgram],
+    seed_constants: list[int],
+    test_suite: list,
+    jit: 'JITCompiler',
+    min_variability: float = 0.3,
+    min_successes: int = 3,
+) -> list[TypedProgram]:
+    """
+    Expand sketch programs into concrete programs by trying all constant substitutions.
+    Useful for inspection and export; NOT called during RL training.
+    """
+    import itertools
+    from .enumeration.fingerprint import Fingerprint, FingerprintTable, make_hashable, FAIL
+    from .enumeration.filters import passes_quality_filter
+
+    def count_holes(node) -> int:
+        if isinstance(node, IntHoleNode):
+            return 1
+        elif hasattr(node, '__dataclass_fields__'):
+            total = 0
+            for field_name in node.__dataclass_fields__:
+                child = getattr(node, field_name)
+                if isinstance(child, ASTNode):
+                    total += count_holes(child)
+                elif isinstance(child, list):
+                    for item in child:
+                        if isinstance(item, ASTNode):
+                            total += count_holes(item)
+            return total
+        return 0
+
+    results = []
+    seen_fps = FingerprintTable()
+
+    for sketch in sketches:
+        # Wrap open terms in a lambda so fn(inp) works for evaluation
+        if isinstance(sketch.ast, LambdaNode):
+            compile_node = sketch.ast
+            is_wrapped = False
+        else:
+            compile_node = LambdaNode(["x"], sketch.ast)
+            is_wrapped = True
+
+        k = count_holes(sketch.ast)
+        for sigma in itertools.product(seed_constants, repeat=k):
+            sigma_list = list(sigma)
+            try:
+                fn, concrete_lambda = jit.compile(compile_node, sigma_list)
+                # Unwrap to get the concrete body if we wrapped it
+                concrete_ast = concrete_lambda.body if is_wrapped else concrete_lambda
+                outputs = []
+                for inp in test_suite:
+                    try:
+                        outputs.append(make_hashable(fn(inp)))
+                    except Exception:
+                        outputs.append(FAIL)
+                fp = Fingerprint(tuple(outputs))
+                if not seen_fps.contains(fp):
+                    if passes_quality_filter(fp, min_successes=min_successes, min_variability=min_variability):
+                        seen_fps.insert(fp, concrete_ast)
+                        results.append(TypedProgram(
+                            ast=concrete_ast,
+                            type=sketch.type,
+                            fingerprint=fp,
+                            size=sketch.size,
+                            substitution=sigma_list,
+                        ))
+            except Exception:
+                continue
+
+    return results
 
 
 def run_pipeline(
