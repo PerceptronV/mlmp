@@ -12,22 +12,94 @@ from ..type_utils import get_args, TypeType
 from ..utils import resolve_type, freeze_instantiation
 
 
+def _infer_ast_type(
+    node: ASTNode,
+    context: dict,
+    grammar: Grammar,
+    valid_instantiations: dict,
+) -> TypeType | None:
+    """
+    Recursively infer the concrete type of an AST node.
+
+    Returns None when the type cannot be determined unambiguously
+    (e.g. empty ListNode, or complex higher-order terms).
+    """
+    if isinstance(node, (NumberNode, IntHoleNode)):
+        return int
+    elif isinstance(node, BooleanNode):
+        return bool
+    elif isinstance(node, VariableNode):
+        return context.get(node.name)
+    elif isinstance(node, ListNode):
+        if not node.elements:
+            return None  # ambiguous: could be list[int], list[bool], …
+        elem_t = _infer_ast_type(node.elements[0], context, grammar, valid_instantiations)
+        if elem_t == int:
+            return list[int]
+        if elem_t == bool:
+            return list[bool]
+        if elem_t == list[int]:
+            return list[list[int]]
+        return None
+    elif isinstance(node, ApplicationNode) and isinstance(node.function, VariableNode):
+        func_name = node.function.name
+        func_info = grammar[func_name]
+        for inst in valid_instantiations.get(func_name, []):
+            arg_types = [resolve_type(t, instantiation=inst) for t in func_info['arg_types']]
+            consistent = True
+            for arg_n, arg_t in zip(node.arguments, arg_types):
+                inferred = _infer_ast_type(arg_n, context, grammar, valid_instantiations)
+                if inferred is not None and inferred != arg_t:
+                    consistent = False
+                    break
+            if consistent:
+                return resolve_type(func_info['ret_type'], instantiation=inst)
+    return None
+
+
 def _infer_instantiation(
     func_name: str,
     target_ret_type: TypeType,
     grammar: Grammar,
     valid_instantiations: dict,
+    arg_nodes: list[ASTNode] | None = None,
+    context: dict | None = None,
 ) -> dict | None:
     """
     Given a function and the desired return type, find the instantiation
-    that produces that return type. Takes first match if ambiguous.
+    that produces that return type.
+
+    When multiple instantiations share the same return type (e.g. ``==``
+    works on both int and bool), ``arg_nodes`` and ``context`` are used
+    to disambiguate via recursive type inference of the actual argument
+    subtrees.
     """
     func_info = grammar[func_name]
-    for inst in valid_instantiations[func_name]:
-        resolved_ret = resolve_type(func_info['ret_type'], instantiation=inst)
-        if resolved_ret == target_ret_type:
+    candidates = [
+        inst for inst in valid_instantiations[func_name]
+        if resolve_type(func_info['ret_type'], instantiation=inst) == target_ret_type
+    ]
+
+    if not candidates:
+        return None
+    if len(candidates) == 1 or arg_nodes is None or context is None:
+        return candidates[0]
+
+    # Multiple candidates: use actual argument types to disambiguate.
+    arg_types_actual = [
+        _infer_ast_type(n, context, grammar, valid_instantiations)
+        for n in arg_nodes
+    ]
+
+    for inst in candidates:
+        arg_types_expected = [resolve_type(t, instantiation=inst) for t in func_info['arg_types']]
+        if all(
+            actual is None or actual == expected
+            for actual, expected in zip(arg_types_actual, arg_types_expected)
+        ):
             return inst
-    return None
+
+    return candidates[0]  # fallback if nothing matches cleanly
 
 
 def extract_trajectory(
@@ -77,6 +149,7 @@ def extract_trajectory(
                 if valid_instantiations is not None:
                     inst = _infer_instantiation(
                         func_name, state.target_type, grammar, valid_instantiations,
+                        arg_nodes=node.arguments, context=state.context,
                     )
                     if inst is None:
                         raise ValueError(

@@ -211,6 +211,7 @@ __marimo__/
 # MacOS, Wandb, etc.
 .DS_Store
 wandb/
+.gneiss.json
 
 # MLMP
 datasets

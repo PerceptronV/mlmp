@@ -66,6 +66,22 @@ class TransitionDataset(Dataset):
             valid_instantiations=valid_instantiations,
         )
 
+        # Drop transitions where the target action is masked (would produce loss=inf).
+        # This catches any remaining type-inference mismatches in trajectory extraction.
+        valid_for_action = self.valid_masks.gather(
+            1, self.action_indices.unsqueeze(1),
+        ).squeeze(1)
+        keep = valid_for_action.bool()
+        n_masked = int((~keep).sum().item())
+        if n_masked:
+            logger.warning(
+                f"Dropped {n_masked}/{len(transitions)} transitions with masked target actions"
+            )
+            self.transitions = [t for t, k in zip(transitions, keep.tolist()) if k]
+            self.state_data = {k: v[keep] for k, v in self.state_data.items()}
+            self.action_indices = self.action_indices[keep]
+            self.valid_masks = self.valid_masks[keep]
+
     def __len__(self):
         return len(self.transitions)
 
@@ -164,7 +180,7 @@ def warm_start(
     func_vocab: dict,
     seed_constants: list[int] | None = None,
     epochs: int = 50,
-    batch_size: int = 64,
+    batch_size: int = 128,
     lr: float = 1e-3,
     valid_instantiations: dict | None = None,
 ):
@@ -177,6 +193,13 @@ def warm_start(
     if seed_constants is None:
         seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
+    device = torch.device(
+        'cuda' if torch.cuda.is_available()
+        else 'mps' if torch.backends.mps.is_available()
+        else 'cpu'
+    )
+    print(f"Warm-start device: {device}")
+    policy = policy.to(device)
     optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
 
     # Extract all trajectories from corpus programs
@@ -215,6 +238,10 @@ def warm_start(
         total_loss = 0.0
         n_batches = 0
         for state_batch, action_indices, valid_masks in loader:
+            state_batch = {k: v.to(device) for k, v in state_batch.items()}
+            action_indices = action_indices.to(device)
+            valid_masks = valid_masks.to(device)
+
             log_probs = policy(state_batch, valid_masks)
             loss = F.nll_loss(log_probs, action_indices)
 
@@ -227,6 +254,8 @@ def warm_start(
 
         avg_loss = total_loss / max(n_batches, 1)
         epoch_pbar.set_postfix(loss=f"{avg_loss:.4f}")
+
+    policy.to('cpu')
 
 
 def train_rl(

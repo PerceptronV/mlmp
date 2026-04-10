@@ -7,10 +7,47 @@
 \usepackage{booktabs}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{hyperref}
+\usepackage[hidelinks,backref=section]{hyperref}
 \usepackage{microtype}
 \usepackage{geometry}
 \geometry{margin=1in}
+
+\definecolor{skyblue}{RGB}{48, 141, 222}
+\definecolor{northblue}{RGB}{49, 126, 204}
+\definecolor{darkblue}{RGB}{1, 81, 144}
+\definecolor{fade_darkblue}{RGB}{179, 222, 255}
+\definecolor{arizona}{RGB}{83, 76, 76}
+\definecolor{emerald}{RGB}{0, 129, 133}
+\definecolor{forest}{RGB}{12, 153, 69}
+\definecolor{fade_emerald}{RGB}{161, 227, 230}
+\definecolor{crayon}{RGB}{255, 207, 0}
+\definecolor{peel}{RGB}{255, 102, 0}
+\definecolor{fade_peel}{RGB}{255, 209, 179}
+\definecolor{chocolate}{RGB}{117, 48, 3}
+\definecolor{prisma}{RGB}{64, 59, 121}
+\definecolor{darkpurple}{RGB}{104, 59, 121}
+\definecolor{lush}{RGB}{2, 163, 68}
+\definecolor{fade_lush}{RGB}{166, 237, 193}
+\definecolor{flame}{RGB}{232, 51, 81}
+
+\hypersetup{
+    colorlinks = true,
+    linkcolor = skyblue,
+    citecolor = chocolate,
+    filecolor = peel,
+    urlcolor = flame
+}
+
+\renewcommand*{\backref}[1]{}
+\renewcommand*{\backrefalt}[4]{%
+  \ifcase #1 %
+    {\hfill \it}%
+  \or
+    {\hfill {\it In sec. {\hypersetup{linkcolor=chocolate}#2}.}}%
+  \else
+    {\hfill {\it In sec. {\hypersetup{linkcolor=chocolate}#2}.}}%
+  \fi
+}
 
 \lstset{
   basicstyle=\ttfamily\small,
@@ -63,7 +100,7 @@ The pipeline has two phases:
         \citep{abolafia2018priority}.
 \end{enumerate}
 
-\section{The Program Grammar}
+\section{The Program Grammar}\label{sec:grammar}
 
 Programs are expressions in a simply-typed lambda calculus extended with conditionals and
 a fixed set of primitive functions. The expression language is:
@@ -75,7 +112,7 @@ a fixed set of primitive functions. The expression language is:
 where $c$ ranges over literals (integers, booleans, empty lists), $x$ over variables, and
 $f$ over the primitive functions in $F$.
 
-\subsection{Types}
+\subsection{Types}\label{sec:types}
 
 The base types are $\mathrm{int}$ and $\mathrm{bool}$. From these, list types
 $\mathrm{list}[\sigma]$ and function types $\sigma \to \tau$ are formed. In the current
@@ -87,7 +124,7 @@ instantiation the concrete types in use are:
 All programs synthesised by the pipeline have type
 $\mathrm{list}[\mathrm{int}] \to \mathrm{list}[\mathrm{int}]$.
 
-\subsection{Polymorphic Functions}
+\subsection{Polymorphic Functions}\label{sec:polymorphic}
 
 Some primitives in $F$ are \textbf{polymorphic}: their types contain type variables that
 can be instantiated to any concrete type. For example:
@@ -105,7 +142,7 @@ $\theta = \{T_1 \mapsto \mathrm{int},\, T_2 \mapsto \mathrm{bool}\}$ gives:
 The set of valid substitutions for a function is determined by the concrete types in use.
 Each instantiation is treated as a separate monomorphic function during enumeration.
 
-\subsection{Higher-Order Functions}
+\subsection{Higher-Order Functions}\label{sec:hof}
 
 A function is \textbf{higher-order} if one or more of its arguments has a function type.
 \texttt{map} is higher-order: its first argument is a function $T_1 \to T_2$. Such
@@ -113,9 +150,9 @@ arguments cannot be looked up directly in the program bank (which stores complet
 expressions, not open function values); instead they must be synthesised as lambda
 expressions, as described in the Higher-Order Applications section below.
 
-\section{Part 1: Bottom-Up Enumeration}
+\section{Part 1: Bottom-Up Enumeration}\label{sec:enum}
 
-\subsection{Size Metric}
+\subsection{Size Metric}\label{sec:size}
 
 Every AST node $e$ is assigned an integer size $\lvert e \rvert$ inductively:
 
@@ -139,7 +176,7 @@ Conditional $(\mathrm{if}\ c\ t\ e)$
 Enumeration proceeds by increasing size: programs of size $s$ are built exclusively from
 sub-expressions of size less than $s$.
 
-\subsection{Observational Equivalence and the Program Bank}
+\subsection{Observational Equivalence and the Program Bank}\label{sec:oe}
 
 We remove program duplicates by comparing their behaviour on a test suite. Fix a test suite $T = \{t_1, \ldots, t_m\}$ of $m$
 concrete inputs. The \textit{fingerprint} of a closed program $p$ of type
@@ -183,7 +220,7 @@ containing exactly one representative per observational equivalence class:
 [0,1,0,1,0], [42]
 \end{lstlisting}
 
-\subsection{Base Case}
+\subsection{Base Case}\label{sec:base}
 
 The bank is seeded with size-1 expressions:
 \begin{itemize}
@@ -196,7 +233,7 @@ The bank is seeded with size-1 expressions:
         \texttt{length x})
 \end{itemize}
 
-\subsection{Integer Holes}
+\subsection{Integer Holes}\label{sec:holes}
 
 Instead of seeding a fixed set of integer literals $C_{\text{seed}} = \{0,\ldots,10\}$,
 the base case includes a single \textbf{integer hole} $\square_{\mathbb{Z}}$ of type
@@ -223,7 +260,7 @@ $\sigma \sim \mathrm{Uniform}(C_{\mathrm{seed}}^k)$ and retaining those that pas
 the quality filter. This expansion is a standalone utility; the RL pipeline works
 directly on sketches.
 
-\subsection{First-Order Applications}
+\subsection{First-Order Applications}\label{sec:first-order}
 
 For a first-order function $f : A_1 \times \cdots \times A_k \to R$ and target size $s$,
 the arguments must satisfy $\sum_{i=1}^k s_i = s - 1$ with each $s_i \geq 1$. For every
@@ -238,7 +275,7 @@ Polymorphic functions are pre-expanded into all valid monomorphic instantiations
 described in the Grammar section); each instantiation is then enumerated independently
 using the formula above.
 
-\subsection{Higher-Order Applications and Nested Lambdas}
+\subsection{Higher-Order Applications and Nested Lambdas}\label{sec:ho-apps}
 
 When an argument position requires a function type $A_1 \times \cdots \times A_k \to B$,
 the lambda argument is synthesised inline rather than looked up in the flat bank. Given a size
@@ -259,7 +296,7 @@ preventing combinatorial explosion from arbitrarily deep lambda nesting while st
 enabling patterns with three levels of nesting such as
 $\mathrm{map}\ (\lambda y.\ \mathrm{map}\ (\lambda z.\ \mathrm{map}\ (\lambda w.\ \cdots)\ z)\ y)\ x$.
 
-\subsection{Quality Filtering}
+\subsection{Quality Filtering}\label{sec:quality}
 
 After enumeration, the corpus is obtained by retaining programs that pass three
 conditions. Let $\mathcal{F}(p) \subseteq \{1,\ldots,m\}$ denote the indices on which
@@ -271,14 +308,14 @@ $p$ does not crash. A program $p$ is retained iff:
         \geq \nu_{\min}$ \quad (output variability, default $\nu_{\min} = 0.3$)
 \end{enumerate}
 
-\subsection{Key Parameters}
+\subsection{Key Parameters}\label{sec:params}
 
 \begin{center}
 \begin{tabular}{lll}
 \toprule
 Parameter & Default & Role \\
 \midrule
-$s_{\max}$            & 5         & Maximum AST size enumerated \\
+$s_{\max}$            & 8         & Maximum AST size enumerated \\
 $\ell_{\max}$         & 2         & Maximum lambda nesting depth for HOF arguments \\
 $N_{\mathrm{fill}}$   & 10        & Random substitutions sampled per sketch during corpus expansion \\
 $\nu_{\min}$          & 0.3       & Corpus variability threshold \\
@@ -287,13 +324,13 @@ $T$                   & 10 inputs & Test suite for fingerprinting and deduplicat
 \end{tabular}
 \end{center}
 
-\section{Part 2: Reinforcement Learning}
+\section{Part 2: Reinforcement Learning}\label{sec:rl}
 
 The RL phase trains a neural policy on the enumerated corpus to generate good programs
 recursively from the root, making one decision per AST node. This is framed as a Markov
 Decision Process (MDP) over a grammar-constrained action space.
 
-\subsection{MDP Formulation}
+\subsection{MDP Formulation}\label{sec:mdp}
 
 \paragraph{State.}
 A synthesis state $s$ is a tuple $(\tau, \Gamma, f_{\text{par}}, i, \delta, \ell)$:
@@ -348,7 +385,7 @@ and proceeds by recursively expanding each chosen action into child states:
 If any recursive call encounters an empty action set, the episode fails and returns no
 program.
 
-\subsection{Reward}
+\subsection{Reward}\label{sec:reward}
 
 Given a completed program $p$, let $\Phi(p)$ denote its fingerprint on $T$, and let
 $\mathcal{K}$ be the set of fingerprints already known (from the enumeration corpus and
@@ -367,7 +404,7 @@ discarded.
 The novelty multiplier incentivises exploration of behaviours not yet covered, while the
 $0.1$ floor ensures the policy is not penalised for rediscovering known programs.
 
-\subsection{Priority Queue Buffer}
+\subsection{Priority Queue Buffer}\label{sec:pq}
 
 The buffer follows the priority queue training scheme of \citet{abolafia2018priority}.
 $\mathcal{B}_{\mathrm{buf}}$ maintains the top-$K$ programs by reward (default
@@ -378,7 +415,7 @@ fingerprints are excluded.
 Training samples are drawn uniformly from $\mathcal{B}_{\mathrm{buf}}$ with no recency or
 priority weighting.
 
-\subsection{Policy Network}
+\subsection{Policy Network}\label{sec:policy}
 
 The policy $\pi_\theta$ maps a state $s$ to a distribution over actions via a masked
 softmax. A network $g_\theta$ produces a logit for each action; invalid actions are
@@ -417,7 +454,7 @@ $\Gamma$            & Linear projection of a per-type variable-count vector \\
 Default $d = 64$, hidden dimension 128. Invalid actions are masked to $-\infty$ before
 softmax; the valid set $\mathcal{A}(s)$ is cached by $(\tau, \Gamma, \delta > 0, \ell)$.
 
-\subsection{Training Phase 1: Behavioural Cloning Warm-Start}
+\subsection{Training Phase 1: Behavioural Cloning Warm-Start}\label{sec:warmstart}
 
 Each corpus program $p$ induces a sequence of state--action pairs $\{(s_t, a_t)\}$ by a
 DFS traversal of its AST, recording at each node the state that a top-down policy would
@@ -430,7 +467,7 @@ gives a dataset $\mathcal{D}$. The policy is pre-trained by minimising:
 (50 epochs, batch size 64, Adam at $\eta = 10^{-3}$). Transitions involving actions
 outside the vocabulary are dropped.
 
-\subsection{Training Phase 2: RL Loop}
+\subsection{Training Phase 2: RL Loop}\label{sec:rl-loop}
 
 Each iteration alternates between a sampling phase and a gradient phase.
 
@@ -453,7 +490,7 @@ $\mathcal{B}_{\mathrm{buf}}$ and minimise the reward-weighted log-likelihood los
 No baseline is subtracted. Gradient norms are clipped to 1.0 before the Adam step
 ($\eta = 10^{-4}$).
 
-\subsection{Trajectory Extraction}
+\subsection{Trajectory Extraction}\label{sec:trajectory}
 
 The dataset $\mathcal{D}$ (used in both BC and RL) is constructed by a DFS that is the
 inverse of the episode procedure. Given a complete AST, each node yields a state--action
@@ -467,6 +504,137 @@ pair:
 \end{itemize}
 For polymorphic functions, the type instantiation is recovered by matching the inferred
 return type of $f$ against $\tau$ in the current state.
+
+\section{Overall Pipeline}\label{sec:pipeline}
+
+This section describes the procedure used to generate 5{,}699{,}938 unique and behaviourally diverse programs using the list manipulation DSL primitives provided in \citet{rule2024symbolic}. The \texttt{synthesize\_corpus} function in \texttt{src/lang/pipeline.py} orchestrates the full pipeline in three phases, linking all of the above methods.
+
+\begin{itemize}
+
+  \item \textbf{Phase 1 --- Bottom-Up Enumeration}
+    (cf.~\S\ref{sec:enum}).
+    A \texttt{BottomUpEnumerator} is run with parameters $s_{\max} = 8$,
+    $\ell_{\max} = 2$, and $\nu_{\min} = 0.3$ on the default 10-input test suite
+    and seed constants $C_{\mathrm{seed}} = \{0, 1, \ldots, 10\}$.
+    The enumerator fills the program bank $\mathcal{B}$ with all
+    behaviourally distinct \emph{sketches} (ASTs that may contain integer
+    holes $\square_{\mathbb{Z}}$) up to size $s_{\max}$, yielding
+    643{,}837 sketches in total.
+    Two sub-products are retained:
+    \begin{itemize}
+      \item \textbf{\texttt{quality\_corpus}} (581{,}984 sketches) --- those
+            that pass the quality filter (\S\ref{sec:quality}): at least 3
+            non-crashing inputs, at least 2 distinct outputs, and output
+            variability $\geq \nu_{\min}$.  Used for warm-start training and
+            buffer seeding.
+      \item \textbf{\texttt{all\_sketches}} (643{,}837 sketches) --- the full
+            bank regardless of quality, flattened across all types and sizes.
+            Used as the input to sketch expansion in Phase~2.
+    \end{itemize}
+    Quality sketches are serialised to \texttt{enum\_sketches.json}; the full
+    enumeration result is checkpointed to \texttt{enum\_corpus.pkl} so that
+    Phases~1 and~2 can be skipped on subsequent runs.
+
+  \item \textbf{Phase 2 --- Sketch Expansion}
+    (cf.~\S\ref{sec:holes}).
+    Every sketch in \texttt{all\_sketches} is concretised by the
+    \texttt{expand\_sketches} utility.  For a sketch $\pi$ containing $k$
+    holes, substitutions $\sigma \in C_{\mathrm{seed}}^k$ are enumerated
+    exhaustively when $|C_{\mathrm{seed}}|^k$ is small, or otherwise sampled
+    uniformly, up to a per-sketch budget derived from
+    \[
+      N_{\mathrm{sub}} = \left\lceil \frac{N_{\mathrm{target}}}{|\texttt{all\_sketches}|} \right\rceil,
+      \qquad N_{\mathrm{target}} = 6{,}000{,}000.
+    \]
+    Each concrete program is fingerprinted (\S\ref{sec:oe}), checked against a
+    running deduplication table, and retained only if it passes the quality
+    filter.  In practice, most sketches contain zero integer holes and therefore
+    contribute exactly one concrete program; the resulting deduplicated set
+    \texttt{enum\_concrete} contains 1{,}793{,}723 programs, written to
+    \texttt{enum\_corpus.json}.  All fingerprints are added to
+    \texttt{corpus\_fingerprints}, which tracks every behaviour seen so far.
+
+  \item \textbf{Phase 3 --- RL Collection and Expansion}
+    (cf.~\S\ref{sec:rl}).
+    \begin{itemize}
+      \item \emph{Warm-start} (\S\ref{sec:warmstart}).  The policy
+            network is initialised via behavioural cloning on
+            \texttt{quality\_corpus}, subsampled to 100{,}000 programs
+            (yielding 879{,}141 state--action transitions).  Training runs for
+            5 epochs with batch size 128 and Adam at $\eta = 10^{-3}$, using
+            GPU acceleration when available (MPS on Apple Silicon, CUDA
+            otherwise).  The trained weights are saved to
+            \texttt{policy\_warmstart.pt} so that warm-start can be skipped on
+            subsequent runs.
+
+      \item \emph{Buffer seeding} (\S\ref{sec:pq}).  The
+            priority queue buffer (capacity $K = 50{,}000$) is seeded with
+            programs from \texttt{quality\_corpus} whose trajectories can be
+            extracted; each is inserted with reward computed against
+            \texttt{corpus\_fingerprints}.  In this run, the buffer was filled
+            to capacity (50{,}000 programs).
+
+      \item \emph{RL loop} (\S\ref{sec:rl-loop}).  Up to
+            $5{,}000{,}000$ iterations are run, stopping early once
+            100{,}000 novel sketches have been collected.  Each iteration
+            consists of:
+            \begin{enumerate}
+              \item \emph{Sampling} (32 episodes): an \texttt{Episode} is
+                    rolled out under the current policy with MDP depth budget
+                    $\delta_{\max} = 12$; the resulting sketch $\pi$ is
+                    filled with up to $N_{\mathrm{fill}} = 4$ random
+                    substitutions via \texttt{\_fill\_in\_sketch}; the
+                    substitution maximising $R$ is kept; the program is
+                    inserted into the buffer and, if its fingerprint is novel,
+                    appended to \texttt{rl\_sketches} and added to
+                    \texttt{corpus\_fingerprints}.
+              \item \emph{Training} (8 gradient steps of batch size 64): a
+                    batch is drawn uniformly from the buffer and the
+                    reward-weighted log-likelihood loss
+                    $\mathcal{L}_{\mathrm{RL}}$ is minimised with Adam
+                    ($\eta = 10^{-4}$) and gradient clipping to 1.0.
+            \end{enumerate}
+            Checkpoints of \texttt{rl\_sketches} are written every 10{,}000
+            iterations.
+
+      \item \emph{Post-RL expansion}.  The 100{,}000 novel RL
+            sketches are expanded by \texttt{expand\_sketches} with
+            \texttt{max\_substitutions} $= 100$ per sketch and
+            \texttt{target\_total} $= 4{,}000{,}000$.  The expanded concrete
+            programs are deduplicated against all fingerprints in
+            \texttt{corpus\_fingerprints} (i.e.\ against the entire
+            enumeration corpus and all RL-sampled programmes); only genuinely
+            novel behaviours are retained.  This yields 3{,}906{,}215 novel
+            programs, written to \texttt{rl\_corpus.json}.
+    \end{itemize}
+
+  \item \textbf{Final corpus.}  The two output files together form
+    the full dataset:
+    \[
+      \underbrace{1{,}793{,}723}_{\texttt{enum\_corpus}}
+        + \underbrace{3{,}906{,}215}_{\texttt{rl\_corpus}}
+        = 5{,}699{,}938\;\text{programs.}
+    \]
+
+\end{itemize}
+
+\paragraph{Program counts per stage.}
+
+\begin{center}
+\begin{tabular}{llrr}
+\toprule
+Stage & Output file & Sketches & Concrete programs \\
+\midrule
+Phase 1: Enumeration          & \texttt{enum\_sketches.json}  & 643{,}837 & --- \\
+Phase 1: Quality filter       & (in-memory)                   & 581{,}984 & --- \\
+Phase 2: Sketch expansion     & \texttt{enum\_corpus.json}    & --- & 1{,}793{,}723 \\
+Phase 3: RL sampling          & (in-memory)                   & 100{,}000 & --- \\
+Phase 3: Post-RL expansion    & \texttt{rl\_corpus.json}      & --- & 3{,}906{,}215 \\
+\midrule
+\textbf{Total}                &                               & & \textbf{5{,}699{,}938} \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 % \section{Limitations}
 

@@ -110,7 +110,7 @@ def valid_actions(
 
                 # Check nesting constraint for higher-order functions
                 is_ho = any(get_origin(at) == CallableOrig for at in arg_types_raw)
-                if is_ho and state.nesting_depth >= MAX_NESTING_DEPTH:
+                if is_ho and state.nesting_depth > MAX_NESTING_DEPTH:
                     continue
 
                 for inst in valid_instantiations[func_name]:
@@ -126,7 +126,7 @@ def valid_actions(
                 if resolved_ret == t:
                     arg_types = func_info['arg_types']
                     is_ho = any(get_origin(at) == CallableOrig for at in arg_types)
-                    if is_ho and state.nesting_depth >= MAX_NESTING_DEPTH:
+                    if is_ho and state.nesting_depth > MAX_NESTING_DEPTH:
                         continue
                     actions.append(Action(ActionType.APPLY, func_name))
 
