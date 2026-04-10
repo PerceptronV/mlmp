@@ -636,15 +636,92 @@ Phase 3: Post-RL expansion    & \texttt{rl\_corpus.json}      & --- & 3{,}906{,}
 \end{tabular}
 \end{center}
 
-% \section{Limitations}
+\appendix
 
-% \paragraph{Partial application / currying.} All functions are treated as taking a fixed number of arguments. The value $(= y) : \mathrm{int} \to \mathrm{bool}$ cannot be produced directly; a lambda wrapper $(\lambda z.\ z = y)$ is required instead.
+\section{Corpus Analysis}\label{sec:analysis}
 
-% \paragraph{Lambda in function position.} The Apply action always names a grammar function; applying an arbitrary expression in the function position (e.g., $(\lambda y.\ \cdots)\ \mathrm{arg}$) is not supported by either the enumerator or the MDP. This pattern, equivalent to a let-binding, is uncommon in practice.
+This section characterises the generated corpus along three axes: structural
+complexity, type and primitive coverage, and the diversity of the
+enumeration and RL sub-corpora.
 
-% \paragraph{Constant coverage.} Integer literals are restricted to $C_{\mathrm{seed}}$. Programs requiring values outside this set cannot be generated without explicitly extending $C_{\mathrm{seed}}$.
+\subsection{Structural Complexity}\label{sec:complexity}
 
-% \paragraph{Size and depth limits.} Enumeration halts at $s_{\max}$ and generation at depth $\delta_{\max}$. These are configuration parameters rather than architectural constraints, but complex programs (e.g., nested folds) may exceed them at default settings.
+The two sub-corpora occupy largely disjoint regions of the program-size
+spectrum.  Because the enumerator is bounded by $s_{\max} = 8$, its output is
+concentrated at the upper end of that range: 83.9\% of enumeration programs
+have size exactly~8, with a median of~8 and mean of~7.8.  The RL sub-corpus,
+generated with MDP depth budget $\delta_{\max} = 12$, covers a much broader
+range.  RL program sizes span 5--98, with a median of~22 and mean of~23.9.
+The bulk of the RL corpus (43.2\%) falls in the size 21--35 range, while a
+long tail extends to programs of size~98.  Table~\ref{tab:size-dist}
+summarises the distribution.
+
+\begin{table}[h]
+\centering
+\caption{Program size distribution across the two sub-corpora.}
+\label{tab:size-dist}
+\begin{tabular}{lrrrr}
+\toprule
+ & Min & Median & Mean & Max \\
+\midrule
+Enumeration ($n = 1{,}793{,}723$) & 1 & 8 & 7.8 & 8 \\
+RL ($n = 3{,}906{,}215$)          & 5 & 22 & 23.9 & 98 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The RL size distribution is approximately bell-shaped (Table~\ref{tab:rl-buckets}),
+indicating that the policy learns to produce programs of moderate depth rather
+than degenerately short or excessively long ones.
+
+\begin{table}[h]
+\centering
+\caption{RL corpus breakdown by size bucket.}
+\label{tab:rl-buckets}
+\begin{tabular}{lrr}
+\toprule
+Size range & Programs & Fraction \\
+\midrule
+5--8   &     75{,}376 &  1.9\% \\
+9--12  &    594{,}142 & 15.2\% \\
+13--20 &    980{,}010 & 25.1\% \\
+21--35 &  1{,}687{,}452 & 43.2\% \\
+36--50 &    479{,}966 & 12.3\% \\
+51--98 &     89{,}269 &  2.3\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Type and Primitive Coverage}\label{sec:coverage}
+
+Because the MDP generates programs of type
+$\mathrm{list}[\mathrm{int}] \to \mathrm{list}[\mathrm{int}]$, the RL
+sub-corpus is homogeneous in its return type.  Return-type diversity comes
+entirely from the enumeration sub-corpus, which covers all five concrete
+types: $\mathrm{list}[\mathrm{int}]$ (51.5\%),
+$\mathrm{list}[\mathrm{list}[\mathrm{int}]]$ (23.0\%),
+$\mathrm{int}$ (22.9\%), $\mathrm{list}[\mathrm{bool}]$ (2.5\%), and
+$\mathrm{bool}$ (0.1\%).
+
+Primitive coverage is near-complete in both sub-corpora: enumeration
+programs use 48 of the grammar's primitives and RL programs use 47, with the
+union covering all~48.  The two sub-corpora differ in \emph{how} primitives
+are combined.  Higher-order functions are substantially more prevalent in the
+RL corpus: lambda expressions appear 29$\times$ more frequently per
+program in RL than in enumeration, and 3.3\% of RL programs
+(128{,}414 programs) contain nested lambdas (i.e.\ reference inner
+parameters \texttt{\_p1} or \texttt{\_p2}), compared to a negligible fraction
+of enumeration programs.  Multi-argument list operations---\texttt{splice},
+\texttt{insert}, \texttt{concat}, \texttt{cut\_slice},
+\texttt{takelast}---are 5--8$\times$ more prevalent in the RL corpus, as
+these operations require larger programs to use in compositionally
+interesting ways.
+
+\subsection{Diversity}\label{sec:diversity}
+
+All programs have distinct fingerprints and all pass pass the quality filter (variability $\geq$ 0.3, non-crashing, non-constant). The enumeration corpus covers programs of size 1-8, while the RL helps extend beyond this size limit.
+
+Some RL-generated programs suffer from internal redundancies. While their overall behaviour is interesting, they may be represented by shorter programs. For example, \texttt{product (repeat 10 8)} is an constant internal node in the AST. In the future, it may be worth simplifying RL-generated programs.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
