@@ -3,7 +3,7 @@ Program Uniqueness Checking Utilities
 
 This module provides utilities for checking program uniqueness using either:
 1. String-based uniqueness: Programs are unique if their string representations differ
-2. Behavioral uniqueness: Programs are unique if they produce different outputs on test inputs
+2. Behavioural uniqueness: Programs are unique if they produce different outputs on test inputs
 
 These utilities are used for ensuring diversity across dataset splits (e.g., ensuring
 training programs don't overlap with evaluation programs).
@@ -29,26 +29,26 @@ class UniquenessMode(Enum):
     - UniquenessChecker: for cross-split uniqueness checking
     """
     STRING = "string"           # Fast: program string uniqueness
-    BEHAVIORAL = "behavioral"   # Thorough: unique behaviour on held-out inputs
+    BEHAVIOURAL = "behavioural"   # Thorough: unique behaviour on held-out inputs
 
 
-# Type alias for behavioral signatures
-BehaviorSignature = tuple[tuple[int, ...], ...]
+# Type alias for behaviour signatures
+BehaviourSignature = tuple[tuple[int, ...], ...]
 
 
 @dataclass
 class UniquenessChecker:
     """
-    Checks program uniqueness using string or behavioral comparison.
+    Checks program uniqueness using string or behavioural comparison.
 
     This class maintains sets of seen programs and can check whether new
-    programs are unique. It supports both string-based (fast) and behavioral
+    programs are unique. It supports both string-based (fast) and behavioural
     (thorough) uniqueness checking.
 
     Attributes:
-        mode: Whether to use STRING or BEHAVIORAL uniqueness
-        grammar: Grammar for creating evaluator (needed for behavioral mode)
-        num_test_inputs: Number of test inputs for behavioral checking
+        mode: Whether to use STRING or behavioural uniqueness
+        grammar: Grammar for creating evaluator (needed for behavioural mode)
+        num_test_inputs: Number of test inputs for behavioural checking
         min_list_length: Minimum list length for test inputs
         max_list_length: Maximum list length for test inputs
         min_element_value: Minimum element value in test inputs
@@ -64,18 +64,18 @@ class UniquenessChecker:
 
     # Internal state
     _seen_strings: Set[str] = field(default_factory=set)
-    _seen_behaviors: Set[BehaviorSignature] = field(default_factory=set)
+    _seen_behaviours: Set[BehaviourSignature] = field(default_factory=set)
     _test_inputs: list[list[int]] = field(default_factory=list)
     _evaluator: Optional[Evaluator] = field(default=None)
 
     def __post_init__(self):
-        """Initialize test inputs and evaluator."""
+        """Initialise test inputs and evaluator."""
         self._generate_test_inputs()
-        if self.mode == UniquenessMode.BEHAVIORAL:
+        if self.mode == UniquenessMode.behavioural:
             self._evaluator = Evaluator(self.grammar)
 
     def _generate_test_inputs(self, seed: int = 42) -> None:
-        """Generate fixed test inputs for behavioral uniqueness checking."""
+        """Generate fixed test inputs for behavioural uniqueness checking."""
         rng = random.Random(seed)
         self._test_inputs = []
 
@@ -126,12 +126,12 @@ class UniquenessChecker:
         except (EvaluationError, NameError, TypeError, ZeroDivisionError):
             return None
 
-    def compute_behavior_signature(
+    def compute_behaviour_signature(
         self,
         program: ASTNode
-    ) -> Optional[BehaviorSignature]:
+    ) -> Optional[BehaviourSignature]:
         """
-        Compute a behavioral signature for a program.
+        Compute a behavioural signature for a program.
 
         The signature is a tuple of outputs on the test inputs.
         Programs with the same signature behave identically.
@@ -171,11 +171,11 @@ class UniquenessChecker:
         if self.mode == UniquenessMode.STRING:
             return program_str not in self._seen_strings
         else:
-            # Behavioral mode
-            signature = self.compute_behavior_signature(program)
+            # behavioural mode
+            signature = self.compute_behaviour_signature(program)
             if signature is None:
                 return False  # Can't execute = not unique (or skip)
-            return signature not in self._seen_behaviors
+            return signature not in self._seen_behaviours
 
     def mark_seen(self, program: ASTNode, program_str: Optional[str] = None) -> None:
         """
@@ -190,10 +190,10 @@ class UniquenessChecker:
 
         self._seen_strings.add(program_str)
 
-        if self.mode == UniquenessMode.BEHAVIORAL:
-            signature = self.compute_behavior_signature(program)
+        if self.mode == UniquenessMode.behavioural:
+            signature = self.compute_behaviour_signature(program)
             if signature is not None:
-                self._seen_behaviors.add(signature)
+                self._seen_behaviours.add(signature)
 
     def mark_seen_string(self, program_str: str) -> None:
         """
@@ -204,14 +204,14 @@ class UniquenessChecker:
         """
         self._seen_strings.add(program_str)
 
-    def mark_seen_signature(self, signature: BehaviorSignature) -> None:
+    def mark_seen_signature(self, signature: BehaviourSignature) -> None:
         """
-        Mark a behavioral signature as seen.
+        Mark a behavioural signature as seen.
 
         Args:
-            signature: The behavioral signature
+            signature: The behavioural signature
         """
-        self._seen_behaviors.add(signature)
+        self._seen_behaviours.add(signature)
 
     def is_string_unique(self, program_str: str) -> bool:
         """
@@ -228,7 +228,7 @@ class UniquenessChecker:
     def clear(self) -> None:
         """Clear all seen programs."""
         self._seen_strings.clear()
-        self._seen_behaviors.clear()
+        self._seen_behaviours.clear()
 
     @property
     def num_seen(self) -> int:
@@ -236,7 +236,7 @@ class UniquenessChecker:
         if self.mode == UniquenessMode.STRING:
             return len(self._seen_strings)
         else:
-            return len(self._seen_behaviors)
+            return len(self._seen_behaviours)
 
     @property
     def seen_strings(self) -> Set[str]:
@@ -244,9 +244,9 @@ class UniquenessChecker:
         return self._seen_strings.copy()
 
     @property
-    def seen_behaviors(self) -> Set[BehaviorSignature]:
-        """Return the set of seen behavioral signatures."""
-        return self._seen_behaviors.copy()
+    def seen_behaviours(self) -> Set[BehaviourSignature]:
+        """Return the set of seen behavioural signatures."""
+        return self._seen_behaviours.copy()
 
 
 def create_uniqueness_checker(
@@ -258,9 +258,9 @@ def create_uniqueness_checker(
     Create a uniqueness checker with the specified mode.
 
     Args:
-        mode: STRING for fast string-based checking, BEHAVIORAL for thorough checking
+        mode: STRING for fast string-based checking, behavioural for thorough checking
         grammar: Grammar for creating evaluator
-        num_test_inputs: Number of test inputs for behavioral checking
+        num_test_inputs: Number of test inputs for behavioural checking
 
     Returns:
         Configured UniquenessChecker instance

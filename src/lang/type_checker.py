@@ -254,7 +254,7 @@ class TypeChecker:
             raise TypeCheckError(f"Invalid function type: {func_type}")
 
         # Match first parameter with argument
-        # Use strict=False to allow unifying type variables with parameterized types
+        # Use strict=False to allow unifying type variables with parameterised types
         expected_param = param_types[0]
         if not matchable(expected_param, arg_type, substitutions, strict=False):
             raise TypeCheckError(

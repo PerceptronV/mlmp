@@ -36,7 +36,7 @@ class DefaultSampler(Sampler):
         max_attempts_multiplier: int = 100
     ):
         """
-        Initialize the default sampler.
+        Initialise the default sampler.
 
         Args:
             composer: The composer to use for program generation

@@ -7,24 +7,24 @@ from typing import Callable
 
 from tqdm import tqdm
 
-from .grammar import Grammar, DefaultGrammar
-from .ast_nodes import ASTNode, LambdaNode, IntHoleNode
-from .compiler import JITCompiler
-from .enumeration.enumerator import BottomUpEnumerator, TypedProgram
-from .enumeration.test_suite import DEFAULT_TEST_SUITE
-from .enumeration.fingerprint import Fingerprint
-from .rl.policy import (
+from src.lang.grammar import Grammar, DefaultGrammar
+from src.lang.ast_nodes import ASTNode, LambdaNode, IntHoleNode
+from src.lang.compiler import JITCompiler
+from src.lang.enumeration.enumerator import BottomUpEnumerator, TypedProgram
+from src.lang.enumeration.test_suite import DEFAULT_TEST_SUITE
+from src.lang.enumeration.fingerprint import Fingerprint
+from src.lang.rl.policy import (
     PolicyNetwork, build_action_vocab, build_type_vocab, build_func_vocab,
 )
-from .rl.trajectory import extract_trajectory
-from .rl.reward import compute_reward
-from .rl.priority_queue import PriorityQueueBuffer
-from .rl.trainer import warm_start, train_rl
-from .utils import compute_valid_instantiations
+from src.lang.rl.trajectory import extract_trajectory
+from src.lang.rl.reward import compute_reward
+from src.lang.rl.priority_queue import PriorityQueueBuffer
+from src.lang.rl.trainer import warm_start, train_rl
+from src.lang.utils import compute_valid_instantiations
 
 
 def save_corpus(corpus: list[TypedProgram], path: str):
-    """Serialize programs as S-expressions to JSON."""
+    """Serialise programs as S-expressions to JSON."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     entries = []
     for prog in corpus:
@@ -39,7 +39,7 @@ def save_corpus(corpus: list[TypedProgram], path: str):
 
 
 def save_corpus_asts(asts: list[ASTNode], path: str):
-    """Serialize AST list to JSON."""
+    """Serialise AST list to JSON."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     entries = [{'program': str(ast)} for ast in asts]
     with open(path, 'w') as f:
@@ -284,6 +284,7 @@ def synthesize_corpus(
     rl_batch_size: int = 64,
     rl_checkpoint_interval: int = 10_000,
     output_dir: str = "output",
+    seed: int | None = None,
 ) -> None:
     """
     Synthesise a large program corpus for training Model A.
@@ -310,7 +311,15 @@ def synthesize_corpus(
     from .rl.policy import encode_states, compute_valid_masks
     from .rl.trainer import _fill_in_sketch
     from .enumeration.fingerprint import compute_fingerprint
-    from .utils import program_size as _program_size
+    from .utils import program_size as _program_size, program_depth as _program_depth
+
+    if seed is not None:
+        import random as _random_seed
+        _random_seed.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        print(f"Seeded RNGs with seed={seed}")
 
     if seed_constants is None:
         seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -431,18 +440,25 @@ def synthesize_corpus(
         )
     print(f"Buffer seeded with {len(buffer)} programs")
 
-    optimizer = torch.optim.Adam(policy.parameters(), lr=1e-4)
+    optimiser = torch.optim.Adam(policy.parameters(), lr=1e-4)
     rl_sketches: list[TypedProgram] = []
     novel_count = 0
     total_generated = 0
 
     os.makedirs(output_dir, exist_ok=True)
     rl_ckpt_path = f"{output_dir}/rl_sketches_ckpt.json"
+    metrics_path = f"{output_dir}/rl_metrics.jsonl"
+    # Truncate any prior metrics file so each run starts clean
+    open(metrics_path, 'w').close()
 
     pbar = tqdm(range(rl_max_iterations), desc="RL collection")
     for iteration in pbar:
         if novel_count >= rl_target_programs:
             break
+
+        # Per-iteration telemetry accumulators
+        iter_gen_depths, iter_gen_sizes = [], []
+        iter_novel_depths, iter_novel_sizes = [], []
 
         # ── Sampling ──────────────────────────────────────────────────────
         for _ in range(rl_episodes_per_iter):
@@ -457,6 +473,11 @@ def synthesize_corpus(
             total_generated += 1
             if sketch_ast is None:
                 continue
+
+            gen_depth = _program_depth(sketch_ast)
+            gen_size = _program_size(sketch_ast)
+            iter_gen_depths.append(gen_depth)
+            iter_gen_sizes.append(gen_size)
 
             sketch_lambda = (
                 sketch_ast
@@ -483,9 +504,28 @@ def synthesize_corpus(
                         ast=sketch_ast,
                         type=list[int],
                         fingerprint=fp,
-                        size=_program_size(sketch_ast),
+                        size=gen_size,
                     ))
                     novel_count += 1
+                    iter_novel_depths.append(gen_depth)
+                    iter_novel_sizes.append(gen_size)
+
+        # Record raw per-program depth/size for this iteration.
+        # Parallel arrays: generated.depth[i] corresponds to generated.size[i].
+        with open(metrics_path, 'a') as mf:
+            mf.write(json.dumps({
+                'iteration': iteration,
+                'novel_cumulative': novel_count,
+                'generated_cumulative': total_generated,
+                'generated': {
+                    'depth': iter_gen_depths,
+                    'size': iter_gen_sizes,
+                },
+                'novel': {
+                    'depth': iter_novel_depths,
+                    'size': iter_novel_sizes,
+                },
+            }) + '\n')
 
         # ── Training ──────────────────────────────────────────────────────
         if len(buffer) >= rl_batch_size:
@@ -514,10 +554,10 @@ def synthesize_corpus(
                     reward_weights
                     * log_probs.gather(1, action_indices.unsqueeze(1)).squeeze(1)
                 ).mean()
-                optimizer.zero_grad()
+                optimiser.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
-                optimizer.step()
+                optimiser.step()
 
         # ── Checkpoint ────────────────────────────────────────────────────
         if (iteration + 1) % rl_checkpoint_interval == 0:

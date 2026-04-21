@@ -31,7 +31,7 @@ Initial results:
   │ Buffer size                          │ 25,286              │
   └──────────────────────────────────────┴─────────────────────┘
 
-  So starting from 212 Rule et al. programs, RL discovered 25,114 novel behaviorally-distinct programs over 1000 iterations (32 episodes each =
+  So starting from 212 Rule et al. programs, RL discovered 25,114 novel behaviourally-distinct programs over 1000 iterations (32 episodes each =
   32,000 episodes total). That's a ~120x expansion of the program corpus. The discovery rate was roughly 25 novel programs per iteration,
   sustained throughout the run.
 

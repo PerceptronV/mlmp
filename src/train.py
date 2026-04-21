@@ -293,7 +293,7 @@ def train():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    # Initialize wandb
+    # Initialise wandb
     use_wandb = not args.no_wandb
     if use_wandb:
         wandb.init(

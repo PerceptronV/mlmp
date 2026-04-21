@@ -200,7 +200,7 @@ def warm_start(
     )
     print(f"Warm-start device: {device}")
     policy = policy.to(device)
-    optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
+    optimiser = torch.optim.Adam(policy.parameters(), lr=lr)
 
     # Extract all trajectories from corpus programs
     all_transitions = []
@@ -245,9 +245,9 @@ def warm_start(
             log_probs = policy(state_batch, valid_masks)
             loss = F.nll_loss(log_probs, action_indices)
 
-            optimizer.zero_grad()
+            optimiser.zero_grad()
             loss.backward()
-            optimizer.step()
+            optimiser.step()
 
             total_loss += loss.item()
             n_batches += 1
@@ -280,7 +280,7 @@ def train_rl(
     if seed_constants is None:
         seed_constants = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-    optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
+    optimiser = torch.optim.Adam(policy.parameters(), lr=lr)
     jit = JITCompiler(grammar)
 
     # Ensure policy is set up for inference
@@ -365,10 +365,10 @@ def train_rl(
             # Reward-weighted maximum likelihood
             loss = -(reward_weights * per_action_log_prob).mean()
 
-            optimizer.zero_grad()
+            optimiser.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
-            optimizer.step()
+            optimiser.step()
 
         # === Progress bar update ===
         stats['buffer_min'] = buffer.min_reward()

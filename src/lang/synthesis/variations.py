@@ -2,7 +2,7 @@
 Template-Based Semantic Variations for Meta-Learning
 
 This module provides a more flexible variation system using:
-1. Parameterized templates - Sample constants, offsets, etc.
+1. Parameterised templates - Sample constants, offsets, etc.
 2. Compositional templates - Generate variant bodies using the grammar
 3. DSL program storage - Save actual program strings in episode data
 
@@ -18,6 +18,9 @@ import random
 from typing import TypeVar, Callable, List, Dict, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
+
+from src.lang.compiler import jit_compile
+from src.lang.type_utils import CallableOrig
 
 T1, T2 = TypeVar('T1'), TypeVar('T2')
 
@@ -178,7 +181,7 @@ class GeneratedVariant:
     _compiled_fn: Optional[Callable] = field(default=None, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to dict for episode data."""
+        """Serialise to dict for episode data."""
         return {
             'name': self.name,
             'template_id': self.template_id,
@@ -192,8 +195,6 @@ class GeneratedVariant:
         """Compile the DSL program to a callable function using JIT compilation."""
         if self._compiled_fn is not None:
             return self._compiled_fn
-
-        from .compiler import jit_compile
 
         # JIT compile the program to native Python bytecode
         # This is faster than using the Evaluator, which interprets the AST at runtime
@@ -2140,7 +2141,6 @@ def _make_flatten_templates() -> List[VariationTemplate]:
 
 def _make_map_templates() -> List[VariationTemplate]:
     """Templates for map variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'map',
@@ -2176,7 +2176,6 @@ def _make_map_templates() -> List[VariationTemplate]:
 
 def _make_mapi_templates() -> List[VariationTemplate]:
     """Templates for mapi variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'mapi',
@@ -2212,7 +2211,6 @@ def _make_mapi_templates() -> List[VariationTemplate]:
 
 def _make_filter_templates() -> List[VariationTemplate]:
     """Templates for filter variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'filter',
@@ -2255,7 +2253,6 @@ def _make_filter_templates() -> List[VariationTemplate]:
 
 def _make_filteri_templates() -> List[VariationTemplate]:
     """Templates for filteri variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'filteri',
@@ -2291,7 +2288,6 @@ def _make_filteri_templates() -> List[VariationTemplate]:
 
 def _make_fold_templates() -> List[VariationTemplate]:
     """Templates for fold variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'fold',
@@ -2320,7 +2316,6 @@ def _make_fold_templates() -> List[VariationTemplate]:
 
 def _make_foldi_templates() -> List[VariationTemplate]:
     """Templates for foldi variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'foldi',
@@ -2349,7 +2344,6 @@ def _make_foldi_templates() -> List[VariationTemplate]:
 
 def _make_count_templates() -> List[VariationTemplate]:
     """Templates for count variations."""
-    from .type_utils import CallableOrig
 
     base = {
         'name': 'count',

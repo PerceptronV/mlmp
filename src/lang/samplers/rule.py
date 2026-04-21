@@ -53,7 +53,7 @@ class SampledProgram:
     program_str: str
     io_pairs: list[tuple[list[int], list[int]]]
     is_identity_like: bool
-    behavior_signature: Optional[tuple[tuple[int, ...], ...]] = None
+    behaviour_signature: Optional[tuple[tuple[int, ...], ...]] = None
 
 
 class RuleSampler(Sampler):
@@ -100,7 +100,7 @@ class RuleSampler(Sampler):
         Args:
             composer: The composer to use for program generation
             uniqueness_mode: STRING for program string uniqueness,
-                           BEHAVIORAL for behavioural uniqueness
+                           BEHAVIOURAL for behavioural uniqueness
             num_io_pairs: Number of I/O pairs to select per program
             num_candidate_inputs: Number of candidate inputs to sample
             min_list_length: Minimum list length (Rule paper uses 0)
@@ -439,7 +439,7 @@ class RuleSampler(Sampler):
             bucket_idx = min(input_len // bucket_size, num_buckets - 1)
             buckets[bucket_idx].append(pair)
 
-        # Track seen outputs to prioritize uniqueness
+        # Track seen outputs to prioritise uniqueness
         seen_outputs: set[tuple[int, ...]] = set()
         selected: list[tuple[list[int], list[int]]] = []
 
@@ -518,7 +518,7 @@ class RuleSampler(Sampler):
 
         return all(inp == out for inp, out in io_pairs)
 
-    def _compute_behavior_signature(
+    def _compute_behaviour_signature(
         self,
         program: ASTNode
     ) -> Optional[tuple[tuple[int, ...], ...]]:
@@ -585,7 +585,7 @@ class RuleSampler(Sampler):
 
         programs: list[SampledProgram] = []
         seen_strings: set[str] = set()
-        seen_behaviors: set[tuple[tuple[int, ...], ...]] = set()
+        seen_behaviours: set[tuple[tuple[int, ...], ...]] = set()
         has_identity_like = False
 
         # Create a separate RNG for sampling
@@ -682,14 +682,14 @@ class RuleSampler(Sampler):
                     has_identity_like = True
 
                 # Compute behavioural signature if needed
-                behavior_signature = None
-                if self.uniqueness_mode == UniquenessMode.BEHAVIORAL:
-                    behavior_signature = self._compute_behavior_signature(program)
-                    if behavior_signature is None:
+                behaviour_signature = None
+                if self.uniqueness_mode == UniquenessMode.BEHAVIOURAL:
+                    behaviour_signature = self._compute_behaviour_signature(program)
+                    if behaviour_signature is None:
                         continue
-                    if behavior_signature in seen_behaviors:
+                    if behaviour_signature in seen_behaviours:
                         continue
-                    seen_behaviors.add(behavior_signature)
+                    seen_behaviours.add(behaviour_signature)
 
                 # Add to results
                 seen_strings.add(program_str)
@@ -698,7 +698,7 @@ class RuleSampler(Sampler):
                     program_str=program_str,
                     io_pairs=selected_io_pairs,
                     is_identity_like=is_identity_like,
-                    behavior_signature=behavior_signature
+                    behaviour_signature=behaviour_signature
                 ))
 
             except Exception:

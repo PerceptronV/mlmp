@@ -19,7 +19,7 @@ from .rule import RuleSampler, SampledProgram, create_list_to_list_type
 from .uniqueness import (
     UniquenessMode,
     UniquenessChecker,
-    BehaviorSignature,
+    BehaviourSignature,
     create_uniqueness_checker,
 )
 
@@ -66,6 +66,6 @@ __all__ = [
     'list_samplers',
     'SAMPLERS',
     'UniquenessChecker',
-    'BehaviorSignature',
+    'BehaviourSignature',
     'create_uniqueness_checker',
 ]

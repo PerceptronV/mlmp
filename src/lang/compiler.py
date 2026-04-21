@@ -83,7 +83,7 @@ class JITCompiler:
     """
     
     def __init__(self, grammar: Grammar = DefaultGrammar):
-        """Initialize the JIT compiler with a grammar."""
+        """Initialise the JIT compiler with a grammar."""
         self.grammar = grammar
         self._var_counter = 0
         self._builtins = self._extract_raw_builtins(grammar)

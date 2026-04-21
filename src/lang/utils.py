@@ -119,6 +119,34 @@ def program_size(node: ASTNode) -> int:
         raise ValueError(f"Unknown node type: {type(node)}")
 
 
+def program_depth(node: ASTNode) -> int:
+    """
+    Compute the MDP depth of an AST — matches `SynthesisState.depth_budget`
+    consumption.
+
+    LAMBDA / APPLY / IF each cost 1 on the longest root-to-leaf path.
+    Literals, variables, empty lists, and int holes are terminals (depth 0).
+    """
+    if isinstance(node, (NumberNode, BooleanNode, VariableNode, IntHoleNode)):
+        return 0
+    if isinstance(node, ListNode):
+        if not node.elements:
+            return 0
+        return 1 + max(program_depth(e) for e in node.elements)
+    if isinstance(node, LambdaNode):
+        return 1 + program_depth(node.body)
+    if isinstance(node, IfNode):
+        return 1 + max(
+            program_depth(node.condition),
+            program_depth(node.then_expr),
+            program_depth(node.else_expr),
+        )
+    if isinstance(node, ApplicationNode):
+        children = [program_depth(node.function)] + [program_depth(a) for a in node.arguments]
+        return 1 + max(children)
+    raise ValueError(f"Unknown node type: {type(node)}")
+
+
 def free_variables(node: ASTNode, bound: set[str] | None = None) -> set[str]:
     """Return the set of free variable names in node given already-bound names."""
     if bound is None:

@@ -24,7 +24,7 @@ class Sampler(ABC):
 
     def __init__(self, composer: Composer):
         """
-        Initialize the sampler.
+        Initialise the sampler.
 
         Args:
             composer: The composer to use for program generation
