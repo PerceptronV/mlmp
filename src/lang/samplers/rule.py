@@ -252,7 +252,6 @@ class RuleSampler(Sampler):
         """
         # Create cache key
         if program_str is None:
-            from ..ast_nodes import pretty_print
             program_str = pretty_print(program)
         cache_key = (program_str, tuple(input_list))
 
@@ -824,5 +823,4 @@ def create_list_to_list_type():
     Returns:
         The callable type for list-to-list functions
     """
-    from typing import Callable as TypingCallable
-    return TypingCallable[[list[int]], list[int]]
+    return Callable[[list[int]], list[int]]

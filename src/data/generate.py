@@ -16,7 +16,7 @@ completed phase:
   policy_warmstart.pt     -- skips warm-start on restart
 
 Usage:
-  python data/synthesise_corpus.py [--output-dir OUTPUT_DIR]
+  python -m src.data.generate [--output-dir OUTPUT_DIR]
 """
 
 import argparse

@@ -1,26 +1,39 @@
 """Top-level orchestrator: enumeration -> warm-start -> RL exploration."""
 
+import itertools
 import json
+import math
 import os
 import pickle
+import random
 from typing import Callable
 
+import torch
 from tqdm import tqdm
 
 from src.lang.grammar import Grammar, DefaultGrammar
 from src.lang.ast_nodes import ASTNode, LambdaNode, IntHoleNode
 from src.lang.compiler import JITCompiler
 from src.lang.enumeration.enumerator import BottomUpEnumerator, TypedProgram
+from src.lang.enumeration.fingerprint import (
+    Fingerprint, FingerprintTable, compute_fingerprint, make_hashable, FAIL,
+)
+from src.lang.enumeration.filters import passes_quality_filter
 from src.lang.enumeration.test_suite import DEFAULT_TEST_SUITE
-from src.lang.enumeration.fingerprint import Fingerprint
+from src.lang.rl.mdp import Episode
 from src.lang.rl.policy import (
     PolicyNetwork, build_action_vocab, build_type_vocab, build_func_vocab,
+    encode_states, compute_valid_masks,
 )
 from src.lang.rl.trajectory import extract_trajectory
 from src.lang.rl.reward import compute_reward
 from src.lang.rl.priority_queue import PriorityQueueBuffer
-from src.lang.rl.trainer import warm_start, train_rl
-from src.lang.utils import compute_valid_instantiations
+from src.lang.rl.trainer import warm_start, train_rl, _fill_in_sketch
+from src.lang.utils import (
+    compute_valid_instantiations,
+    program_size as _program_size,
+    program_depth as _program_depth,
+)
 
 
 def save_corpus(corpus: list[TypedProgram], path: str):
@@ -58,8 +71,8 @@ def expand_sketches(
     target_total: int | None = None,
 ) -> list[TypedProgram]:
     """
-    Expand sketch programs into concrete programs by trying constant substitutions.
-    Useful for inspection and export; NOT called during RL training.
+    Expand sketch programs into concrete programs by trying constant
+    substitutions, filtering for quality and deduplicating by behaviour.
 
     ``target_total``, if set, automatically derives ``max_substitutions`` as
     ``ceil(target_total / len(sketches))`` and stops collecting once the
@@ -72,12 +85,6 @@ def expand_sketches(
     When the full enumeration of ``seed_constants`` combinations for a
     sketch exceeds this limit, substitutions are sampled randomly instead.
     """
-    import itertools
-    import math
-    import random as _random
-    from .enumeration.fingerprint import Fingerprint, FingerprintTable, make_hashable, FAIL
-    from .enumeration.filters import passes_quality_filter
-
     if target_total is not None and max_substitutions is None and len(sketches) > 0:
         max_substitutions = max(1, math.ceil(target_total / len(sketches)))
 
@@ -116,7 +123,7 @@ def expand_sketches(
         n_combos = len(seed_constants) ** k if k > 0 else 1
         if max_substitutions is not None and n_combos > max_substitutions:
             sigma_iter = (
-                [_random.choice(seed_constants) for _ in range(k)]
+                [random.choice(seed_constants) for _ in range(k)]
                 for _ in range(max_substitutions)
             )
         else:
@@ -268,7 +275,7 @@ def run_pipeline(
     save_corpus_asts(final_asts, f"{output_dir}/final_corpus.json")
 
 
-def synthesize_corpus(
+def synthesise_corpus(
     grammar: Grammar = DefaultGrammar,
     enum_max_size: int = 9,
     enum_min_variability: float = 0.3,
@@ -291,13 +298,16 @@ def synthesize_corpus(
 
     Phase 1 – Bottom-up enumeration up to ``enum_max_size``, yielding
               sketches (programs with IntHoleNodes for integer literals).
-    Phase 2 – Expand every sketch by substituting all ``seed_constants``
-              combinations into its holes; deduplicate by behaviour.
-              Writes enum_corpus.json  (~6 M programs expected).
+    Phase 2 – Expand the sketches by substituting ``seed_constants`` into
+              their holes, aiming for ``enum_target_programs`` concrete
+              programs before deduplication by behaviour.  Combinations
+              are enumerated when the per-sketch budget allows it and
+              sampled uniformly otherwise.  Writes ``enum_corpus.json``.
     Phase 3 – Train a synthesis policy via warm-start + RL and collect
-              ``rl_target_programs`` novel sketches at nesting depth up to
-              ``rl_max_depth``.  Expand those sketches and write
-              rl_corpus.json  (~4 M programs expected).
+              ``rl_target_programs`` novel sketches at MDP depth up to
+              ``rl_max_depth``.  Expand those sketches (capped at 100
+              substitutions per sketch, targeting 4 M concrete programs
+              in total) and write ``rl_corpus.json``.
 
     Note on rl_max_depth: this is the MDP depth budget (number of
     APPLY/LAMBDA/IF nodes along the deepest branch), not AST node count.
@@ -305,17 +315,8 @@ def synthesize_corpus(
     so the default of 12 covers the full benchmark with one step of
     headroom.
     """
-    import torch
-    import torch.nn.functional as F
-    from .rl.mdp import Episode
-    from .rl.policy import encode_states, compute_valid_masks
-    from .rl.trainer import _fill_in_sketch
-    from .enumeration.fingerprint import compute_fingerprint
-    from .utils import program_size as _program_size, program_depth as _program_depth
-
     if seed is not None:
-        import random as _random_seed
-        _random_seed.seed(seed)
+        random.seed(seed)
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
@@ -405,10 +406,9 @@ def synthesize_corpus(
         print(f"[resume] Loading warm-started policy from {policy_ckpt}")
         policy.load_state_dict(torch.load(policy_ckpt, weights_only=True))
     else:
-        import random as _random
         warmstart_corpus = quality_corpus
         if len(warmstart_corpus) > 100_000:
-            warmstart_corpus = _random.sample(warmstart_corpus, 100_000)
+            warmstart_corpus = random.sample(warmstart_corpus, 100_000)
             print(f"Subsampled warm-start corpus to {len(warmstart_corpus):,} programs")
         warm_start(
             policy, warmstart_corpus, grammar, action_vocab, type_vocab, func_vocab,

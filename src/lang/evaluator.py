@@ -13,6 +13,7 @@ from .ast_nodes import (
 )
 from .environment import Environment, Closure
 from .grammar import Grammar, DefaultGrammar
+from .parser import parse
 
 
 class EvaluationError(Exception):
@@ -157,7 +158,6 @@ def evaluate(code: str, grammar: Grammar = DefaultGrammar) -> Any:
     Returns:
         Evaluation result
     """
-    from .parser import parse
     ast = parse(code)
     evaluator = Evaluator(grammar)
     return evaluator.eval(ast)

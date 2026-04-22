@@ -1,14 +1,13 @@
 """Training loops: behavioural cloning warm-start and priority queue RL."""
 
 import logging
+import random
 from typing import Callable
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-
-logger = logging.getLogger(__name__)
 
 from .policy import PolicyNetwork, encode_states, compute_valid_masks, build_action_vocab
 from .mdp import SynthesisState, Action, Episode, valid_actions
@@ -21,6 +20,8 @@ from ..compiler import JITCompiler
 from ..enumeration.fingerprint import Fingerprint, FingerprintTable, make_hashable, FAIL, compute_fingerprint
 from ..enumeration.enumerator import TypedProgram
 from ..utils import RANDINT_PROBE_SEQUENCE
+
+logger = logging.getLogger(__name__)
 
 
 class TransitionDataset(Dataset):
@@ -131,9 +132,6 @@ def _fill_in_sketch(
 
     Returns (fn, concrete_ast, fp) or (None, None, None) if all attempts fail.
     """
-    import random
-    from ..rl.reward import compute_reward
-
     k = _count_holes(sketch_ast)
     if k == 0:
         # No holes — compile directly and fingerprint via probe sequence

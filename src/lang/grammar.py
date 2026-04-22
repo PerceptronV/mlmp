@@ -1,6 +1,7 @@
 from __future__ import annotations
 import inspect
 import random
+from collections import defaultdict
 from typing import TypeVar, Callable, Optional
 from .type_utils import (
     CallableOrig,
@@ -600,7 +601,6 @@ def sort(f: Callable[[T1], int], xs: list[T1]) -> list[T1]:
 @DefaultGrammar
 def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
     """Group by key function: (group f xs)"""
-    from collections import defaultdict
     groups = defaultdict(list)
     for x in xs:
         key = f(x)

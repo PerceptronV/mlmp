@@ -9,8 +9,9 @@ Example:
     python scripts/print_episode.py datasets/template_seed42/train/episode_000000.json
 """
 
-import json
 import argparse
+import json
+import traceback
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -204,7 +205,6 @@ Examples:
         return 0
     except Exception as e:
         print(f"Error reading episode: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 

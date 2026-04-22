@@ -11,12 +11,15 @@ This provides significant speedup for expressions that are compiled once
 and executed many times.
 """
 
+import time
 from typing import Any, Dict, Set, Callable, Optional
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode, IntHoleNode,
 )
+from .evaluator import Evaluator
 from .grammar import Grammar, DefaultGrammar
+from .parser import parse
 from .type_utils import get_origin, CallableOrig
 from .utils import RANDINT_PROBE_SEQUENCE
 
@@ -422,7 +425,6 @@ def jit_compile(code: str, grammar: Grammar = DefaultGrammar) -> Callable:
         >>> increment(100)
         101
     """
-    from .parser import parse
     ast = parse(code)
     jit = JITCompiler(grammar)
     fn, _ = jit.compile(ast)
@@ -445,10 +447,6 @@ def jit_compile_and_run(code: str, grammar: Grammar = DefaultGrammar) -> Any:
 
 
 if __name__ == "__main__":
-    import time
-    from .parser import parse
-    from .evaluator import Evaluator
-    
     print("JIT Compiler Examples:")
     print("=" * 80)
     

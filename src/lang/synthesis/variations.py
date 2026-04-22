@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 
 from src.lang.compiler import jit_compile
-from src.lang.type_utils import CallableOrig
+from src.lang.grammar import DefaultGrammar
+from src.lang.type_utils import CallableOrig, get_origin
 
 T1, T2 = TypeVar('T1'), TypeVar('T2')
 
@@ -2386,8 +2387,6 @@ def _make_count_templates() -> List[VariationTemplate]:
 
 def _make_find_templates() -> List[VariationTemplate]:
     """Templates for find variations."""
-    from .type_utils import CallableOrig
-
     base = {
         'name': 'find',
         'arg_names': ('p', 'xs'),
@@ -2456,8 +2455,6 @@ def _make_unique_templates() -> List[VariationTemplate]:
 
 def _make_sort_templates() -> List[VariationTemplate]:
     """Templates for sort variations."""
-    from .type_utils import CallableOrig
-
     base = {
         'name': 'sort',
         'arg_names': ('f', 'xs'),
@@ -2492,8 +2489,6 @@ def _make_sort_templates() -> List[VariationTemplate]:
 
 def _make_group_templates() -> List[VariationTemplate]:
     """Templates for group variations."""
-    from .type_utils import CallableOrig
-
     base = {
         'name': 'group',
         'arg_names': ('f', 'xs'),
@@ -2759,8 +2754,6 @@ class TemplateSemanticGrammar:
 
     def _make_evaluable(self, name: str, fn: Callable, arg_types: tuple) -> Callable:
         """Make a function evaluable by the evaluator."""
-        from .type_utils import CallableOrig, get_origin
-
         callable_indices = [
             e for e, t in enumerate(arg_types)
             if get_origin(t) == CallableOrig
@@ -2866,9 +2859,6 @@ def sample_template_grammar(
 
 
 if __name__ == "__main__":
-    # Demo
-    from .grammar import DefaultGrammar
-
     print("Template-Based Variation Demo")
     print("=" * 60)
 

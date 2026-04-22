@@ -110,7 +110,8 @@ class StateEncoder(nn.Module):
         """
         Args:
             state_batch: dict with keys 'target_type', 'parent_func',
-                         'arg_index', 'depth_budget', 'context_features'
+                         'arg_index', 'depth_budget', 'nesting_depth',
+                         'context_features'
         Returns:
             Tensor of shape (batch_size, embed_dim)
         """
