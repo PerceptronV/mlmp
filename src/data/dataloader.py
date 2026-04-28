@@ -1,36 +1,68 @@
 import json
-from tqdm import tqdm
+import random
 from pathlib import Path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
-from ..data.tokeniser import (
+from .tokeniser import (
     Tokeniser,
     PAD_TOKEN,
-    UNK_TOKEN,
     START_TOKEN,
     END_TOKEN,
     TO_TOKEN,
     SEP_TOKEN,
     NEWLINE_TOKEN,
 )
+from .io_sampler import RuleIOSampler
 
 
 class ProgramDataset(Dataset):
+    """Corpus-A program dataset.
+
+    Loads ``list[int] -> list[int]`` programs from one or more corpus JSON files
+    (each entry ``{"program": str, "type": str, "size": int}``) and, for each
+    item, samples I/O pairs on the fly via ``RuleIOSampler``.
+
+    Each program is seen ``max_n_io_shown`` times across the dataset, with
+    ``n_io_shown`` ranging from ``1..max_n_io_shown``. The same program always
+    samples the same I/O pool (seed = ``base_seed * 1000003 + prog_idx``); the
+    n-th view simply takes the first ``n`` pairs of that fixed pool.
+
+    Sequence layout (matches the original episode format minus the support set):
+        [io_1.input] → [io_1.output] \n
+        ...
+        [io_n.input] → [io_n.output] \n
+        <start> <program tokens> <end>
+    Loss mask is 0 over the I/O context and 1 over the program tokens
+    (predicting the program from its I/O examples).
+    """
+
     def __init__(
         self,
-        data_dir: Path,
-        include_support_programs: bool = True,
-        include_query_program: bool = True,
+        corpus_files: Path | list[Path],
+        seed: int = 0,
+        n_io_per_program: int = 11,
+        type_filter: str | None = "list[int]",
+        io_sampler: RuleIOSampler | None = None,
     ):
         self.tokeniser = Tokeniser()
-        self.data_dir = data_dir
-        self.files = sorted(data_dir.glob('episode_*.json'))
-        self.include_support_programs = include_support_programs
-        self.include_query_program = include_query_program
+        self.seed = seed
+        self.n_io_per_program = n_io_per_program
 
-        assert len(self.files) > 0, f"No files found in {data_dir}"
-        sample = self.load_episode(self.files[0])
-        self.n_io = len(sample['query']['io_pairs'])
+        if isinstance(corpus_files, Path):
+            corpus_files = [corpus_files]
+        self.corpus_files = corpus_files
+
+        self.programs: list[dict] = []
+        for path in corpus_files:
+            assert path.exists(), f"Corpus file not found: {path}"
+            with open(path, "r") as f:
+                entries = json.load(f)
+            if type_filter is not None:
+                entries = [e for e in entries if e.get("type") == type_filter]
+            self.programs.extend(entries)
+        assert len(self.programs) > 0, f"No programs loaded from {corpus_files}"
+
+        self.io_sampler = io_sampler or RuleIOSampler(num_io_pairs=n_io_per_program)
 
         self.pad = self.tokeniser.vocab.stoi[PAD_TOKEN]
         self.to = self.tokeniser.vocab.stoi[TO_TOKEN]
@@ -39,169 +71,106 @@ class ProgramDataset(Dataset):
         self.start = self.tokeniser.vocab.stoi[START_TOKEN]
         self.end = self.tokeniser.vocab.stoi[END_TOKEN]
 
-        self.maxx = None
-        self.maxy = None
-    
-    def load_episode(self, file: Path):
-        with open(file, 'r') as f:
-            return json.load(f)
-    
-    def tokenise_episode(
-        self,
-        episode: dict,
-        n_io_shown: int,
-        include_support_programs: bool = True,
-        include_query_program: bool = True,
-    ):
-        x = []
-        
-        for ex in episode['support_examples']:
-            for io in ex['io_pairs']:
-                x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to])
-                x.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
-            if include_support_programs:
-                x.extend(self.tokeniser.tokenise_program(ex['program_shuffled']) + [self.newline])
-            x.extend([self.sep] + [self.newline])
-        
-        x.extend([self.sep] + [self.newline])
-        
-        for io in episode['query']['io_pairs'][:n_io_shown]:
-            x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to])
-            x.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
-        
-        if include_query_program:
-            y = [self.start] + self.tokeniser.tokenise_program(episode['query']['program_shuffled']) + [self.end]
-        else:
-            y = [self.start]
-            for io in episode['query']['io_pairs'][n_io_shown:]:
-                x.extend(self.tokeniser.tokenise_list(io['input']) + [self.to] + [self.newline])
-                y.extend(self.tokeniser.tokenise_list(io['output']) + [self.newline])
-            y.append(self.end)
+        self._io_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
 
-        return x, y
-    
-    def detokenise_episode(self, x: list[int], y: list[int]):
-        return {
-            'x': self.tokeniser.detokenise(x),
-            'y': self.tokeniser.detokenise(y)
-        }
-    
     @property
-    def max_n_io(self):
-        return self.n_io if self.include_query_program else self.n_io - 1
+    def max_n_io_shown(self) -> int:
+        return self.n_io_per_program
 
-    def __len__(self):
-        return len(self.files) * self.max_n_io
-    
-    def __getitem__(self, idx, include_episode: bool = False):
-        file_idx = idx // self.max_n_io
-        n_io_shown = idx % self.max_n_io + 1
-        episode = self.load_episode(self.files[file_idx])
+    def __len__(self) -> int:
+        return len(self.programs) * self.max_n_io_shown
 
-        x, y = self.tokenise_episode(
-            episode=episode,
-            n_io_shown=n_io_shown,
-            include_support_programs=self.include_support_programs,
-            include_query_program=self.include_query_program,
-        )
-        # loss mask is has length of seq_len - 1 (you don't predict first token)
-        # and is 1 at the last len(y) - 1 positions (the ones after <start>)
-        loss_mask = [0] * len(x) + [1] * (len(y) - 1)
-        
-        if include_episode:
-            episode['n_io_shown'] = n_io_shown
-            return x + y, loss_mask, episode
-        else:
-            return x + y, loss_mask
-    
-    def compute_max_lengths(self, verbose: bool = False):
-        if self.maxx is None or self.maxy is None or self.maxtotal is None:
-            maxx = -1
-            maxy = -1
-            maxtotal = -1
-
-            for i in tqdm(range(len(self.files)), desc="Computing max lengths", disable=not verbose):
-                x, y = self.tokenise_episode(
-                    episode=self.load_episode(self.files[i]),
-                    n_io_shown=self.max_n_io,
-                    include_support_programs=self.include_support_programs,
-                    include_query_program=self.include_query_program,
-                )
-                maxx = max(maxx, len(x))
-                maxy = max(maxy, len(y))
-                maxtotal = max(maxtotal, len(x) + len(y))
-        
-            self.maxx = maxx
-            self.maxy = maxy
-            self.maxtotal = maxtotal
-        
-        return {
-            'x': self.maxx,
-            'y': self.maxy,
-            'total': self.maxtotal,
-        }
-    
-    @property
-    def max_seq_len(self):
-        if self.maxtotal is None:
-            self.compute_max_lengths()
-        return self.maxtotal
-
-
-if __name__ == '__main__':
-
-    while 1:
-
-        try:
-            dataset = input('Enter dataset directory (datasets/query_first_template_seed42_semvar/train): ').strip()
-            if dataset == '':
-                dataset = 'datasets/query_first_template_seed42_semvar/train'
-            
-            supp = input('Include support programs? (Y/n): ').lower()
-            if supp == 'n':
-                include_support_programs = False
-            else:
-                include_support_programs = True
-            
-            query = input('Include query program? (Y/n): ').lower()
-            if query == 'n':
-                include_query_program = False
-            else:
-                include_query_program = True
-            
-            dataset = ProgramDataset(
-                data_dir=Path(dataset),
-                include_support_programs=include_support_programs,
-                include_query_program=include_query_program,
+    def _get_io_pairs(self, prog_idx: int) -> list[tuple[list[int], list[int]]]:
+        """Sample (and cache) the I/O pool for a given program."""
+        if prog_idx not in self._io_cache:
+            rng = random.Random(self.seed * 1000003 + prog_idx)
+            self._io_cache[prog_idx] = self.io_sampler.sample(
+                self.programs[prog_idx]["program"], rng
             )
+        return self._io_cache[prog_idx]
 
-            flag = input('Compute max lengths? (y/N): ').lower()
-            if flag == 'y':
-                print(f"Max lengths: {dataset.compute_max_lengths(verbose=True)}\n")
+    def tokenise_program_item(
+        self,
+        program_str: str,
+        io_pairs: list[tuple[list[int], list[int]]],
+    ) -> tuple[list[int], list[int]]:
+        x: list[int] = []
+        for inp, out in io_pairs:
+            x.extend(self.tokeniser.tokenise_list(inp) + [self.to])
+            x.extend(self.tokeniser.tokenise_list(out) + [self.newline])
+        y = [self.start] + self.tokeniser.tokenise_program(program_str) + [self.end]
+        return x, y
+
+    def __getitem__(self, idx: int, include_program: bool = False):
+        prog_idx = idx // self.max_n_io_shown
+        n_io_shown = idx % self.max_n_io_shown + 1
+
+        program = self.programs[prog_idx]
+        io_pairs = self._get_io_pairs(prog_idx)[:n_io_shown]
+
+        x, y = self.tokenise_program_item(program["program"], io_pairs)
+        # loss mask has length seq_len - 1 (no prediction at first token);
+        # 1 over the predictions of program tokens following <start>.
+        loss_mask = [0] * len(x) + [1] * (len(y) - 1)
+
+        if include_program:
+            return x + y, loss_mask, {**program, "n_io_shown": n_io_shown, "io_pairs": io_pairs}
+        return x + y, loss_mask
+
+
+if __name__ == "__main__":
+    while 1:
+        try:
+            corpus_input = input(
+                "Enter corpus JSON file(s) (comma-separated, default datasets/corpus-a/rl_corpus.json): "
+            ).strip()
+            if corpus_input == "":
+                corpus_input = "datasets/corpus-a/rl_corpus.json"
+            corpus_files = [Path(p.strip()) for p in corpus_input.split(",")]
+
+            seed_input = input("Seed (default 0): ").strip()
+            seed = int(seed_input) if seed_input else 0
+
+            dataset = ProgramDataset(corpus_files=corpus_files, seed=seed)
+            print(f"\nLoaded {len(dataset.programs):,} programs"
+                  f" -> {len(dataset):,} items (max_n_io_shown={dataset.max_n_io_shown})")
 
             while 1:
-                idx = input('\nEnter index (-1 to exit): ')
+                idx = input("\nEnter index (-1 to exit): ")
                 try:
                     idx = int(idx)
                 except ValueError:
-                    print('Invalid index. Please enter a valid integer.')
+                    print("Invalid index. Please enter a valid integer.")
                     continue
                 if idx < 0:
-                    print('\n')
+                    print("\n")
                     break
                 if idx >= len(dataset):
-                    print(f'Index out of range [0, {len(dataset)-1}]. Please enter a valid index.')
+                    print(f"Index out of range [0, {len(dataset)-1}].")
                     continue
 
-                ep, loss_mask = dataset[idx]
-                loss_mask = [0] + loss_mask # add 0 to the start to match the length of the sequence
-                print(f"Length: {len(ep)}", end='\n ')
-                for tok, mask in zip(ep, loss_mask):
-                    prtstr = dataset.tokeniser.vocab.itos[tok]
-                    if mask:
-                        prtstr = f'\033[92m{prtstr}\033[0m'
-                    print(prtstr, end=' ')
+                seq, loss_mask, info = dataset.__getitem__(idx, include_program=True)
+                loss_mask = [0] + loss_mask  # align with seq
+
+                GREEN, DIM, RESET = "\033[92m", "\033[2m", "\033[0m"
+                print(f"\n{DIM}--- raw ---{RESET}")
+                print(f"  prog_idx   : {idx // dataset.max_n_io_shown}")
+                print(f"  n_io_shown : {info['n_io_shown']}")
+                print(f"  type       : {info.get('type')}    size: {info.get('size')}")
+                print(f"  program    : {info['program']}")
+                print(f"  io_pairs   :")
+                for inp, out in info["io_pairs"]:
+                    print(f"      {inp} → {out}")
+
+                print(f"\n{DIM}--- token ids (len {len(seq)}, mask sum {sum(loss_mask)}) ---{RESET}")
+                print(" ", " ".join(str(t) for t in seq))
+
+                print(f"\n{DIM}--- detokenised (green = predicted / loss-masked tokens) ---{RESET}")
+                print(" ", " ".join(
+                    f"{GREEN}{dataset.tokeniser.vocab.itos[t]}{RESET}" if m
+                    else dataset.tokeniser.vocab.itos[t]
+                    for t, m in zip(seq, loss_mask)
+                ))
                 print()
-    
         except KeyboardInterrupt:
             break

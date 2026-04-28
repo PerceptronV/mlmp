@@ -19,7 +19,7 @@ def get_vocab(grammar: Grammar = DefaultGrammar, int_max: int = 99, n_vars_max: 
     tokens.extend(grammar.keywords)
     tokens.extend(grammar.names)
     tokens.extend(str(i) for i in range(int_max + 1))
-    tokens.extend(chr(ord('a') + i) for i in range(n_vars_max))
+    tokens.extend(f'_p{i}' for i in range(n_vars_max))
 
     vocab = Vocab(Counter({token: 1 for token in tokens}), specials=tok_specials)
     vocab.unk_index = vocab[UNK_TOKEN]

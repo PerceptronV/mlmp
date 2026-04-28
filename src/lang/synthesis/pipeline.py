@@ -12,7 +12,7 @@ import torch
 from tqdm import tqdm
 
 from src.lang.grammar import Grammar, DefaultGrammar
-from src.lang.ast_nodes import ASTNode, LambdaNode, IntHoleNode
+from src.lang.ast_nodes import ASTNode, LambdaNode, VariableNode, IntHoleNode
 from src.lang.compiler import JITCompiler
 from src.lang.enumeration.enumerator import BottomUpEnumerator, TypedProgram
 from src.lang.enumeration.fingerprint import (
@@ -36,25 +36,72 @@ from src.lang.utils import (
 )
 
 
+def _canonicalise_lambda(
+    ast: ASTNode, depth: int = 0, env: dict[str, str] | None = None,
+) -> ASTNode:
+    """Alpha-rename so every binder is ``_p{lexical_depth}``.
+
+    A lambda nested inside ``k`` enclosing-scope binders takes parameters
+    ``_p{k}, _p{k+1}, …`` by position; references are rewritten to match. This
+    matches the convention already produced by RL synthesis (depth-indexed names,
+    sibling lambdas at the same depth share a starting index) and gives the model
+    a single, learnable scoping rule.
+    """
+    if env is None:
+        env = {}
+    if isinstance(ast, LambdaNode):
+        new_params = [f"_p{depth + i}" for i in range(len(ast.param))]
+        new_env = {**env, **dict(zip(ast.param, new_params))}
+        return LambdaNode(
+            new_params,
+            _canonicalise_lambda(ast.body, depth + len(ast.param), new_env),
+        )
+    if isinstance(ast, VariableNode):
+        return VariableNode(env.get(ast.name, ast.name))
+    if not hasattr(ast, "__dataclass_fields__"):
+        return ast
+    kwargs = {}
+    for field in ast.__dataclass_fields__:
+        v = getattr(ast, field)
+        if isinstance(v, ASTNode):
+            kwargs[field] = _canonicalise_lambda(v, depth, env)
+        elif isinstance(v, list):
+            kwargs[field] = [
+                _canonicalise_lambda(x, depth, env) if isinstance(x, ASTNode) else x
+                for x in v
+            ]
+        else:
+            kwargs[field] = v
+    return type(ast)(**kwargs)
+
+
+def _close_program(ast: ASTNode) -> ASTNode:
+    """Wrap open sketches and alpha-rename to depth-indexed ``_pN`` binders."""
+    if not isinstance(ast, LambdaNode):
+        ast = LambdaNode(["x"], ast)  # outer wrap; the canonicaliser names it _p0
+    return _canonicalise_lambda(ast)
+
+
 def save_corpus(corpus: list[TypedProgram], path: str):
-    """Serialise programs as S-expressions to JSON."""
+    """Serialise programs as closed-lambda S-expressions to JSON."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    entries = []
-    for prog in corpus:
-        entries.append({
-            'program': str(prog.ast),
+    entries = [
+        {
+            'program': str(_close_program(prog.ast)),
             'type': str(prog.type),
             'size': prog.size,
-        })
+        }
+        for prog in corpus
+    ]
     with open(path, 'w') as f:
         json.dump(entries, f, indent=2)
     print(f"Saved {len(entries)} programs to {path}")
 
 
 def save_corpus_asts(asts: list[ASTNode], path: str):
-    """Serialise AST list to JSON."""
+    """Serialise AST list to JSON as closed lambdas."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    entries = [{'program': str(ast)} for ast in asts]
+    entries = [{'program': str(_close_program(ast))} for ast in asts]
     with open(path, 'w') as f:
         json.dump(entries, f, indent=2)
     print(f"Saved {len(entries)} programs to {path}")
