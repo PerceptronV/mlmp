@@ -139,11 +139,14 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
 
     n_correct = 0
     n_total = 0
-    n_examples = len(val_dataset)
+    # Evaluate each program once at max n_io_shown (= n_io_per_program).
+    max_n = val_dataset.max_n_io_shown
+    n_programs = len(val_dataset.programs)
     if max_examples is not None:
-        n_examples = min(n_examples, max_examples)
+        n_programs = min(n_programs, max_examples)
 
-    for idx in tqdm(range(n_examples), desc="Accuracy"):
+    for prog_idx in tqdm(range(n_programs), desc="Accuracy"):
+        idx = prog_idx * max_n + (max_n - 1)
         seq, loss_mask, program = val_dataset.__getitem__(idx, include_program=True)
         len_x = loss_mask.count(0)
         src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
@@ -247,7 +250,7 @@ def train():
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('--val-examples', type=int, default=None,
-                        help='Max validation examples for accuracy (None = all)')
+                        help='Max validation programs for accuracy (each evaluated once with all n_io_per_program I/O shown). None = all programs.')
 
     # Checkpoint arguments
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory to save checkpoints')
