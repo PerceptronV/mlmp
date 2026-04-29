@@ -20,16 +20,26 @@ from .lang.grammar import DefaultGrammar
 class CyclingSampler(Sampler):
     """Samples sequentially, wrapping around at the end of the dataset."""
 
-    def __init__(self, data_source, num_samples: int, shuffle: bool = True):
+    def __init__(self, data_source, num_samples: int, shuffle: bool = True, track_last: int = 0):
         self.data_source = data_source
         self.num_samples = num_samples
         self.shuffle = shuffle
+        self.track_last = track_last
+        self.last_indices: list[int] = []
 
     def __iter__(self):
         n = len(self.data_source)
         order = torch.randperm(n).tolist() if self.shuffle else list(range(n))
+        recent: list[int] = []
         for i in range(self.num_samples):
-            yield order[i % n]
+            idx = order[i % n]
+            if self.track_last:
+                recent.append(idx)
+                if len(recent) > self.track_last:
+                    recent.pop(0)
+            yield idx
+        if self.track_last:
+            self.last_indices = recent
 
     def __len__(self):
         return self.num_samples
@@ -127,52 +137,59 @@ def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device)
     return out[1:]  # drop <start>
 
 
-def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
-    """Functional accuracy: generate a program from the I/O context and check it
-    reproduces every shown I/O pair (outputs are reduced mod 100 to match the
-    dataset's modular-int convention)."""
+def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens):
+    """Greedy-decode one example and check the generated program reproduces all
+    of its I/O pairs (outputs reduced mod 100)."""
+    seq, loss_mask, program = dataset.__getitem__(idx, include_program=True)
+    len_x = loss_mask.count(0)
+    src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
+    io_pairs = program['io_pairs']
+
+    gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
+    if end_tok in gen_tokens:
+        gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
+
+    program_str = dataset.tokeniser.detokenise(gen_tokens)
+    try:
+        fn, _ = compiler.compile(parse(program_str))
+        for inp, expected in io_pairs:
+            output = fn(list(inp))
+            if not isinstance(output, list) or [x % 100 for x in output] != expected:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tokens=80, desc="Accuracy"):
+    """Functional accuracy over a given list of dataset indices."""
+    if not indices:
+        return 0.0
     model.eval()
-    tokeniser = val_dataset.tokeniser
     compiler = JITCompiler(DefaultGrammar)
-    start_tok = val_dataset.start
-    end_tok = val_dataset.end
+    start_tok = dataset.start
+    end_tok = dataset.end
 
     n_correct = 0
-    n_total = 0
-    # Evaluate each program once at max n_io_shown (= n_io_per_program).
+    for idx in tqdm(indices, desc=desc):
+        if _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens):
+            n_correct += 1
+    return n_correct / len(indices)
+
+
+def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Functional accuracy: generate a program from the I/O context and check it
+    reproduces every shown I/O pair. Evaluates each program once at
+    ``max_n_io_shown``."""
     max_n = val_dataset.max_n_io_shown
     n_programs = len(val_dataset.programs)
     if max_examples is not None:
         n_programs = min(n_programs, max_examples)
-
-    for prog_idx in tqdm(range(n_programs), desc="Accuracy"):
-        idx = prog_idx * max_n + (max_n - 1)
-        seq, loss_mask, program = val_dataset.__getitem__(idx, include_program=True)
-        len_x = loss_mask.count(0)
-        src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
-        io_pairs = program['io_pairs']
-
-        gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
-        if end_tok in gen_tokens:
-            gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
-
-        program_str = tokeniser.detokenise(gen_tokens)
-        correct = True
-        try:
-            fn, _ = compiler.compile(parse(program_str))
-            for inp, expected in io_pairs:
-                output = fn(list(inp))
-                if not isinstance(output, list) or [x % 100 for x in output] != expected:
-                    correct = False
-                    break
-        except Exception:
-            correct = False
-
-        if correct:
-            n_correct += 1
-        n_total += 1
-
-    return n_correct / n_total if n_total > 0 else 0.0
+    indices = [prog_idx * max_n + (max_n - 1) for prog_idx in range(n_programs)]
+    return compute_accuracy_on_indices(
+        model, val_dataset, indices, device,
+        max_program_tokens=max_program_tokens, desc="Val accuracy",
+    )
 
 
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir):
@@ -319,9 +336,13 @@ def train():
         })
 
     # Dataloaders
+    train_sampler = None
     if args.steps_per_epoch is not None:
         num_samples = args.steps_per_epoch * args.batch_size
-        train_sampler = CyclingSampler(train_dataset, num_samples=num_samples, shuffle=True)
+        train_sampler = CyclingSampler(
+            train_dataset, num_samples=num_samples, shuffle=True,
+            track_last=args.batch_size,
+        )
         train_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
@@ -399,6 +420,14 @@ def train():
         )
         print(f"Train loss: {train_loss:.4f}")
 
+        train_accuracy = 0.0
+        if train_sampler is not None and train_sampler.last_indices:
+            train_accuracy = compute_accuracy_on_indices(
+                model, train_dataset, train_sampler.last_indices, device,
+                max_program_tokens=80, desc="Train accuracy",
+            )
+            print(f"Train accuracy (last batch): {train_accuracy:.2%}")
+
         val_loss = train_loss
         val_accuracy = 0.0
         if val_loader:
@@ -422,6 +451,7 @@ def train():
             wandb.log({
                 'epoch': epoch + 1,
                 'train/loss': train_loss,
+                'train/accuracy': train_accuracy,
                 'val/loss': val_loss,
                 'val/accuracy': val_accuracy,
                 'learning_rate': current_lr,
