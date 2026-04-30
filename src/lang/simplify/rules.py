@@ -230,28 +230,36 @@ _add(Rule(
     name="mul-zero-r",
     lhs=papp("*", PVar("x"), pnum(0)),
     rhs=_const_int(0),
-    side_condition=_always_true,
+    # Drops ``x``; require it to be a literal.
+    side_condition=lambda s, eg: get_literal_int(s["x"], eg) is not None,
 ))
 
 _add(Rule(
     name="mul-zero-l",
     lhs=papp("*", pnum(0), PVar("x")),
     rhs=_const_int(0),
-    side_condition=_always_true,
+    side_condition=lambda s, eg: get_literal_int(s["x"], eg) is not None,
 ))
 
 _add(Rule(
     name="filter-false",
     lhs=papp("filter", PVar("p"), PVar("xs")),
     rhs=_empty_list_rhs,
-    side_condition=_is_constant_lambda("p", Op.BOOL, False),
+    # Constant-false predicate plus a syntactic-list xs: avoids dropping
+    # an xs sub-tree whose evaluation might fail.
+    side_condition=lambda s, eg: (
+        _is_constant_lambda("p", Op.BOOL, False)(s, eg)
+        and is_empty_list(s["xs"], eg)
+    ),
 ))
 
 _add(Rule(
     name="map-empty",
     lhs=papp("map", PVar("f"), pempty_list()),
     rhs=_empty_list_rhs,
-    side_condition=_always_true,
+    # ``f`` must be a syntactic lambda — closure construction is total,
+    # so dropping it is safe.
+    side_condition=_is_lambda("f"),
 ))
 
 # ---- involutions ----------------------------------------------------------
@@ -290,7 +298,12 @@ _add(Rule(
     name="if-same",
     lhs=pif(PVar("cond"), PVar("a"), PVar("a")),  # repeated var: both branches identical
     rhs=_bind("a"),
-    side_condition=_always_true,
+    # Drops ``cond``; require it to be a literal bool. (When ``cond`` is
+    # ``true``/``false`` we have if-true/if-false anyway, so this is
+    # redundant in practice — but keeping the rule lets the e-graph
+    # collapse classes that congruence-merge ``a``-with-``b`` after some
+    # other rewrite.)
+    side_condition=lambda s, eg: get_literal_bool(s["cond"], eg) is not None,
 ))
 
 # ---- constant folding -----------------------------------------------------
@@ -407,7 +420,9 @@ _add(Rule(
     name="length-of-singleton",
     lhs=papp("length", papp("singleton", PVar("x"))),
     rhs=_const_int(1),
-    side_condition=_always_true,
+    # ``x`` is dropped — only fire when it's a literal so its evaluation
+    # is definitely total.
+    side_condition=lambda s, eg: get_literal_int(s["x"], eg) is not None,
 ))
 
 _add(Rule(
@@ -419,7 +434,8 @@ _add(Rule(
          eg.add(ENode(Op.NUM, (), (1,)))),
         ("+",),
     )),
-    side_condition=_always_true,
+    # Drops ``x``'s evaluation; require it to be a literal.
+    side_condition=lambda s, eg: get_literal_int(s["x"], eg) is not None,
 ))
 
 
@@ -443,14 +459,15 @@ _add(Rule(
     name="and-false-r",
     lhs=papp("and", PVar("b"), pbool(False)),
     rhs=lambda s, eg: eg.add(ENode(Op.BOOL, (), (False,))),
-    side_condition=_always_true,
+    # Drops ``b``; require it to be a syntactic literal.
+    side_condition=lambda s, eg: get_literal_bool(s["b"], eg) is not None,
 ))
 
 _add(Rule(
     name="and-false-l",
     lhs=papp("and", pbool(False), PVar("b")),
     rhs=lambda s, eg: eg.add(ENode(Op.BOOL, (), (False,))),
-    side_condition=_always_true,
+    side_condition=lambda s, eg: get_literal_bool(s["b"], eg) is not None,
 ))
 
 _add(Rule(
@@ -471,14 +488,14 @@ _add(Rule(
     name="or-true-r",
     lhs=papp("or", PVar("b"), pbool(True)),
     rhs=lambda s, eg: eg.add(ENode(Op.BOOL, (), (True,))),
-    side_condition=_always_true,
+    side_condition=lambda s, eg: get_literal_bool(s["b"], eg) is not None,
 ))
 
 _add(Rule(
     name="or-true-l",
     lhs=papp("or", pbool(True), PVar("b")),
     rhs=lambda s, eg: eg.add(ENode(Op.BOOL, (), (True,))),
-    side_condition=_always_true,
+    side_condition=lambda s, eg: get_literal_bool(s["b"], eg) is not None,
 ))
 
 _add(Rule(
@@ -522,7 +539,9 @@ _add(Rule(
     name="filter-empty",
     lhs=papp("filter", PVar("p"), pempty_list()),
     rhs=_empty_list_rhs,
-    side_condition=_always_true,
+    # Same as ``map-empty``: dropping a non-lambda ``p`` is unsound when
+    # its evaluation can fail.
+    side_condition=_is_lambda("p"),
 ))
 
 
