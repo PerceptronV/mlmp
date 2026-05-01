@@ -11,6 +11,11 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=yidingsong@college.harvard.edu
 
+set -e
+
+cd "$(dirname "$0")/.."
+mkdir -p logs
+
 source ~/.bashrc
 
 conda init bash
@@ -41,3 +46,8 @@ python -m scripts.build_rule_split \
     --val-out "${VAL_OUT}" \
     --train-corpus "${OUTPUT_DIR}/enum_corpus.json" \
     --train-corpus "${OUTPUT_DIR}/rl_corpus.json"
+
+# ── Phase 5: equality-saturation simplification of the RL corpus ─────────────
+# Writes ${OUTPUT_DIR}/rl_corpus_no_rule.simplified.json — train.slurm.sh reads this.
+python -m scripts.simplify_corpus \
+    --input "${OUTPUT_DIR}/rl_corpus_no_rule.json"

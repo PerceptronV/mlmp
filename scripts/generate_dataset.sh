@@ -9,6 +9,8 @@
 #            + post-RL expansion (target ~4M concrete)
 #   Phase 4: Build Rule et al. validation set + filter Rule fingerprints
 #            from the train corpora (-> *_no_rule.json + rule_val.json).
+#   Phase 5: Equality-saturation simplification of the RL corpus
+#            (-> rl_corpus_no_rule.simplified.json; consumed by train.slurm.sh).
 # Settings match docs/enumeration-rl.tex; baked into src/data/generate.py
 # and src/lang/synthesis/pipeline.py.
 #
@@ -20,6 +22,7 @@
 set -e
 
 cd "$(dirname "$0")/.."
+mkdir -p logs
 
 OUTPUT_DIR="${OUTPUT_DIR:-output/corpus-a}"
 SEED="${SEED:-42}"
@@ -45,6 +48,15 @@ python -m scripts.build_rule_split \
     --train-corpus "${OUTPUT_DIR}/rl_corpus.json"
 
 echo ""
+echo "=============================================="
+echo "Phase 5: Equality-saturation simplification (RL corpus)"
+echo "=============================================="
+
+python -m scripts.simplify_corpus \
+    --input "${OUTPUT_DIR}/rl_corpus_no_rule.json"
+
+echo ""
 echo "Done!"
-echo "  Train: ${OUTPUT_DIR}/{enum,rl}_corpus_no_rule.json"
-echo "  Val:   ${VAL_OUT}"
+echo "  Train (enum): ${OUTPUT_DIR}/enum_corpus_no_rule.json"
+echo "  Train (rl):   ${OUTPUT_DIR}/rl_corpus_no_rule.simplified.json"
+echo "  Val:          ${VAL_OUT}"

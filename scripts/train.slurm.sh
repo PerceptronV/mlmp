@@ -13,6 +13,11 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=yidingsong@college.harvard.edu
 
+set -e
+
+cd "$(dirname "$0")/.."
+mkdir -p logs
+
 source ~/.bashrc
 
 module load cuda/12.4.1-fasrc01
@@ -25,7 +30,7 @@ conda activate ml13
 nvidia-smi
 
 ENUM_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/enum_corpus_no_rule.json"
-RL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/rl_corpus_no_rule.json"
+RL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/rl_corpus_no_rule.simplified.json"
 VAL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json"
 CKPT_DIR="/n/netscratch/gershman_lab/Lab/yiding/mlmp_checkpoints"
 NUM_WORKERS=8
