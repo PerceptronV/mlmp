@@ -13,7 +13,8 @@
 
 set -e
 
-cd "$(dirname "$0")/.."
+# Under sbatch, $0 points to a Slurm spool copy; use SLURM_SUBMIT_DIR instead.
+cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")/..}"
 mkdir -p logs
 
 source ~/.bashrc
