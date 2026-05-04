@@ -29,6 +29,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 
+# Compiled flex_attention is a fused Triton kernel; eager materialises the full
+# (T, T) scores matrix and is dramatically slower.
+flex_attention = torch.compile(flex_attention, dynamic=True)
+
 
 def _causal_jagged_attention(
     q_nt: torch.Tensor, k_nt: torch.Tensor, v_nt: torch.Tensor,

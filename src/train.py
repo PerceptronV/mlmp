@@ -274,17 +274,17 @@ def train():
                         help='Seed for the I/O sampler (separate from training seed)')
 
     # Model arguments
-    parser.add_argument('--d-model', type=int, default=128, help='Model dimension')
+    parser.add_argument('--d-model', type=int, default=256, help='Model dimension')
     parser.add_argument('--d-ff', type=int, default=None, help='FFN hidden dim (default: 8/3 * d_model)')
-    parser.add_argument('--n-heads', type=int, default=4, help='Number of attention heads')
+    parser.add_argument('--n-heads', type=int, default=8, help='Number of attention heads')
     parser.add_argument('--n-layers', type=int, default=4, help='Number of encoder / decoder layers')
     parser.add_argument('--max-seq-len', type=int, default=2048, help='Max sequence length for RoPE cache')
     parser.add_argument('--compile-layers', action='store_true', help='torch.compile each encoder/decoder layer')
 
     # Training arguments
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--steps-per-epoch', type=int, default=1000,
+    parser.add_argument('--epochs', type=int, default=200, help='Number of epochs')
+    parser.add_argument('--steps-per-epoch', type=int, default=2500,
                         help='Steps per epoch (None = full dataset, otherwise steps_per_epoch * batch_size samples)')
     parser.add_argument('--lr', type=float, default=2e-3, help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
