@@ -29,5 +29,6 @@ python -m src.train \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
     --val-examples 256 \
+    --compile-layers \
     --seed $SEED \
     --num-workers $NUM_WORKERS
