@@ -233,9 +233,9 @@ class Seq2SeqTransformer(nn.Module):
         self.project = nn.Linear(d_model, n_tokens, bias=False)
 
         if compile_layers:
+            # Decoder layers excluded: flex_attention + nested + AOT autograd is broken in PyTorch 2.9.
             for i in range(n_layers):
                 self.encoder_layers[i] = torch.compile(self.encoder_layers[i])
-                self.decoder_layers[i] = torch.compile(self.decoder_layers[i])
 
     def _embed(self, tokens: torch.Tensor) -> torch.Tensor:
         if tokens.is_nested:
