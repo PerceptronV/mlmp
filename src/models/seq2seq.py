@@ -29,17 +29,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import flex_attention, create_nested_block_mask
 
-# Eager flex_attention on jagged emits SymInts that break the backward CUDA kernel in 2.9.
-_compiled_flex_attention = torch.compile(flex_attention)
-
 
 def _causal_mask_mod(_b, _h, q_idx, kv_idx):
     return q_idx >= kv_idx
-
-
-def _causal_jagged_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-    block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
-    return _compiled_flex_attention(q, k, v, block_mask=block_mask)
 
 
 def from_token_ids(seqs: list[torch.Tensor]) -> torch.Tensor:
@@ -145,7 +137,8 @@ class MultiHeadAttention(nn.Module):
         v = self._head_split(v, rope=False)
 
         if is_causal and q.is_nested:
-            out = _causal_jagged_attention(q, k, v)
+            block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
+            out = flex_attention(q, k, v, block_mask=block_mask)
         else:
             out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
         return self.out_proj(out.transpose(1, 2).flatten(-2))
@@ -235,9 +228,9 @@ class Seq2SeqTransformer(nn.Module):
         self.project = nn.Linear(d_model, n_tokens, bias=False)
 
         if compile_layers:
-            # Decoder layers excluded: flex_attention + nested + AOT autograd is broken in PyTorch 2.9.
             for i in range(n_layers):
                 self.encoder_layers[i] = torch.compile(self.encoder_layers[i])
+                self.decoder_layers[i] = torch.compile(self.decoder_layers[i])
 
     def _embed(self, tokens: torch.Tensor) -> torch.Tensor:
         if tokens.is_nested:
