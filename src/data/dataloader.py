@@ -22,10 +22,11 @@ class ProgramDataset(Dataset):
     (each entry ``{"program": str, "type": str, "size": int}``) and, for each
     item, samples I/O pairs on the fly via ``RuleIOSampler``.
 
-    Each program is seen ``max_n_io_shown`` times across the dataset, with
-    ``n_io_shown`` ranging from ``1..max_n_io_shown``. The same program always
-    samples the same I/O pool (seed = ``base_seed * 1000003 + prog_idx``); the
-    n-th view simply takes the first ``n`` pairs of that fixed pool.
+    Each program is seen ``n_io_views`` times across the dataset, with
+    ``n_io_shown`` ranging from ``min_n_io_shown..max_n_io_shown``. The same
+    program always samples the same I/O pool (seed = ``base_seed * 1000003 +
+    prog_idx``); the n-th view simply takes the first ``n`` pairs of that fixed
+    pool.
 
     Sequence layout (matches the original episode format minus the support set):
         [io_1.input] → [io_1.output] \n
@@ -41,12 +42,17 @@ class ProgramDataset(Dataset):
         corpus_files: Path | list[Path],
         seed: int = 0,
         n_io_per_program: int = 11,
+        min_n_io_shown: int = 1,
         type_filter: str | None = "list[int]",
         io_sampler: RuleIOSampler | None = None,
     ):
+        assert 1 <= min_n_io_shown <= n_io_per_program, (
+            f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
+        )
         self.tokeniser = Tokeniser()
         self.seed = seed
         self.n_io_per_program = n_io_per_program
+        self.min_n_io_shown = min_n_io_shown
 
         if isinstance(corpus_files, Path):
             corpus_files = [corpus_files]
@@ -77,8 +83,12 @@ class ProgramDataset(Dataset):
     def max_n_io_shown(self) -> int:
         return self.n_io_per_program
 
+    @property
+    def n_io_views(self) -> int:
+        return self.max_n_io_shown - self.min_n_io_shown + 1
+
     def __len__(self) -> int:
-        return len(self.programs) * self.max_n_io_shown
+        return len(self.programs) * self.n_io_views
 
     def _get_io_pairs(self, prog_idx: int) -> list[tuple[list[int], list[int]]]:
         """Sample (and cache) the I/O pool for a given program."""
@@ -102,8 +112,8 @@ class ProgramDataset(Dataset):
         return x, y
 
     def __getitem__(self, idx: int, include_program: bool = False):
-        prog_idx = idx // self.max_n_io_shown
-        n_io_shown = idx % self.max_n_io_shown + 1
+        prog_idx = idx // self.n_io_views
+        n_io_shown = idx % self.n_io_views + self.min_n_io_shown
 
         program = self.programs[prog_idx]
         io_pairs = self._get_io_pairs(prog_idx)[:n_io_shown]
@@ -133,7 +143,8 @@ if __name__ == "__main__":
 
             dataset = ProgramDataset(corpus_files=corpus_files, seed=seed)
             print(f"\nLoaded {len(dataset.programs):,} programs"
-                  f" -> {len(dataset):,} items (max_n_io_shown={dataset.max_n_io_shown})")
+                  f" -> {len(dataset):,} items"
+                  f" (n_io_shown range: {dataset.min_n_io_shown}..{dataset.max_n_io_shown})")
 
             while 1:
                 idx = input("\nEnter index (-1 to exit): ")
@@ -154,7 +165,7 @@ if __name__ == "__main__":
 
                 GREEN, DIM, RESET = "\033[92m", "\033[2m", "\033[0m"
                 print(f"\n{DIM}--- raw ---{RESET}")
-                print(f"  prog_idx   : {idx // dataset.max_n_io_shown}")
+                print(f"  prog_idx   : {idx // dataset.n_io_views}")
                 print(f"  n_io_shown : {info['n_io_shown']}")
                 print(f"  type       : {info.get('type')}    size: {info.get('size')}")
                 print(f"  program    : {info['program']}")

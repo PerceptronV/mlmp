@@ -201,11 +201,11 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
     """Functional accuracy: generate a program from the I/O context and check it
     reproduces every shown I/O pair. Evaluates each program once at
     ``max_n_io_shown``."""
-    max_n = val_dataset.max_n_io_shown
+    n_views = val_dataset.n_io_views
     n_programs = len(val_dataset.programs)
     if max_examples is not None:
         n_programs = min(n_programs, max_examples)
-    indices = [prog_idx * max_n + (max_n - 1) for prog_idx in range(n_programs)]
+    indices = [prog_idx * n_views + (n_views - 1) for prog_idx in range(n_programs)]
     return compute_accuracy_on_indices(
         model, val_dataset, indices, device,
         max_program_tokens=max_program_tokens, desc="Val accuracy",
@@ -267,6 +267,9 @@ def train():
                         help='Comma-separated corpus JSON file(s) for validation')
     parser.add_argument('--n-io-per-program', type=int, default=11,
                         help='Number of I/O pairs sampled per program (also = max_n_io_shown)')
+    parser.add_argument('--min-n-io-shown', type=int, default=5,
+                        help='Minimum n_io_shown per training item (each program is seen with '
+                             'min_n_io_shown..n_io_per_program I/O pairs visible)')
     parser.add_argument('--data-seed', type=int, default=0,
                         help='Seed for the I/O sampler (separate from training seed)')
 
@@ -331,6 +334,7 @@ def train():
         corpus_files=train_files,
         seed=args.data_seed,
         n_io_per_program=args.n_io_per_program,
+        min_n_io_shown=args.min_n_io_shown,
     )
     print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
@@ -342,6 +346,7 @@ def train():
             corpus_files=val_files,
             seed=args.data_seed,
             n_io_per_program=args.n_io_per_program,
+            min_n_io_shown=args.min_n_io_shown,
         )
         print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 
