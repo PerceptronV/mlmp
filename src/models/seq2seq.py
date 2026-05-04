@@ -34,6 +34,12 @@ def _causal_mask_mod(_b, _h, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
+@torch._dynamo.disable  # flex_attention's jagged path is not traceable by AOT autograd (PyTorch 2.9)
+def _causal_jagged_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
+    return flex_attention(q, k, v, block_mask=block_mask)
+
+
 def from_token_ids(seqs: list[torch.Tensor]) -> torch.Tensor:
     """Pack variable-length 1-D LongTensors into a jagged ``(B, j1)`` NestedTensor."""
     return torch.nested.nested_tensor(list(seqs), layout=torch.jagged)
@@ -137,8 +143,7 @@ class MultiHeadAttention(nn.Module):
         v = self._head_split(v, rope=False)
 
         if is_causal and q.is_nested:
-            block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
-            out = flex_attention(q, k, v, block_mask=block_mask)
+            out = _causal_jagged_attention(q, k, v)
         else:
             out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
         return self.out_proj(out.transpose(1, 2).flatten(-2))
