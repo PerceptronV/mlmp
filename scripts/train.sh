@@ -13,6 +13,7 @@
 
 cd "$(dirname "$0")/.."
 
+eval "$(micromamba shell hook --shell bash)"
 micromamba activate ml13
 
 DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
