@@ -27,11 +27,42 @@ Conventions:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import flex_attention, create_nested_block_mask
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 
 
-def _causal_mask_mod(_b, _h, q_idx, kv_idx):
-    return q_idx >= kv_idx
+def _causal_jagged_attention(
+    q_nt: torch.Tensor, k_nt: torch.Tensor, v_nt: torch.Tensor,
+    n_heads: int, d_head: int, rope: "RotaryEmbedding",
+) -> torch.Tensor:
+    """Causal flex_attention over jagged NTs of shape ``(B, j1, d_model)``.
+
+    PyTorch 2.11 dropped ``create_nested_block_mask`` and the ``flex_njt`` dispatch,
+    so we pack the batch into ``(1, H, sum_T, D)``, build a same-sequence-and-causal
+    mask via per-token ``seq_idx``, run flex_attention, and re-wrap as a NT.
+    """
+    offsets = q_nt.offsets()
+    q = q_nt.values().view(-1, n_heads, d_head)
+    k = k_nt.values().view(-1, n_heads, d_head)
+    v = v_nt.values().view(-1, n_heads, d_head)
+    q = rope.apply_jagged(q, offsets)
+    k = rope.apply_jagged(k, offsets)
+
+    T = q.size(0)
+    lengths = offsets.diff()
+    seq_idx = torch.repeat_interleave(
+        torch.arange(lengths.numel(), device=q.device), lengths,
+    )
+
+    def mask_mod(_b, _h, q_idx, kv_idx):
+        return (seq_idx[q_idx] == seq_idx[kv_idx]) & (q_idx >= kv_idx)
+
+    block_mask = create_block_mask(mask_mod, 1, 1, T, T, device=q.device)
+    q = q.transpose(0, 1).unsqueeze(0).contiguous()  # (1, H, T, D)
+    k = k.transpose(0, 1).unsqueeze(0).contiguous()
+    v = v.transpose(0, 1).unsqueeze(0).contiguous()
+    out = flex_attention(q, k, v, block_mask=block_mask)  # (1, H, T, D)
+    out = out.squeeze(0).transpose(0, 1).contiguous().flatten(-2)  # (T, d_model)
+    return torch.nested.nested_tensor_from_jagged(out, offsets)
 
 
 def from_token_ids(seqs: list[torch.Tensor]) -> torch.Tensor:
@@ -131,16 +162,15 @@ class MultiHeadAttention(nn.Module):
         else:
             q, k, v = (t.contiguous() for t in self.qkv_proj(x).chunk(3, dim=-1))
 
+        if is_causal and q.is_nested:
+            out = _causal_jagged_attention(q, k, v, self.n_heads, self.d_head, self.rope)
+            return self.out_proj(out)
+
         rope = not self.cross_attn
         q = self._head_split(q, rope=rope)
         k = self._head_split(k, rope=rope)
         v = self._head_split(v, rope=False)
-
-        if is_causal and q.is_nested:
-            block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
-            out = flex_attention(q, k, v, block_mask=block_mask)
-        else:
-            out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
         return self.out_proj(out.transpose(1, 2).flatten(-2))
 
     def _head_split(self, t: torch.Tensor, rope: bool) -> torch.Tensor:
