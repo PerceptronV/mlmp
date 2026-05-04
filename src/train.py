@@ -125,14 +125,15 @@ def validate(model, dataloader, criterion, device):
 @torch.no_grad()
 def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device):
     """Greedy-decode a single sequence. ``src_tokens`` is a 1-D LongTensor of ids."""
-    src = from_token_ids([src_tokens.to(device)])
+    # Dense path: jagged SDPA in PyTorch 2.11 fails on single-sequence (B=1) NTs.
+    src = src_tokens.to(device).unsqueeze(0)
     memory = model.encode(src)
 
     out = [start_token]
     for _ in range(max_tokens):
-        tgt = from_token_ids([torch.tensor(out, dtype=torch.long, device=device)])
-        logits = model.project(model.decode(tgt, memory))  # jagged (1, len(out), n_tokens)
-        next_token = int(logits.values()[-1].argmax())
+        tgt = torch.tensor(out, dtype=torch.long, device=device).unsqueeze(0)
+        logits = model.project(model.decode(tgt, memory))  # (1, len(out), n_tokens)
+        next_token = int(logits[0, -1].argmax())
         out.append(next_token)
         if next_token == end_token:
             break
