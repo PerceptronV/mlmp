@@ -41,5 +41,6 @@ python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
+    --val-examples 256 \
     --seed $SEED \
     --num-workers $NUM_WORKERS

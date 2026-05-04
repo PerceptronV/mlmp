@@ -5,6 +5,8 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
 import argparse
+import signal
+from contextlib import contextmanager
 from tqdm import tqdm
 import wandb
 import random
@@ -137,9 +139,26 @@ def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device)
     return out[1:]  # drop <start>
 
 
-def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens):
+@contextmanager
+def _alarm(seconds: float):
+    # SIGALRM is the only way to interrupt a runaway pure-Python call without
+    # forking. Main-thread / POSIX only; both hold for the accuracy loop.
+    def _handler(_signum, _frame):
+        raise TimeoutError(f"call exceeded {seconds}s")
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens, exec_timeout=1.0):
     """Greedy-decode one example and check the generated program reproduces all
-    of its I/O pairs (outputs reduced mod 100)."""
+    of its I/O pairs (outputs reduced mod 100). Each per-input call is bounded
+    by ``exec_timeout`` seconds so a non-terminating program can't stall the
+    whole accuracy pass."""
     seq, loss_mask, program = dataset.__getitem__(idx, include_program=True)
     len_x = loss_mask.count(0)
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
@@ -153,7 +172,8 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     try:
         fn, _ = compiler.compile(parse(program_str))
         for inp, expected in io_pairs:
-            output = fn(list(inp))
+            with _alarm(exec_timeout):
+                output = fn(list(inp))
             if not isinstance(output, list) or [x % 100 for x in output] != expected:
                 return False
         return True
