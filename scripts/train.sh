@@ -13,6 +13,8 @@
 
 cd "$(dirname "$0")/.."
 
+micromamba activate ml13
+
 DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
 ENUM_CORPUS="${DATA_ROOT}/corpus-a/enum_corpus_no_rule.json"
 RL_CORPUS="${DATA_ROOT}/corpus-a/rl_corpus_no_rule.simplified.json"
