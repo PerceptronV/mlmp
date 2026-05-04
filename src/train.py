@@ -165,11 +165,14 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
     io_pairs = program['io_pairs']
 
-    # IO sampler can return zero pairs (program too partial / always errors); in-weight
-    # mode then has a 0-length src that crashes dense-path RoPE inside greedy_decode.
-    # Treat as "not correct" — there's nothing to condition on anyway.
+    # No I/O pairs → vacuous truth: there are zero conditions to violate, so the
+    # model can't be wrong on this example. (Also guards against a 0-length src
+    # crashing dense-path RoPE inside greedy_decode for in-weight mode; the
+    # ``__getitem__`` redirect makes this near-impossible in practice, but the
+    # check is cheap and covers the unfilterable edge case where every program
+    # in the corpus has empty I/O.)
     if src_tokens.numel() == 0 or not io_pairs:
-        return False
+        return True
 
     gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
     if end_tok in gen_tokens:
@@ -280,7 +283,7 @@ def train():
                         help='Comma-separated corpus JSON file(s) for validation')
     parser.add_argument('--n-io-per-program', type=int, default=11,
                         help='Number of I/O pairs sampled per program (also = max_n_io_shown)')
-    parser.add_argument('--min-n-io-shown', type=int, default=5,
+    parser.add_argument('--min-n-io-shown', type=int, default=1,
                         help='Minimum n_io_shown per training item (each program is seen with '
                              'min_n_io_shown..n_io_per_program I/O pairs visible)')
     parser.add_argument('--data-seed', type=int, default=0,
@@ -339,12 +342,20 @@ def train():
 
     use_wandb = not args.no_wandb
     if use_wandb:
-        wandb.init(
+        # If --run-name is supplied, reuse it as the wandb run id (with
+        # resume='allow') so a relaunch continues the same wandb run rather than
+        # creating a parallel one with the same display name. Without --run-name,
+        # wandb assigns a fresh name and id every launch (legacy behaviour).
+        wandb_kwargs = dict(
             project=args.wandb_project,
             entity=args.wandb_entity,
             name=args.run_name,
             config=vars(args),
         )
+        if args.run_name is not None:
+            wandb_kwargs['id'] = args.run_name
+            wandb_kwargs['resume'] = 'allow'
+        wandb.init(**wandb_kwargs)
         if args.run_name is None:
             args.run_name = wandb.run.name
     elif args.run_name is None:

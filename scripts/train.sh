@@ -30,6 +30,21 @@ MODE="${MODE:-in-weight}"
 # in-weight and symbol-shuffling runs don't overwrite each other's best/latest.
 CKPT_DIR="${CKPT_ROOT}/${MODE}"
 
+# If RUN_NAME is provided, pin checkpoints to ${CKPT_DIR}/${RUN_NAME}/ and
+# auto-resume from checkpoint_latest.pt there if one exists. If RUN_NAME is
+# unset, fall back to the previous behaviour: wandb assigns a fresh name and
+# the run starts from scratch.
+RUN_NAME_FLAG=()
+RESUME_FLAG=()
+if [ -n "${RUN_NAME:-}" ]; then
+    RUN_NAME_FLAG=(--run-name "${RUN_NAME}")
+    LATEST_CKPT="${CKPT_DIR}/${RUN_NAME}/checkpoint_latest.pt"
+    if [ -f "${LATEST_CKPT}" ]; then
+        echo "Auto-resuming from ${LATEST_CKPT}"
+        RESUME_FLAG=(--resume "${LATEST_CKPT}")
+    fi
+fi
+
 python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
@@ -37,4 +52,6 @@ python -m src.train \
     --val-examples 256 \
     --mode "${MODE}" \
     --seed $SEED \
-    --num-workers $NUM_WORKERS
+    --num-workers $NUM_WORKERS \
+    "${RUN_NAME_FLAG[@]}" \
+    "${RESUME_FLAG[@]}"
