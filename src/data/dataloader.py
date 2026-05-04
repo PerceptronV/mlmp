@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 from typing import Literal
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from .tokeniser import (
     Tokeniser,
@@ -63,6 +64,7 @@ class ProgramDataset(Dataset):
         type_filter: str | None = "list[int]",
         io_sampler: RuleIOSampler | None = None,
         mode: TrainingMode = "in-weight",
+        filter_empty_io: bool = False,
     ):
         assert 1 <= min_n_io_shown <= n_io_per_program, (
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
@@ -101,6 +103,9 @@ class ProgramDataset(Dataset):
 
         self._io_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
 
+        if filter_empty_io:
+            self._filter_empty_io_programs()
+
     @property
     def max_n_io_shown(self) -> int:
         return self.n_io_per_program
@@ -120,6 +125,44 @@ class ProgramDataset(Dataset):
                 self.programs[prog_idx]["program"], rng
             )
         return self._io_cache[prog_idx]
+
+    def _filter_empty_io_programs(self) -> None:
+        """Drop programs whose IO sampler returns an empty pool.
+
+        Pre-samples each program's IO pool with the same seed scheme that
+        ``_get_io_pairs`` would use, removes programs with no valid pairs, and
+        keeps the surviving pools warm in ``_io_cache`` (re-keyed against the
+        post-filter indices) so the work isn't repeated on first access.
+
+        Pre-existing bug context: ``RuleIOSampler.sample`` returns ``[]`` when a
+        program fails to compile or raises on every candidate input. Such
+        programs end up with a 0-length encoder source in in-weight mode,
+        which crashes dense-path RoPE inside ``greedy_decode``.
+        """
+        n_before = len(self.programs)
+        kept_programs: list[dict] = []
+        kept_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
+        for prog_idx, program in enumerate(
+            tqdm(self.programs, desc="Filtering empty-IO programs")
+        ):
+            rng = random.Random(self.seed * 1000003 + prog_idx)
+            pairs = self.io_sampler.sample(program["program"], rng)
+            if pairs:
+                kept_cache[len(kept_programs)] = pairs
+                kept_programs.append(program)
+        self.programs = kept_programs
+        self._io_cache = kept_cache
+        n_after = len(self.programs)
+        n_dropped = n_before - n_after
+        pct = 100.0 * n_after / n_before if n_before else 0.0
+        print(
+            f"Filtered empty-IO programs: kept {n_after:,} / {n_before:,} "
+            f"({pct:.2f}%); dropped {n_dropped:,}"
+        )
+        # NOTE: post-filter, ``prog_idx`` in ``_get_io_pairs`` indexes the kept
+        # list, so the seed for any future re-sample (e.g. cache eviction) is
+        # tied to the program's *new* position. This is fine for training but
+        # means IO pools differ between filtered and unfiltered runs.
 
     def _tokenise_io_pairs(self, io_pairs: list[tuple[list[int], list[int]]]) -> list[int]:
         x: list[int] = []

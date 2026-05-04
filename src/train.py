@@ -165,6 +165,12 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
     io_pairs = program['io_pairs']
 
+    # IO sampler can return zero pairs (program too partial / always errors); in-weight
+    # mode then has a 0-length src that crashes dense-path RoPE inside greedy_decode.
+    # Treat as "not correct" — there's nothing to condition on anyway.
+    if src_tokens.numel() == 0 or not io_pairs:
+        return False
+
     gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
     if end_tok in gen_tokens:
         gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
@@ -283,6 +289,12 @@ def train():
                         help='Training mode: in-weight (standard) or symbol-shuffling '
                              '(per-episode random fn-name permutation prepended as a '
                              "<mapped> ≜ <orig> preamble; target program uses mapped names)")
+    parser.add_argument('--filter-empty-io', dest='filter_empty_io', action='store_true',
+                        help='Eagerly pre-sample each program\'s IO pool at dataset init and drop '
+                             'programs that return no valid pairs. Off by default (lazy sampling); '
+                             'enabling adds a one-time pass over the corpus but prevents '
+                             'greedy_decode from crashing on a 0-length src in in-weight mode.')
+    parser.set_defaults(filter_empty_io=False)
 
     # Model arguments
     parser.add_argument('--d-model', type=int, default=256, help='Model dimension')
@@ -347,6 +359,7 @@ def train():
         n_io_per_program=args.n_io_per_program,
         min_n_io_shown=args.min_n_io_shown,
         mode=args.mode,
+        filter_empty_io=args.filter_empty_io,
     )
     print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
@@ -360,6 +373,7 @@ def train():
             n_io_per_program=args.n_io_per_program,
             min_n_io_shown=args.min_n_io_shown,
             mode=args.mode,
+            filter_empty_io=args.filter_empty_io,
         )
         print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 
