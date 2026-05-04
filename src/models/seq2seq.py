@@ -29,15 +29,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.attention.flex_attention import flex_attention, create_nested_block_mask
 
+# Eager flex_attention on jagged emits SymInts that break the backward CUDA kernel in 2.9.
+_compiled_flex_attention = torch.compile(flex_attention)
+
 
 def _causal_mask_mod(_b, _h, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
-@torch._dynamo.disable  # flex_attention's jagged path is not traceable by AOT autograd (PyTorch 2.9)
 def _causal_jagged_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
     block_mask = create_nested_block_mask(_causal_mask_mod, B=None, H=None, q_nt=q)
-    return flex_attention(q, k, v, block_mask=block_mask)
+    return _compiled_flex_attention(q, k, v, block_mask=block_mask)
 
 
 def from_token_ids(seqs: list[torch.Tensor]) -> torch.Tensor:
