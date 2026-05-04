@@ -283,7 +283,7 @@ def train():
     parser.add_argument('--compile-layers', action='store_true', help='torch.compile each encoder/decoder layer')
 
     # Training arguments
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch-size', type=int, default=128, help='Batch size')
     parser.add_argument('--epochs', type=int, default=200, help='Number of epochs')
     parser.add_argument('--steps-per-epoch', type=int, default=2500,
                         help='Steps per epoch (None = full dataset, otherwise steps_per_epoch * batch_size samples)')
