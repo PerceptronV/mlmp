@@ -33,14 +33,20 @@ nvidia-smi
 ENUM_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/enum_corpus_no_rule.json"
 RL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/rl_corpus_no_rule.simplified.json"
 VAL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json"
-CKPT_DIR="/n/netscratch/gershman_lab/Lab/yiding/mlmp_checkpoints"
+CKPT_ROOT="/n/netscratch/gershman_lab/Lab/yiding/mlmp_checkpoints"
 NUM_WORKERS=8
 SEED=42
+MODE="${MODE:-in-weight}"
+
+# Keep checkpoints from different training modes in separate subdirectories so
+# in-weight and symbol-shuffling runs don't overwrite each other's best/latest.
+CKPT_DIR="${CKPT_ROOT}/${MODE}"
 
 python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
     --val-examples 256 \
+    --mode "${MODE}" \
     --seed $SEED \
     --num-workers $NUM_WORKERS

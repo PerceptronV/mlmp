@@ -7,8 +7,9 @@
 # src.train. Output is teed into logs/train_<timestamp>.log.
 #
 # Usage:
-#   ./scripts/train.sh
-#   DATA_ROOT=/path/to/data CKPT_DIR=/path/to/ckpts SEED=7 ./scripts/train.sh
+#   ./scripts/train.sh                                  # default mode=in-weight
+#   MODE=symbol-shuffling ./scripts/train.sh
+#   DATA_ROOT=/path/to/data CKPT_DIR=/path/to/ckpts SEED=7 MODE=symbol-shuffling ./scripts/train.sh
 # ============================================================================
 
 cd "$(dirname "$0")/.."
@@ -20,14 +21,20 @@ DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
 ENUM_CORPUS="${DATA_ROOT}/corpus-a/enum_corpus_no_rule.json"
 RL_CORPUS="${DATA_ROOT}/corpus-a/rl_corpus_no_rule.simplified.json"
 VAL_CORPUS="${DATA_ROOT}/rule_val.json"
-CKPT_DIR="${CKPT_DIR:-$HOME/yiding-in-georgia/mlmp_checkpoints}"
+CKPT_ROOT="${CKPT_DIR:-$HOME/yiding-in-georgia/mlmp_checkpoints}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
 SEED="${SEED:-42}"
+MODE="${MODE:-in-weight}"
+
+# Keep checkpoints from different training modes in separate subdirectories so
+# in-weight and symbol-shuffling runs don't overwrite each other's best/latest.
+CKPT_DIR="${CKPT_ROOT}/${MODE}"
 
 python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
     --val-examples 256 \
+    --mode "${MODE}" \
     --seed $SEED \
     --num-workers $NUM_WORKERS

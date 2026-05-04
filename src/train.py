@@ -13,7 +13,7 @@ import random
 import numpy as np
 
 from .models.seq2seq import Seq2SeqTransformer, from_token_ids
-from .data.dataloader import ProgramDataset
+from .data.dataloader import ProgramDataset, TRAINING_MODES
 from .lang.parser import parse
 from .lang.compiler import JITCompiler
 from .lang.grammar import DefaultGrammar
@@ -170,6 +170,12 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
         gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
 
     program_str = dataset.tokeniser.detokenise(gen_tokens)
+    # In symbol-shuffling mode the model emits the program with mapped fn names;
+    # reverse the per-episode permutation so the compiler sees the originals.
+    name_map = program.get('name_map')
+    if name_map:
+        mapped_to_orig = {v: k for k, v in name_map.items()}
+        program_str = ' '.join(mapped_to_orig.get(tok, tok) for tok in program_str.split(' '))
     try:
         fn, _ = compiler.compile(parse(program_str))
         for inp, expected in io_pairs:
@@ -273,6 +279,10 @@ def train():
                              'min_n_io_shown..n_io_per_program I/O pairs visible)')
     parser.add_argument('--data-seed', type=int, default=0,
                         help='Seed for the I/O sampler (separate from training seed)')
+    parser.add_argument('--mode', type=str, default='in-weight', choices=list(TRAINING_MODES),
+                        help='Training mode: in-weight (standard) or symbol-shuffling '
+                             '(per-episode random fn-name permutation prepended as a '
+                             "<mapped> ≜ <orig> preamble; target program uses mapped names)")
 
     # Model arguments
     parser.add_argument('--d-model', type=int, default=256, help='Model dimension')
@@ -336,6 +346,7 @@ def train():
         seed=args.data_seed,
         n_io_per_program=args.n_io_per_program,
         min_n_io_shown=args.min_n_io_shown,
+        mode=args.mode,
     )
     print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
@@ -348,6 +359,7 @@ def train():
             seed=args.data_seed,
             n_io_per_program=args.n_io_per_program,
             min_n_io_shown=args.min_n_io_shown,
+            mode=args.mode,
         )
         print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 

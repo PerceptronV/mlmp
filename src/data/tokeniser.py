@@ -9,12 +9,13 @@ UNK_TOKEN = '<unk>'
 START_TOKEN = '<start>'
 END_TOKEN = '<end>'
 TO_TOKEN = '→'
+DEFINED_AS_TOKEN = '≜'
 SEP_TOKEN = '========================================'
 NEWLINE_TOKEN = '\n'
 
 
 def get_vocab(grammar: Grammar = DefaultGrammar, int_max: int = 99, n_vars_max: int = 26):
-    tok_specials = [PAD_TOKEN, UNK_TOKEN, START_TOKEN, END_TOKEN, TO_TOKEN, SEP_TOKEN, NEWLINE_TOKEN]
+    tok_specials = [PAD_TOKEN, UNK_TOKEN, START_TOKEN, END_TOKEN, TO_TOKEN, DEFINED_AS_TOKEN, SEP_TOKEN, NEWLINE_TOKEN]
     tokens = list(grammar.special_chars)
     tokens.extend(grammar.keywords)
     tokens.extend(grammar.names)
@@ -42,8 +43,14 @@ class Tokeniser:
             return self.tokenise_int(int(c))
         return self.vocab.stoi[c]
 
-    def tokenise_program(self, text: str) -> list[int]:
+    def tokenise_program(self, text: str, name_map: dict[str, str] | None = None) -> list[int]:
+        """Tokenise a program. If ``name_map`` is given, every lexer ident token
+        whose value is a key in ``name_map`` is rewritten to the mapped name
+        before being looked up in the vocab. Used by the symbol-shuffling mode
+        to substitute grammar function names per-episode."""
         toks = [t.value for t in tokenise(text) if t.value]
+        if name_map:
+            toks = [name_map.get(tok, tok) for tok in toks]
         return [self.tokenise_element(tok) for tok in toks]
     
     def tokenise_list(self, arr: list[int]) -> list[int]:

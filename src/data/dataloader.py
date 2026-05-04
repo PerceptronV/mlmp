@@ -1,6 +1,7 @@
 import json
 import random
 from pathlib import Path
+from typing import Literal
 from torch.utils.data import Dataset
 
 from .tokeniser import (
@@ -9,10 +10,14 @@ from .tokeniser import (
     START_TOKEN,
     END_TOKEN,
     TO_TOKEN,
+    DEFINED_AS_TOKEN,
     SEP_TOKEN,
     NEWLINE_TOKEN,
 )
 from .io_sampler import RuleIOSampler
+
+TrainingMode = Literal["in-weight", "symbol-shuffling"]
+TRAINING_MODES: tuple[TrainingMode, ...] = ("in-weight", "symbol-shuffling")
 
 
 class ProgramDataset(Dataset):
@@ -28,13 +33,25 @@ class ProgramDataset(Dataset):
     prog_idx``); the n-th view simply takes the first ``n`` pairs of that fixed
     pool.
 
-    Sequence layout (matches the original episode format minus the support set):
+    Sequence layout depends on ``mode``:
+
+    ``in-weight`` (default):
         [io_1.input] → [io_1.output] \n
         ...
         [io_n.input] → [io_n.output] \n
         <start> <program tokens> <end>
-    Loss mask is 0 over the I/O context and 1 over the program tokens
-    (predicting the program from its I/O examples).
+
+    ``symbol-shuffling``:
+        <mapped_1> ≜ <orig_1> \n   ... <mapped_K> ≜ <orig_K> \n
+        <SEP>
+        [io_1.input] → [io_1.output] \n  ...
+        <start> <program with orig fn names rewritten to mapped names> <end>
+        A fresh random permutation over all grammar function names is drawn for
+        every ``__getitem__`` call ("per episode"). Lambda parameters and ints
+        are not renamed.
+
+    Loss mask is 0 over the prefix (preamble + I/O context) and 1 over the
+    program tokens.
     """
 
     def __init__(
@@ -45,14 +62,18 @@ class ProgramDataset(Dataset):
         min_n_io_shown: int = 1,
         type_filter: str | None = "list[int]",
         io_sampler: RuleIOSampler | None = None,
+        mode: TrainingMode = "in-weight",
     ):
         assert 1 <= min_n_io_shown <= n_io_per_program, (
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
         )
+        assert mode in TRAINING_MODES, f"mode={mode!r} must be one of {TRAINING_MODES}"
         self.tokeniser = Tokeniser()
         self.seed = seed
         self.n_io_per_program = n_io_per_program
         self.min_n_io_shown = min_n_io_shown
+        self.mode: TrainingMode = mode
+        self.fn_names: list[str] = list(self.tokeniser.grammar.functions.keys())
 
         if isinstance(corpus_files, Path):
             corpus_files = [corpus_files]
@@ -72,6 +93,7 @@ class ProgramDataset(Dataset):
 
         self.pad = self.tokeniser.vocab.stoi[PAD_TOKEN]
         self.to = self.tokeniser.vocab.stoi[TO_TOKEN]
+        self.defined_as = self.tokeniser.vocab.stoi[DEFINED_AS_TOKEN]
         self.newline = self.tokeniser.vocab.stoi[NEWLINE_TOKEN]
         self.sep = self.tokeniser.vocab.stoi[SEP_TOKEN]
         self.start = self.tokeniser.vocab.stoi[START_TOKEN]
@@ -99,16 +121,56 @@ class ProgramDataset(Dataset):
             )
         return self._io_cache[prog_idx]
 
-    def tokenise_program_item(
-        self,
-        program_str: str,
-        io_pairs: list[tuple[list[int], list[int]]],
-    ) -> tuple[list[int], list[int]]:
+    def _tokenise_io_pairs(self, io_pairs: list[tuple[list[int], list[int]]]) -> list[int]:
         x: list[int] = []
         for inp, out in io_pairs:
             x.extend(self.tokeniser.tokenise_list(inp) + [self.to])
             x.extend(self.tokeniser.tokenise_list(out) + [self.newline])
-        y = [self.start] + self.tokeniser.tokenise_program(program_str) + [self.end]
+        return x
+
+    def _episode_rng(self, idx: int) -> random.Random:
+        """Per-episode RNG, deterministic in ``(self.seed, idx)``. Distinct from
+        the I/O sampler's seed scheme so the I/O pool and the symbol permutation
+        don't share a stream."""
+        return random.Random(self.seed * 1000037 + idx * 7919 + 13)
+
+    def _sample_name_map(self, rng: random.Random) -> dict[str, str]:
+        """Draw a permutation over all grammar function names from ``rng``.
+        Returns a dict mapping orig_name -> mapped_name (the mapped name is
+        what appears in the rewritten program; the preamble lists each
+        ``mapped ≜ orig``)."""
+        permuted = list(self.fn_names)
+        rng.shuffle(permuted)
+        return dict(zip(self.fn_names, permuted))
+
+    def _tokenise_preamble(self, name_map: dict[str, str]) -> list[int]:
+        """Emit ``<mapped> ≜ <orig> \\n`` lines in a fixed canonical order
+        (alphabetical by mapped_fn_name), terminated by ``<SEP> \\n``. The fixed
+        order means the only signal the model gets about the permutation is
+        the ``≜`` lines themselves, not positional cues. The trailing newline
+        gives a clean visual / token-level break before the I/O examples."""
+        order = sorted(name_map.items(), key=lambda kv: kv[1])
+        toks: list[int] = []
+        for orig, mapped in order:
+            toks.append(self.tokeniser.tokenise_element(mapped))
+            toks.append(self.defined_as)
+            toks.append(self.tokeniser.tokenise_element(orig))
+            toks.append(self.newline)
+        toks.append(self.sep)
+        toks.append(self.newline)
+        return toks
+
+    def tokenise_program_item(
+        self,
+        program_str: str,
+        io_pairs: list[tuple[list[int], list[int]]],
+        name_map: dict[str, str] | None = None,
+    ) -> tuple[list[int], list[int]]:
+        x: list[int] = []
+        if name_map is not None:
+            x.extend(self._tokenise_preamble(name_map))
+        x.extend(self._tokenise_io_pairs(io_pairs))
+        y = [self.start] + self.tokeniser.tokenise_program(program_str, name_map) + [self.end]
         return x, y
 
     def __getitem__(self, idx: int, include_program: bool = False):
@@ -118,13 +180,17 @@ class ProgramDataset(Dataset):
         program = self.programs[prog_idx]
         io_pairs = self._get_io_pairs(prog_idx)[:n_io_shown]
 
-        x, y = self.tokenise_program_item(program["program"], io_pairs)
+        name_map = None
+        if self.mode == "symbol-shuffling":
+            name_map = self._sample_name_map(self._episode_rng(idx))
+        x, y = self.tokenise_program_item(program["program"], io_pairs, name_map)
         # loss mask has length seq_len - 1 (no prediction at first token);
         # 1 over the predictions of program tokens following <start>.
         loss_mask = [0] * len(x) + [1] * (len(y) - 1)
 
         if include_program:
-            return x + y, loss_mask, {**program, "n_io_shown": n_io_shown, "io_pairs": io_pairs}
+            info = {**program, "n_io_shown": n_io_shown, "io_pairs": io_pairs, "name_map": name_map}
+            return x + y, loss_mask, info
         return x + y, loss_mask
 
 
@@ -141,10 +207,14 @@ if __name__ == "__main__":
             seed_input = input("Seed (default 0): ").strip()
             seed = int(seed_input) if seed_input else 0
 
-            dataset = ProgramDataset(corpus_files=corpus_files, seed=seed)
+            mode_input = input(f"Mode {TRAINING_MODES} (default in-weight): ").strip() or "in-weight"
+            assert mode_input in TRAINING_MODES, f"Unknown mode: {mode_input}"
+
+            dataset = ProgramDataset(corpus_files=corpus_files, seed=seed, mode=mode_input)
             print(f"\nLoaded {len(dataset.programs):,} programs"
                   f" -> {len(dataset):,} items"
-                  f" (n_io_shown range: {dataset.min_n_io_shown}..{dataset.max_n_io_shown})")
+                  f" (n_io_shown range: {dataset.min_n_io_shown}..{dataset.max_n_io_shown})"
+                  f" mode={dataset.mode}")
 
             while 1:
                 idx = input("\nEnter index (-1 to exit): ")
