@@ -12,11 +12,30 @@ the project-wide modular-int convention used downstream by the tokeniser.
 from __future__ import annotations
 
 import random
+import signal
+from contextlib import contextmanager
 from typing import Callable
 
 from ..lang.compiler import JITCompiler
 from ..lang.grammar import Grammar, DefaultGrammar
 from ..lang.parser import parse
+
+
+@contextmanager
+def _alarm(seconds: float):
+    """SIGALRM-bounded context. Interrupts a runaway pure-Python call after
+    ``seconds``. POSIX, main-thread of the (possibly forked DataLoader worker)
+    process only — that holds for our use. Same shape as the helper in
+    ``train.py``; duplicated here to avoid a cross-package import."""
+    def _handler(_signum, _frame):
+        raise TimeoutError(f"call exceeded {seconds}s")
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
 
 
 class RuleIOSampler:
@@ -32,6 +51,7 @@ class RuleIOSampler:
         min_elem: int = 0,
         max_elem: int = 100,
         mod: int = 100,
+        exec_timeout: float = 0.05,
     ):
         self.jit = JITCompiler(grammar)
         self.num_io_pairs = num_io_pairs
@@ -41,6 +61,7 @@ class RuleIOSampler:
         self.min_elem = min_elem
         self.max_elem = max_elem
         self.mod = mod
+        self.exec_timeout = exec_timeout
         self._fn_cache: dict[str, Callable | None] = {}
 
     def _compile(self, program_str: str) -> Callable | None:
@@ -68,7 +89,12 @@ class RuleIOSampler:
             length = rng.randint(self.min_list_len, self.max_list_len)
             inp = [rng.randint(self.min_elem, self.max_elem) for _ in range(length)]
             try:
-                out = fn(inp)
+                # Bound each execution: a non-terminating program would otherwise
+                # hang a DataLoader worker, blocking the main process indefinitely
+                # on the next batch fetch (observed as 0% GPU util + non-moving
+                # tqdm). TimeoutError is caught alongside other exceptions.
+                with _alarm(self.exec_timeout):
+                    out = fn(inp)
             except Exception:
                 continue
             if not isinstance(out, list) or len(out) > self.max_list_len:

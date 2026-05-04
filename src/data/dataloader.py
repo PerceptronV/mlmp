@@ -102,6 +102,7 @@ class ProgramDataset(Dataset):
         self.end = self.tokeniser.vocab.stoi[END_TOKEN]
 
         self._io_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
+        self._prog_idx_redirect: dict[int, int] = {}
 
         if filter_empty_io:
             self._filter_empty_io_programs()
@@ -125,6 +126,28 @@ class ProgramDataset(Dataset):
                 self.programs[prog_idx]["program"], rng
             )
         return self._io_cache[prog_idx]
+
+    def _resolve_prog_idx(self, prog_idx: int) -> int:
+        """Return ``prog_idx`` if its IO pool is non-empty; otherwise walk
+        forward (mod ``len(self.programs)``) until we find one that is, and
+        cache the redirect.
+
+        An empty-IO program would otherwise yield a malformed item: in
+        in-weight mode the encoder src would be 0-length, producing NaN logits
+        from cross-attention over an empty memory; in symbol-shuffling mode the
+        item would still train but with no I/O signal at all. Redirecting
+        keeps ``len(self)`` stable while guaranteeing every item has at least
+        one valid I/O pair to condition on.
+        """
+        if prog_idx in self._prog_idx_redirect:
+            return self._prog_idx_redirect[prog_idx]
+        n = len(self.programs)
+        for offset in range(n):
+            cur = (prog_idx + offset) % n
+            if self._get_io_pairs(cur):
+                self._prog_idx_redirect[prog_idx] = cur
+                return cur
+        raise RuntimeError("No programs in the corpus have non-empty IO pools")
 
     def _filter_empty_io_programs(self) -> None:
         """Drop programs whose IO sampler returns an empty pool.
@@ -217,7 +240,7 @@ class ProgramDataset(Dataset):
         return x, y
 
     def __getitem__(self, idx: int, include_program: bool = False):
-        prog_idx = idx // self.n_io_views
+        prog_idx = self._resolve_prog_idx(idx // self.n_io_views)
         n_io_shown = idx % self.n_io_views + self.min_n_io_shown
 
         program = self.programs[prog_idx]
