@@ -215,7 +215,7 @@ class ProgramDataset(Dataset):
         order means the only signal the model gets about the permutation is
         the ``≜`` lines themselves, not positional cues. The trailing newline
         gives a clean visual / token-level break before the I/O examples."""
-        order = sorted(name_map.items(), key=lambda kv: kv[1])
+        order = sorted(name_map.items(), key=lambda kv: kv[0])
         toks: list[int] = []
         for orig, mapped in order:
             toks.append(self.tokeniser.tokenise_element(mapped))
