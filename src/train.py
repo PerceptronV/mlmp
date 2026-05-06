@@ -246,7 +246,8 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
     )
 
 
-def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir):
+def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
+                    global_step=0, best_val_loss=float('inf')):
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -257,6 +258,8 @@ def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, ar
         'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
         'train_loss': train_loss,
         'val_loss': val_loss,
+        'global_step': global_step,
+        'best_val_loss': best_val_loss,
         'args': vars(args),
     }
 
@@ -284,7 +287,13 @@ def load_checkpoint(checkpoint_path, model, optimiser=None, scheduler=None):
     if scheduler is not None and 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
-    return checkpoint['epoch'], checkpoint.get('train_loss'), checkpoint.get('val_loss')
+    return (
+        checkpoint['epoch'],
+        checkpoint.get('train_loss'),
+        checkpoint.get('val_loss'),
+        checkpoint.get('global_step'),
+        checkpoint.get('best_val_loss'),
+    )
 
 
 def _parse_corpus_arg(s: str) -> list[Path]:
@@ -510,15 +519,32 @@ def train():
         checkpoint_dir = checkpoint_dir / args.run_name
 
     start_epoch = 0
+    global_step = 0
+    best_val_loss = float('inf')
     if args.resume:
         print(f"Resuming from checkpoint: {args.resume}")
-        start_epoch, train_loss, val_loss = load_checkpoint(args.resume, model, optimiser, scheduler)
+        start_epoch, train_loss, val_loss, ckpt_step, ckpt_best = load_checkpoint(
+            args.resume, model, optimiser, scheduler,
+        )
         start_epoch += 1
-        print(f"Resumed from epoch {start_epoch - 1}, train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
+        if ckpt_step is not None:
+            global_step = ckpt_step
+        else:
+            # Older checkpoints predate global_step tracking; fall back to a
+            # derived value so wandb's step axis stays monotonic across the
+            # resume boundary. This is exact when steps_per_epoch is fixed
+            # (the common case); approximate when the dataset/batch_size
+            # changed between runs.
+            global_step = start_epoch * len(train_loader)
+        if ckpt_best is not None:
+            best_val_loss = ckpt_best
+        print(
+            f"Resumed from epoch {start_epoch - 1}, train_loss: {train_loss:.4f}, "
+            f"val_loss: {val_loss:.4f}, global_step: {global_step}, "
+            f"best_val_loss: {best_val_loss:.4f}"
+        )
 
     print("\nStarting training...")
-    best_val_loss = float('inf')
-    global_step = 0
 
     for epoch in range(start_epoch, args.epochs):
         print(f"\nEpoch {epoch + 1}/{args.epochs}")
@@ -572,7 +598,10 @@ def train():
         scheduler.step()
 
         if (epoch + 1) % args.save_freq == 0 or epoch == args.epochs - 1:
-            save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir)
+            save_checkpoint(
+                model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
+                global_step=global_step, best_val_loss=best_val_loss,
+            )
 
     print("\nTraining completed!")
     print(f"Best validation loss: {best_val_loss:.4f}")
