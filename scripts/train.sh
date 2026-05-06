@@ -51,6 +51,7 @@ python -m src.train \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
     --val-examples 256 \
+    --epochs $EPOCHS \
     --mode "${MODE}" \
     --seed $SEED \
     --num-workers $NUM_WORKERS \
