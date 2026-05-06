@@ -247,7 +247,7 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
 
 
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
-                    global_step=0, best_val_loss=float('inf')):
+                    global_step=0, best_val_loss=float('inf'), wandb_run_id=None):
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -260,6 +260,11 @@ def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, ar
         'val_loss': val_loss,
         'global_step': global_step,
         'best_val_loss': best_val_loss,
+        # wandb's *internal* run id (not display name). Stashed so resume can
+        # continue the original wandb run even if it was started without
+        # --run-name (in which case the id is wandb-generated, not derivable
+        # from the run name).
+        'wandb_run_id': wandb_run_id,
         'args': vars(args),
     }
 
@@ -381,19 +386,37 @@ def train():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    # If we're resuming, peek the checkpoint to recover the *actual* wandb id
+    # of the prior run. This wins over --run-name as the wandb id, because the
+    # name-as-id path only works when the original run was *started* with
+    # --run-name. Runs started without it had a wandb-generated id that
+    # name-as-id can't reconstruct, which is how you end up with two parallel
+    # runs sharing a display name on wandb.
+    prior_wandb_run_id = None
+    if args.resume:
+        try:
+            _peek = torch.load(args.resume, map_location='cpu')
+            prior_wandb_run_id = _peek.get('wandb_run_id')
+            del _peek
+        except Exception as e:
+            print(f"Warning: couldn't peek wandb_run_id from {args.resume}: {e}")
+
     use_wandb = not args.no_wandb
     if use_wandb:
-        # If --run-name is supplied, reuse it as the wandb run id (with
-        # resume='allow') so a relaunch continues the same wandb run rather than
-        # creating a parallel one with the same display name. Without --run-name,
-        # wandb assigns a fresh name and id every launch (legacy behaviour).
+        # Resolution priority for the wandb id:
+        #   1. id stashed in the resume checkpoint (true continuation),
+        #   2. --run-name reused as id (legacy: name == id from the start),
+        #   3. None (wandb assigns a fresh id and name).
         wandb_kwargs = dict(
             project=args.wandb_project,
             entity=args.wandb_entity,
             name=args.run_name,
             config=vars(args),
         )
-        if args.run_name is not None:
+        if prior_wandb_run_id is not None:
+            wandb_kwargs['id'] = prior_wandb_run_id
+            wandb_kwargs['resume'] = 'allow'
+        elif args.run_name is not None:
             wandb_kwargs['id'] = args.run_name
             wandb_kwargs['resume'] = 'allow'
         wandb.init(**wandb_kwargs)
@@ -615,6 +638,7 @@ def train():
             save_checkpoint(
                 model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
                 global_step=global_step, best_val_loss=best_val_loss,
+                wandb_run_id=wandb.run.id if use_wandb else None,
             )
 
     print("\nTraining completed!")
