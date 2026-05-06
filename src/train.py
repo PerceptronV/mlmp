@@ -14,9 +14,13 @@ import numpy as np
 
 from .models.seq2seq import Seq2SeqTransformer, from_token_ids
 from .data.dataloader import ProgramDataset, TRAINING_MODES
+from .data.inverse_mlc_dataloader import InverseMLCDataset, INVERSE_MLC_EPISODE_TYPES
 from .lang.parser import parse
 from .lang.compiler import JITCompiler
 from .lang.grammar import DefaultGrammar
+
+
+DATASETS = ("program", "inverse-mlc")
 
 
 class CyclingSampler(Sampler):
@@ -156,14 +160,21 @@ def _alarm(seconds: float):
 
 
 def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens, exec_timeout=1.0):
-    """Greedy-decode one example and check the generated program reproduces all
-    of its I/O pairs (outputs reduced mod 100). Each per-input call is bounded
-    by ``exec_timeout`` seconds so a non-terminating program can't stall the
-    whole accuracy pass."""
+    """Greedy-decode one example and check the prediction is correct.
+
+    Default behaviour (ProgramDataset): compile the generated program and
+    check it reproduces all of its I/O pairs (outputs reduced mod 100). Each
+    per-input call is bounded by ``exec_timeout`` seconds so a non-terminating
+    program can't stall the whole accuracy pass.
+
+    If ``dataset`` exposes a ``check_prediction(generated_token_ids, info)``
+    method (e.g. :class:`InverseMLCDataset`), we delegate to it after
+    greedy-decoding. That covers datasets where the target isn't an executable
+    program and "correctness" is just exact-token match against the gold tail.
+    """
     seq, loss_mask, program = dataset.__getitem__(idx, include_program=True)
     len_x = loss_mask.count(0)
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
-    io_pairs = program['io_pairs']
 
     # No I/O pairs → vacuous truth: there are zero conditions to violate, so the
     # model can't be wrong on this example. (Also guards against a 0-length src
@@ -171,12 +182,18 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     # ``__getitem__`` redirect makes this near-impossible in practice, but the
     # check is cheap and covers the unfilterable edge case where every program
     # in the corpus has empty I/O.)
-    if src_tokens.numel() == 0 or not io_pairs:
+    use_dataset_checker = hasattr(dataset, 'check_prediction')
+    if src_tokens.numel() == 0:
+        return True
+    if not use_dataset_checker and not program.get('io_pairs'):
         return True
 
     gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
     if end_tok in gen_tokens:
         gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
+
+    if use_dataset_checker:
+        return dataset.check_prediction(gen_tokens, program)
 
     program_str = dataset.tokeniser.detokenise(gen_tokens)
     # In symbol-shuffling mode the model emits the program with mapped fn names;
@@ -185,6 +202,7 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     if name_map:
         mapped_to_orig = {v: k for k, v in name_map.items()}
         program_str = ' '.join(mapped_to_orig.get(tok, tok) for tok in program_str.split(' '))
+    io_pairs = program['io_pairs']
     try:
         fn, _ = compiler.compile(parse(program_str))
         for inp, expected in io_pairs:
@@ -277,6 +295,20 @@ def train():
     parser = argparse.ArgumentParser(description='Train a seq2seq transformer over jagged NestedTensors')
 
     # Data arguments
+    parser.add_argument('--dataset', type=str, default='program', choices=list(DATASETS),
+                        help='Which dataset to train on: "program" (default; uses '
+                             '--train-corpus / --val-corpus + ProgramDataset) or '
+                             '"inverse-mlc" (uses inverse-mlc/data_algebraic via '
+                             'InverseMLCDataset; --train-corpus / --val-corpus / --mode '
+                             '/ --n-io-per-program / --min-n-io-shown / --filter-empty-io '
+                             'are ignored).')
+    parser.add_argument('--inverse-mlc-episode-type', type=str, default='algebraic',
+                        choices=list(INVERSE_MLC_EPISODE_TYPES),
+                        help='Episode type when --dataset=inverse-mlc. Mirrors the '
+                             'episode types in inverse-mlc/datasets.py:get_dataset.')
+    parser.add_argument('--inverse-mlc-data-root', type=str, default=None,
+                        help='Path to data_algebraic dir (containing train/ and val/). '
+                             'Defaults to the bundled copy under src/data/inverse-mlc/.')
     parser.add_argument('--train-corpus', type=str, default='datasets/corpus-a/rl_corpus.json',
                         help='Comma-separated corpus JSON file(s) for training')
     parser.add_argument('--val-corpus', type=str, default=None,
@@ -362,31 +394,47 @@ def train():
         args.run_name = f"run_seed{args.seed}"
 
     # Datasets
-    train_files = _parse_corpus_arg(args.train_corpus)
-    print(f"Loading training corpus from {train_files}")
-    train_dataset = ProgramDataset(
-        corpus_files=train_files,
-        seed=args.data_seed,
-        n_io_per_program=args.n_io_per_program,
-        min_n_io_shown=args.min_n_io_shown,
-        mode=args.mode,
-        filter_empty_io=args.filter_empty_io,
-    )
-    print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
-
-    val_dataset = None
-    if args.val_corpus:
-        val_files = _parse_corpus_arg(args.val_corpus)
-        print(f"Loading validation corpus from {val_files}")
-        val_dataset = ProgramDataset(
-            corpus_files=val_files,
+    if args.dataset == 'inverse-mlc':
+        data_root = Path(args.inverse_mlc_data_root) if args.inverse_mlc_data_root else None
+        print(f"Loading inverse-mlc dataset (episode_type={args.inverse_mlc_episode_type})")
+        train_dataset = InverseMLCDataset(
+            mode='train',
+            episode_type=args.inverse_mlc_episode_type,
+            data_root=data_root,
+        )
+        print(f"Training dataset: {len(train_dataset.programs):,} episodes -> {len(train_dataset):,} items")
+        val_dataset = InverseMLCDataset(
+            mode='val',
+            episode_type=args.inverse_mlc_episode_type,
+            data_root=data_root,
+        )
+        print(f"Validation dataset: {len(val_dataset.programs):,} episodes -> {len(val_dataset):,} items")
+    else:
+        train_files = _parse_corpus_arg(args.train_corpus)
+        print(f"Loading training corpus from {train_files}")
+        train_dataset = ProgramDataset(
+            corpus_files=train_files,
             seed=args.data_seed,
             n_io_per_program=args.n_io_per_program,
             min_n_io_shown=args.min_n_io_shown,
             mode=args.mode,
             filter_empty_io=args.filter_empty_io,
         )
-        print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
+        print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
+
+        val_dataset = None
+        if args.val_corpus:
+            val_files = _parse_corpus_arg(args.val_corpus)
+            print(f"Loading validation corpus from {val_files}")
+            val_dataset = ProgramDataset(
+                corpus_files=val_files,
+                seed=args.data_seed,
+                n_io_per_program=args.n_io_per_program,
+                min_n_io_shown=args.min_n_io_shown,
+                mode=args.mode,
+                filter_empty_io=args.filter_empty_io,
+            )
+            print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 
     n_tokens = len(train_dataset.tokeniser.vocab)
     print(f"Vocabulary size: {n_tokens}")
