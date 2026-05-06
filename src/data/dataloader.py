@@ -17,8 +17,12 @@ from .tokeniser import (
 )
 from .io_sampler import RuleIOSampler
 
-TrainingMode = Literal["in-weight", "symbol-shuffling"]
-TRAINING_MODES: tuple[TrainingMode, ...] = ("in-weight", "symbol-shuffling")
+TrainingMode = Literal["in-weight", "symbol-shuffling", "easy-symbol-shuffling"]
+TRAINING_MODES: tuple[TrainingMode, ...] = (
+    "in-weight",
+    "symbol-shuffling",
+    "easy-symbol-shuffling",
+)
 
 
 class ProgramDataset(Dataset):
@@ -50,6 +54,14 @@ class ProgramDataset(Dataset):
         A fresh random permutation over all grammar function names is drawn for
         every ``__getitem__`` call ("per episode"). Lambda parameters and ints
         are not renamed.
+
+    ``easy-symbol-shuffling``:
+        Same layout as ``symbol-shuffling`` but only ``n_permuted`` functions
+        (a fresh random subset per episode) are permuted; the rest pass
+        through unchanged in both preamble and program. Set ``n_permuted``
+        externally (e.g. by the training loop) to drive a curriculum from
+        a small K up to ``len(fn_names)``. ``None`` ≡ all functions, i.e.
+        equivalent to ``symbol-shuffling``.
 
     Loss mask is 0 over the prefix (preamble + I/O context) and 1 over the
     program tokens.
@@ -103,6 +115,12 @@ class ProgramDataset(Dataset):
 
         self._io_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
         self._prog_idx_redirect: dict[int, int] = {}
+
+        # easy-symbol-shuffling curriculum knob: number of grammar functions
+        # to permute per episode. ``None`` means "all of them" (i.e. behaves
+        # exactly like ``symbol-shuffling``). The training loop is expected
+        # to mutate this between epochs to ramp difficulty.
+        self.n_permuted: int | None = None
 
         if filter_empty_io:
             self._filter_empty_io_programs()
@@ -209,6 +227,19 @@ class ProgramDataset(Dataset):
         rng.shuffle(permuted)
         return dict(zip(self.fn_names, permuted))
 
+    def _sample_partial_name_map(self, rng: random.Random, k: int) -> dict[str, str]:
+        """Draw a permutation over a random K-subset of the grammar function
+        names. Functions outside the subset are absent from the map and
+        pass through unchanged in both preamble and program rewrites.
+        ``k`` is clamped to ``[0, len(fn_names)]``."""
+        k = max(0, min(k, len(self.fn_names)))
+        if k == 0:
+            return {}
+        chosen = rng.sample(self.fn_names, k)
+        permuted = list(chosen)
+        rng.shuffle(permuted)
+        return dict(zip(chosen, permuted))
+
     def _tokenise_preamble(self, name_map: dict[str, str]) -> list[int]:
         """Emit ``<mapped> ≜ <orig> \\n`` lines in a fixed canonical order
         (alphabetical by mapped_fn_name), terminated by ``<SEP> \\n``. The fixed
@@ -249,6 +280,9 @@ class ProgramDataset(Dataset):
         name_map = None
         if self.mode == "symbol-shuffling":
             name_map = self._sample_name_map(self._episode_rng(idx))
+        elif self.mode == "easy-symbol-shuffling":
+            k = self.n_permuted if self.n_permuted is not None else len(self.fn_names)
+            name_map = self._sample_partial_name_map(self._episode_rng(idx), k)
         x, y = self.tokenise_program_item(program["program"], io_pairs, name_map)
         # loss mask has length seq_len - 1 (no prediction at first token);
         # 1 over the predictions of program tokens following <start>.

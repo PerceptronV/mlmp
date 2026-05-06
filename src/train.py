@@ -314,6 +314,26 @@ def _parse_corpus_arg(s: str) -> list[Path]:
     return [Path(p.strip()) for p in s.split(',') if p.strip()]
 
 
+def _easy_shuffle_k_for_epoch(epoch: int, args, n_total_fns: int) -> int:
+    """Linear ramp of the easy-symbol-shuffling table size from
+    ``--easy-shuffle-k-start`` to ``--easy-shuffle-k-end`` (default = all
+    grammar functions) over ``--easy-shuffle-ramp-epochs`` epochs (default =
+    args.epochs). After the ramp window K stays clamped at k_end.
+
+    Schedule is a function of ``epoch`` alone, so resumes pick the right K
+    automatically without any extra checkpoint state.
+    """
+    k_end = args.easy_shuffle_k_end if args.easy_shuffle_k_end is not None else n_total_fns
+    ramp = args.easy_shuffle_ramp_epochs if args.easy_shuffle_ramp_epochs is not None else args.epochs
+    k_start = args.easy_shuffle_k_start
+    if ramp <= 0:
+        k = k_end
+    else:
+        progress = min(1.0, max(0.0, epoch / ramp))
+        k = round(k_start + (k_end - k_start) * progress)
+    return max(0, min(n_total_fns, k))
+
+
 def train():
     parser = argparse.ArgumentParser(description='Train a seq2seq transformer over jagged NestedTensors')
 
@@ -344,9 +364,21 @@ def train():
     parser.add_argument('--data-seed', type=int, default=0,
                         help='Seed for the I/O sampler (separate from training seed)')
     parser.add_argument('--mode', type=str, default='in-weight', choices=list(TRAINING_MODES),
-                        help='Training mode: in-weight (standard) or symbol-shuffling '
+                        help='Training mode: in-weight (standard), symbol-shuffling '
                              '(per-episode random fn-name permutation prepended as a '
-                             "<mapped> ≜ <orig> preamble; target program uses mapped names)")
+                             "<mapped> ≜ <orig> preamble; target program uses mapped names), "
+                             "or easy-symbol-shuffling (same but only K of the grammar's "
+                             'fn names are permuted per episode; K is ramped up over '
+                             'training via --easy-shuffle-k-start / --easy-shuffle-k-end '
+                             '/ --easy-shuffle-ramp-epochs)')
+    parser.add_argument('--easy-shuffle-k-start', type=int, default=4,
+                        help='[easy-symbol-shuffling only] Initial number of functions '
+                             'permuted per episode at epoch 0.')
+    parser.add_argument('--easy-shuffle-k-end', type=int, default=None,
+                        help='[easy-symbol-shuffling only] Final K. None = all grammar functions.')
+    parser.add_argument('--easy-shuffle-ramp-epochs', type=int, default=None,
+                        help='[easy-symbol-shuffling only] Epochs over which K linearly ramps '
+                             'from k_start to k_end. None = args.epochs (ramp over the whole run).')
     parser.add_argument('--filter-empty-io', dest='filter_empty_io', action='store_true',
                         help='Eagerly pre-sample each program\'s IO pool at dataset init and drop '
                              'programs that return no valid pairs. Off by default (lazy sampling); '
@@ -597,6 +629,17 @@ def train():
         current_lr = optimiser.param_groups[0]['lr']
         print(f"Learning rate: {current_lr:.6f}")
 
+        curriculum_k = None
+        if args.mode == 'easy-symbol-shuffling' and args.dataset == 'program':
+            # Mutating the dataset before iter() is safe because the default
+            # DataLoader spawns fresh workers each epoch, picking up the new K.
+            n_fns = len(train_dataset.fn_names)
+            curriculum_k = _easy_shuffle_k_for_epoch(epoch, args, n_fns)
+            train_dataset.n_permuted = curriculum_k
+            if val_dataset is not None:
+                val_dataset.n_permuted = curriculum_k
+            print(f"easy-symbol-shuffling K: {curriculum_k}/{n_fns}")
+
         train_loss, global_step = train_epoch(
             model, train_loader, optimiser, criterion, device, args.grad_clip,
             use_wandb=use_wandb, global_step=global_step,
@@ -631,7 +674,7 @@ def train():
             print(f"Validation accuracy: {val_accuracy:.2%}")
 
         if use_wandb:
-            wandb.log({
+            log_payload = {
                 'epoch': epoch + 1,
                 'train/loss': train_loss,
                 'train/accuracy': train_accuracy,
@@ -639,7 +682,10 @@ def train():
                 'val/accuracy': val_accuracy,
                 'learning_rate': current_lr,
                 'best_val_loss': best_val_loss,
-            })
+            }
+            if curriculum_k is not None:
+                log_payload['curriculum/n_permuted'] = curriculum_k
+            wandb.log(log_payload)
 
         scheduler.step()
 
