@@ -290,7 +290,16 @@ def load_checkpoint(checkpoint_path, model, optimiser=None, scheduler=None):
         optimiser.load_state_dict(checkpoint['optimiser_state_dict'])
 
     if scheduler is not None and 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
+        # CosineAnnealingLR's state_dict carries T_max and eta_min, so a plain
+        # load_state_dict overwrites the freshly-constructed values from the
+        # current --epochs / --lr. Keep the new horizon so resumes that extend
+        # --epochs decay over the new total instead of warm-restarting past the
+        # old T_max.
+        new_T_max = scheduler.T_max
+        new_eta_min = scheduler.eta_min
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        scheduler.T_max = new_T_max
+        scheduler.eta_min = new_eta_min
 
     return (
         checkpoint['epoch'],
