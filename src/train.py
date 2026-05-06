@@ -538,6 +538,20 @@ def train():
             global_step = start_epoch * len(train_loader)
         if ckpt_best is not None:
             best_val_loss = ckpt_best
+        else:
+            # Older checkpoints didn't track best_val_loss. ``save_checkpoint``
+            # already maintains a sibling ``checkpoint_best.pt`` whose val_loss
+            # is the tightest lower bound we have — pull it so the in-memory
+            # value matches what's on disk from the first post-resume epoch.
+            sibling_best = Path(args.resume).parent / 'checkpoint_best.pt'
+            if sibling_best.exists():
+                try:
+                    disk_best = torch.load(sibling_best, map_location='cpu')
+                    v = disk_best.get('val_loss')
+                    if v is not None:
+                        best_val_loss = float(v)
+                except Exception:
+                    pass
         print(
             f"Resumed from epoch {start_epoch - 1}, train_loss: {train_loss:.4f}, "
             f"val_loss: {val_loss:.4f}, global_step: {global_step}, "
