@@ -10,11 +10,11 @@
 # Everything else (mode, batch size, steps-per-epoch, model size) is unchanged.
 #
 # Usage:
-#   ./scripts/no-rl-train.sh                                  # default mode=in-weight, 100k programs
-#   MODE=symbol-shuffling ./scripts/no-rl-train.sh
-#   MAX_TRAIN_PROGRAMS=50000 ./scripts/no-rl-train.sh
-#   WEIGHT_DECAY=0.3 MAX_TRAIN_PROGRAMS=20000 ./scripts/no-rl-train.sh
-#   DATA_ROOT=/path/to/data CKPT_DIR=/path/to/ckpts SEED=7 MODE=symbol-shuffling ./scripts/no-rl-train.sh
+#   ./scripts/small-train.sh                                  # default mode=in-weight, 100k programs
+#   MODE=symbol-shuffling ./scripts/small-train.sh
+#   MAX_TRAIN_PROGRAMS=50000 ./scripts/small-train.sh
+#   WEIGHT_DECAY=0.3 MAX_TRAIN_PROGRAMS=20000 ./scripts/small-train.sh
+#   DATA_ROOT=/path/to/data CKPT_DIR=/path/to/ckpts SEED=7 MODE=symbol-shuffling ./scripts/small-train.sh
 # ============================================================================
 
 cd "$(dirname "$0")/.."
@@ -32,6 +32,17 @@ SEED="${SEED:-42}"
 MODE="${MODE:-in-weight}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.1}"
 MAX_TRAIN_PROGRAMS="${MAX_TRAIN_PROGRAMS:-100000}"
+EASY_SHUFFLE_K_START="${EASY_SHUFFLE_K_START:-15}"
+EASY_SHUFFLE_K_END="${EASY_SHUFFLE_K_END:-}"           # empty = train.py default (all 57 fns)
+EASY_SHUFFLE_RAMP_EPOCHS="${EASY_SHUFFLE_RAMP_EPOCHS:-300}"
+
+EASY_SHUFFLE_FLAGS=(
+    --easy-shuffle-k-start $EASY_SHUFFLE_K_START
+    --easy-shuffle-ramp-epochs $EASY_SHUFFLE_RAMP_EPOCHS
+)
+if [ -n "$EASY_SHUFFLE_K_END" ]; then
+    EASY_SHUFFLE_FLAGS+=(--easy-shuffle-k-end $EASY_SHUFFLE_K_END)
+fi
 
 # Keep checkpoints from no-rl runs separate from the main train.sh runs so
 # they don't collide on shared run names.
@@ -62,6 +73,7 @@ python -m src.train \
     --weight-decay $WEIGHT_DECAY \
     --max-train-programs $MAX_TRAIN_PROGRAMS \
     --constant-lr \
+    "${EASY_SHUFFLE_FLAGS[@]}" \
     --seed $SEED \
     --num-workers $NUM_WORKERS \
     "${RUN_NAME_FLAG[@]}" \
