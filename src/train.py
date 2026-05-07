@@ -379,6 +379,10 @@ def train():
     parser.add_argument('--easy-shuffle-ramp-epochs', type=int, default=None,
                         help='[easy-symbol-shuffling only] Epochs over which K linearly ramps '
                              'from k_start to k_end. None = args.epochs (ramp over the whole run).')
+    parser.add_argument('--max-train-programs', type=int, default=None,
+                        help='Cap the training corpus to N randomly-sampled programs. '
+                             'Subsampling uses --data-seed for reproducibility. Applies to '
+                             'train only, not val.')
     parser.add_argument('--filter-empty-io', dest='filter_empty_io', action='store_true',
                         help='Eagerly pre-sample each program\'s IO pool at dataset init and drop '
                              'programs that return no valid pairs. Off by default (lazy sampling); '
@@ -400,6 +404,8 @@ def train():
     parser.add_argument('--steps-per-epoch', type=int, default=2500,
                         help='Steps per epoch (None = full dataset, otherwise steps_per_epoch * batch_size samples)')
     parser.add_argument('--lr', type=float, default=2e-3, help='Learning rate')
+    parser.add_argument('--constant-lr', action='store_true',
+                        help='Disable the cosine LR schedule and train at constant --lr')
     parser.add_argument('--weight-decay', type=float, default=0.01, help='Weight decay')
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('--val-examples', type=int, default=None,
@@ -492,6 +498,7 @@ def train():
             min_n_io_shown=args.min_n_io_shown,
             mode=args.mode,
             filter_empty_io=args.filter_empty_io,
+            max_programs=args.max_train_programs,
         )
         print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
@@ -575,7 +582,7 @@ def train():
     model = model.to(device)
 
     optimiser = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = CosineAnnealingLR(optimiser, T_max=args.epochs, eta_min=args.lr / 10)
+    scheduler = None if args.constant_lr else CosineAnnealingLR(optimiser, T_max=args.epochs, eta_min=args.lr / 10)
     criterion = nn.CrossEntropyLoss()
 
     checkpoint_dir = Path(args.checkpoint_dir)
@@ -687,7 +694,8 @@ def train():
                 log_payload['curriculum/n_permuted'] = curriculum_k
             wandb.log(log_payload)
 
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
 
         if (epoch + 1) % args.save_freq == 0 or epoch == args.epochs - 1:
             save_checkpoint(

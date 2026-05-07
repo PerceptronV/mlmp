@@ -77,6 +77,7 @@ class ProgramDataset(Dataset):
         io_sampler: RuleIOSampler | None = None,
         mode: TrainingMode = "in-weight",
         filter_empty_io: bool = False,
+        max_programs: int | None = None,
     ):
         assert 1 <= min_n_io_shown <= n_io_per_program, (
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
@@ -102,6 +103,15 @@ class ProgramDataset(Dataset):
                 entries = [e for e in entries if e.get("type") == type_filter]
             self.programs.extend(entries)
         assert len(self.programs) > 0, f"No programs loaded from {corpus_files}"
+
+        if max_programs is not None and len(self.programs) > max_programs:
+            # Random subsample (not slice) since the corpus is likely stored in
+            # enumeration order — taking the first N would skew toward small programs.
+            import random as _random
+            n_before = len(self.programs)
+            _random.Random(seed).shuffle(self.programs)
+            self.programs = self.programs[:max_programs]
+            print(f"Subsampled corpus: {len(self.programs):,} / {n_before:,} programs (cap={max_programs:,}, seed={seed})")
 
         self.io_sampler = io_sampler or RuleIOSampler(num_io_pairs=n_io_per_program)
 
