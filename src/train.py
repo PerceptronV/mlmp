@@ -5,6 +5,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
 import argparse
+import shutil
 import signal
 from contextlib import contextmanager
 from tqdm import tqdm
@@ -247,7 +248,8 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
 
 
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
-                    global_step=0, best_val_loss=float('inf'), wandb_run_id=None):
+                    global_step=0, best_val_loss=float('inf'), val_accuracy=0.0,
+                    best_val_accuracy=0.0, wandb_run_id=None):
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -258,8 +260,10 @@ def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, ar
         'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
         'train_loss': train_loss,
         'val_loss': val_loss,
+        'val_accuracy': val_accuracy,
         'global_step': global_step,
         'best_val_loss': best_val_loss,
+        'best_val_accuracy': best_val_accuracy,
         # wandb's *internal* run id (not display name). Stashed so resume can
         # continue the original wandb run even if it was started without
         # --run-name (in which case the id is wandb-generated, not derivable
@@ -271,13 +275,49 @@ def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, ar
     torch.save(checkpoint, checkpoint_dir / 'checkpoint_latest.pt')
     torch.save(checkpoint, checkpoint_dir / f'checkpoint_epoch_{epoch}.pt')
 
-    best_path = checkpoint_dir / 'checkpoint_best.pt'
-    if not best_path.exists():
-        torch.save(checkpoint, best_path)
+    # checkpoint_best_loss.pt — replaces the legacy checkpoint_best.pt. Migrate
+    # by copying the legacy file across the first time we see a run that has it
+    # but not the new file.
+    best_loss_path = checkpoint_dir / 'checkpoint_best_loss.pt'
+    legacy_best_path = checkpoint_dir / 'checkpoint_best.pt'
+    if not best_loss_path.exists() and legacy_best_path.exists():
+        shutil.copyfile(legacy_best_path, best_loss_path)
+
+    if not best_loss_path.exists():
+        torch.save(checkpoint, best_loss_path)
     else:
-        best_checkpoint = torch.load(best_path)
-        if val_loss < best_checkpoint['val_loss']:
-            torch.save(checkpoint, best_path)
+        existing = torch.load(best_loss_path, map_location='cpu')
+        if val_loss < existing.get('val_loss', float('inf')):
+            torch.save(checkpoint, best_loss_path)
+
+    # checkpoint_best_acc.pt — for runs predating accuracy-tracking, seed the
+    # file by sweeping per-epoch checkpoints for the highest stored val_accuracy.
+    # Old checkpoints without val_accuracy are skipped; if none qualify we fall
+    # through and just initialise from the current epoch.
+    best_acc_path = checkpoint_dir / 'checkpoint_best_acc.pt'
+    if not best_acc_path.exists():
+        best_acc = -1.0
+        best_acc_src = None
+        for ep_path in sorted(checkpoint_dir.glob('checkpoint_epoch_*.pt')):
+            try:
+                ep_ckpt = torch.load(ep_path, map_location='cpu')
+            except Exception:
+                continue
+            ep_acc = ep_ckpt.get('val_accuracy')
+            if ep_acc is None:
+                continue
+            if ep_acc > best_acc:
+                best_acc = ep_acc
+                best_acc_src = ep_path
+        if best_acc_src is not None:
+            shutil.copyfile(best_acc_src, best_acc_path)
+
+    if not best_acc_path.exists():
+        torch.save(checkpoint, best_acc_path)
+    else:
+        existing = torch.load(best_acc_path, map_location='cpu')
+        if val_accuracy > existing.get('val_accuracy', -1.0):
+            torch.save(checkpoint, best_acc_path)
 
     print(f"Checkpoint saved to {checkpoint_dir}")
 
@@ -307,6 +347,7 @@ def load_checkpoint(checkpoint_path, model, optimiser=None, scheduler=None):
         checkpoint.get('val_loss'),
         checkpoint.get('global_step'),
         checkpoint.get('best_val_loss'),
+        checkpoint.get('best_val_accuracy'),
     )
 
 
@@ -592,9 +633,10 @@ def train():
     start_epoch = 0
     global_step = 0
     best_val_loss = float('inf')
+    best_val_accuracy = 0.0
     if args.resume:
         print(f"Resuming from checkpoint: {args.resume}")
-        start_epoch, train_loss, val_loss, ckpt_step, ckpt_best = load_checkpoint(
+        start_epoch, train_loss, val_loss, ckpt_step, ckpt_best, ckpt_best_acc = load_checkpoint(
             args.resume, model, optimiser, scheduler,
         )
         start_epoch += 1
@@ -610,23 +652,42 @@ def train():
         if ckpt_best is not None:
             best_val_loss = ckpt_best
         else:
-            # Older checkpoints didn't track best_val_loss. ``save_checkpoint``
-            # already maintains a sibling ``checkpoint_best.pt`` whose val_loss
-            # is the tightest lower bound we have — pull it so the in-memory
-            # value matches what's on disk from the first post-resume epoch.
-            sibling_best = Path(args.resume).parent / 'checkpoint_best.pt'
-            if sibling_best.exists():
+            # Older checkpoints didn't track best_val_loss. Prefer the new
+            # checkpoint_best_loss.pt sibling, falling back to the legacy
+            # checkpoint_best.pt so resumes from pre-migration runs still pick
+            # up the tightest lower bound on disk.
+            resume_dir = Path(args.resume).parent
+            for sibling in (resume_dir / 'checkpoint_best_loss.pt',
+                            resume_dir / 'checkpoint_best.pt'):
+                if not sibling.exists():
+                    continue
                 try:
-                    disk_best = torch.load(sibling_best, map_location='cpu')
+                    disk_best = torch.load(sibling, map_location='cpu')
                     v = disk_best.get('val_loss')
                     if v is not None:
                         best_val_loss = float(v)
+                        break
+                except Exception:
+                    pass
+        if ckpt_best_acc is not None:
+            best_val_accuracy = ckpt_best_acc
+        else:
+            # Older checkpoints didn't track best_val_accuracy. Sweep
+            # checkpoint_best_acc.pt if it exists (the migration path in
+            # save_checkpoint will populate it from per-epoch files).
+            sibling_acc = Path(args.resume).parent / 'checkpoint_best_acc.pt'
+            if sibling_acc.exists():
+                try:
+                    disk_best_acc = torch.load(sibling_acc, map_location='cpu')
+                    v = disk_best_acc.get('val_accuracy')
+                    if v is not None:
+                        best_val_accuracy = float(v)
                 except Exception:
                     pass
         print(
             f"Resumed from epoch {start_epoch - 1}, train_loss: {train_loss:.4f}, "
             f"val_loss: {val_loss:.4f}, global_step: {global_step}, "
-            f"best_val_loss: {best_val_loss:.4f}"
+            f"best_val_loss: {best_val_loss:.4f}, best_val_accuracy: {best_val_accuracy:.2%}"
         )
 
     print("\nStarting training...")
@@ -680,6 +741,10 @@ def train():
             )
             print(f"Validation accuracy: {val_accuracy:.2%}")
 
+            if val_accuracy > best_val_accuracy:
+                best_val_accuracy = val_accuracy
+                print(f"New best validation accuracy: {best_val_accuracy:.2%}")
+
         if use_wandb:
             log_payload = {
                 'epoch': epoch + 1,
@@ -689,6 +754,7 @@ def train():
                 'val/accuracy': val_accuracy,
                 'learning_rate': current_lr,
                 'best_val_loss': best_val_loss,
+                'best_val_accuracy': best_val_accuracy,
             }
             if curriculum_k is not None:
                 log_payload['curriculum/n_permuted'] = curriculum_k
@@ -701,11 +767,13 @@ def train():
             save_checkpoint(
                 model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
                 global_step=global_step, best_val_loss=best_val_loss,
+                val_accuracy=val_accuracy, best_val_accuracy=best_val_accuracy,
                 wandb_run_id=wandb.run.id if use_wandb else None,
             )
 
     print("\nTraining completed!")
     print(f"Best validation loss: {best_val_loss:.4f}")
+    print(f"Best validation accuracy: {best_val_accuracy:.2%}")
 
     if use_wandb:
         wandb.finish()
