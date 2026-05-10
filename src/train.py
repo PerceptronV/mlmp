@@ -6,8 +6,6 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
 import argparse
 import shutil
-import signal
-from contextlib import contextmanager
 from tqdm import tqdm
 import wandb
 import random
@@ -16,9 +14,7 @@ import numpy as np
 from .models.seq2seq import Seq2SeqTransformer, from_token_ids
 from .data.dataloader import ProgramDataset, TRAINING_MODES
 from .data.inverse_mlc_dataloader import InverseMLCDataset, INVERSE_MLC_EPISODE_TYPES
-from .lang.parser import parse
-from .lang.compiler import JITCompiler
-from .lang.grammar import DefaultGrammar
+from .data.program_io import ProgramIO
 
 
 DATASETS = ("program", "inverse-mlc")
@@ -129,50 +125,34 @@ def validate(model, dataloader, criterion, device):
 
 @torch.no_grad()
 def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device):
-    """Greedy-decode a single sequence. ``src_tokens`` is a 1-D LongTensor of ids."""
-    # Dense path: jagged SDPA in PyTorch 2.11 fails on single-sequence (B=1) NTs.
-    src = src_tokens.to(device).unsqueeze(0)
-    memory = model.encode(src)
+    """Greedy-decode a single sequence. ``src_tokens`` is a 1-D LongTensor of ids.
 
-    out = [start_token]
-    for _ in range(max_tokens):
-        tgt = torch.tensor(out, dtype=torch.long, device=device).unsqueeze(0)
-        logits = model.project(model.decode(tgt, memory))  # (1, len(out), n_tokens)
-        next_token = int(logits[0, -1].argmax())
-        out.append(next_token)
-        if next_token == end_token:
-            break
-    return out[1:]  # drop <start>
-
-
-@contextmanager
-def _alarm(seconds: float):
-    # SIGALRM is the only way to interrupt a runaway pure-Python call without
-    # forking. Main-thread / POSIX only; both hold for the accuracy loop.
-    def _handler(_signum, _frame):
-        raise TimeoutError(f"call exceeded {seconds}s")
-    old = signal.signal(signal.SIGALRM, _handler)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, old)
+    Thin wrapper around :meth:`src.data.program_io.ProgramIO.greedy_decode`;
+    the canonical implementation lives there. Kept here so external scripts /
+    notebooks that already import ``train.greedy_decode`` keep working.
+    ``start_token`` / ``end_token`` are accepted for backwards compatibility
+    but the underlying ProgramIO already knows them, so they're ignored.
+    """
+    del start_token, end_token  # supplied by ProgramIO
+    return ProgramIO().greedy_decode(model, src_tokens, max_tokens, device)
 
 
 def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens, exec_timeout=1.0):
     """Greedy-decode one example and check the prediction is correct.
 
-    Default behaviour (ProgramDataset): compile the generated program and
-    check it reproduces all of its I/O pairs (outputs reduced mod 100). Each
-    per-input call is bounded by ``exec_timeout`` seconds so a non-terminating
-    program can't stall the whole accuracy pass.
+    Delegates the decode + detokenise + reverse-map + compile + execute
+    pipeline to :class:`src.data.program_io.ProgramIO` (held on the dataset as
+    ``dataset.io``). This function is now mostly the I/O-pair wiring that
+    pulls the right inputs out of the dataset item.
 
     If ``dataset`` exposes a ``check_prediction(generated_token_ids, info)``
     method (e.g. :class:`InverseMLCDataset`), we delegate to it after
     greedy-decoding. That covers datasets where the target isn't an executable
     program and "correctness" is just exact-token match against the gold tail.
+    ``compiler`` / ``start_tok`` / ``end_tok`` are accepted for backwards
+    compatibility — the ProgramIO holds equivalents — but no longer used.
     """
+    del compiler, start_tok, end_tok  # canonical sources live on dataset.io
     seq, loss_mask, program = dataset.__getitem__(idx, include_program=True)
     len_x = loss_mask.count(0)
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
@@ -189,31 +169,18 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     if not use_dataset_checker and not program.get('io_pairs'):
         return True
 
-    gen_tokens = greedy_decode(model, src_tokens, start_tok, end_tok, max_program_tokens, device)
-    if end_tok in gen_tokens:
-        gen_tokens = gen_tokens[:gen_tokens.index(end_tok)]
+    io = getattr(dataset, 'io', None) or ProgramIO(tokeniser=dataset.tokeniser)
+    gen_tokens = io.greedy_decode(model, src_tokens, max_program_tokens, device)
 
     if use_dataset_checker:
+        if io.end in gen_tokens:
+            gen_tokens = gen_tokens[: gen_tokens.index(io.end)]
         return dataset.check_prediction(gen_tokens, program)
 
-    program_str = dataset.tokeniser.detokenise(gen_tokens)
-    # In symbol-shuffling mode the model emits the program with mapped fn names;
-    # reverse the per-episode permutation so the compiler sees the originals.
-    name_map = program.get('name_map')
-    if name_map:
-        mapped_to_orig = {v: k for k, v in name_map.items()}
-        program_str = ' '.join(mapped_to_orig.get(tok, tok) for tok in program_str.split(' '))
-    io_pairs = program['io_pairs']
-    try:
-        fn, _ = compiler.compile(parse(program_str))
-        for inp, expected in io_pairs:
-            with _alarm(exec_timeout):
-                output = fn(list(inp))
-            if not isinstance(output, list) or [x % 100 for x in output] != expected:
-                return False
-        return True
-    except Exception:
-        return False
+    # In symbol-shuffling mode the model emits the program with mapped fn
+    # names; ``detokenise_program`` reverses the per-episode permutation.
+    program_str = io.detokenise_program(gen_tokens, program.get('name_map'))
+    return io.check_program(program_str, program['io_pairs'], timeout=exec_timeout)
 
 
 def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tokens=80, desc="Accuracy"):
@@ -221,13 +188,9 @@ def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tok
     if not indices:
         return 0.0
     model.eval()
-    compiler = JITCompiler(DefaultGrammar)
-    start_tok = dataset.start
-    end_tok = dataset.end
-
     n_correct = 0
     for idx in tqdm(indices, desc=desc):
-        if _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens):
+        if _check_program_match(model, dataset, idx, None, None, None, device, max_program_tokens):
             n_correct += 1
     return n_correct / len(indices)
 

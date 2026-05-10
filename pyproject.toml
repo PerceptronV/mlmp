@@ -17,4 +17,4 @@ dependencies = [
 ]
 
 [project.scripts]
-generate-dataset = "data.generate_dataset:main"
+generate-dataset = "data.generate:main"

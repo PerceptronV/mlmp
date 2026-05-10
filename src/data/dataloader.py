@@ -5,17 +5,8 @@ from typing import Literal
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from .tokeniser import (
-    Tokeniser,
-    PAD_TOKEN,
-    START_TOKEN,
-    END_TOKEN,
-    TO_TOKEN,
-    DEFINED_AS_TOKEN,
-    SEP_TOKEN,
-    NEWLINE_TOKEN,
-)
-from .io_sampler import RuleIOSampler
+from .program_io import ProgramIO
+from .sampler import RuleIOSampler
 
 TrainingMode = Literal["in-weight", "symbol-shuffling", "easy-symbol-shuffling"]
 TRAINING_MODES: tuple[TrainingMode, ...] = (
@@ -83,12 +74,17 @@ class ProgramDataset(Dataset):
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
         )
         assert mode in TRAINING_MODES, f"mode={mode!r} must be one of {TRAINING_MODES}"
-        self.tokeniser = Tokeniser()
+        # Single source of truth for tokenisation, symbol-shuffling preamble
+        # sampling, decode, and program execution. ``ProgramDataset`` is a thin
+        # wrapper around an instance of it (plus corpus iteration / IO-sampler
+        # plumbing). See ``src/data/program_io.py`` for the canonical home.
+        self.io: ProgramIO = ProgramIO()
+        self.tokeniser = self.io.tokeniser
         self.seed = seed
         self.n_io_per_program = n_io_per_program
         self.min_n_io_shown = min_n_io_shown
         self.mode: TrainingMode = mode
-        self.fn_names: list[str] = list(self.tokeniser.grammar.functions.keys())
+        self.fn_names: list[str] = self.io.fn_names
 
         if isinstance(corpus_files, Path):
             corpus_files = [corpus_files]
@@ -115,13 +111,16 @@ class ProgramDataset(Dataset):
 
         self.io_sampler = io_sampler or RuleIOSampler(num_io_pairs=n_io_per_program)
 
-        self.pad = self.tokeniser.vocab.stoi[PAD_TOKEN]
-        self.to = self.tokeniser.vocab.stoi[TO_TOKEN]
-        self.defined_as = self.tokeniser.vocab.stoi[DEFINED_AS_TOKEN]
-        self.newline = self.tokeniser.vocab.stoi[NEWLINE_TOKEN]
-        self.sep = self.tokeniser.vocab.stoi[SEP_TOKEN]
-        self.start = self.tokeniser.vocab.stoi[START_TOKEN]
-        self.end = self.tokeniser.vocab.stoi[END_TOKEN]
+        # Re-export the special-token ids that downstream code reads off the
+        # dataset directly (e.g. ``train.py`` reads ``dataset.start`` /
+        # ``dataset.end``). These all live on the ``ProgramIO`` now.
+        self.pad = self.io.pad
+        self.to = self.io.to
+        self.defined_as = self.io.defined_as
+        self.newline = self.io.newline
+        self.sep = self.io.sep
+        self.start = self.io.start
+        self.end = self.io.end
 
         self._io_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
         self._prog_idx_redirect: dict[int, int] = {}
@@ -215,57 +214,24 @@ class ProgramDataset(Dataset):
         # tied to the program's *new* position. This is fine for training but
         # means IO pools differ between filtered and unfiltered runs.
 
-    def _tokenise_io_pairs(self, io_pairs: list[tuple[list[int], list[int]]]) -> list[int]:
-        x: list[int] = []
-        for inp, out in io_pairs:
-            x.extend(self.tokeniser.tokenise_list(inp) + [self.to])
-            x.extend(self.tokeniser.tokenise_list(out) + [self.newline])
-        return x
+    # -------- delegates to ``self.io`` (see src/data/program_io.py) --------
+    # Everything project-specific about how programs and I/O pairs become
+    # tokens lives on ``ProgramIO``. These wrappers exist only because external
+    # callers (train.py, the dataset CLI demo, downstream scripts) still reach
+    # through ``ProgramDataset`` for them.
 
     def _episode_rng(self, idx: int) -> random.Random:
-        """Per-episode RNG, deterministic in ``(self.seed, idx)``. Distinct from
-        the I/O sampler's seed scheme so the I/O pool and the symbol permutation
-        don't share a stream."""
+        """Per-episode RNG, deterministic in ``(self.seed, idx)``. Distinct
+        from the I/O sampler's seed scheme so the I/O pool and the symbol
+        permutation don't share a stream. Lives here because the keying scheme
+        is dataset-iteration-specific (``idx``)."""
         return random.Random(self.seed * 1000037 + idx * 7919 + 13)
 
     def _sample_name_map(self, rng: random.Random) -> dict[str, str]:
-        """Draw a permutation over all grammar function names from ``rng``.
-        Returns a dict mapping orig_name -> mapped_name (the mapped name is
-        what appears in the rewritten program; the preamble lists each
-        ``mapped ≜ orig``)."""
-        permuted = list(self.fn_names)
-        rng.shuffle(permuted)
-        return dict(zip(self.fn_names, permuted))
+        return self.io.sample_name_map(rng)
 
     def _sample_partial_name_map(self, rng: random.Random, k: int) -> dict[str, str]:
-        """Draw a permutation over a random K-subset of the grammar function
-        names. Functions outside the subset are absent from the map and
-        pass through unchanged in both preamble and program rewrites.
-        ``k`` is clamped to ``[0, len(fn_names)]``."""
-        k = max(0, min(k, len(self.fn_names)))
-        if k == 0:
-            return {}
-        chosen = rng.sample(self.fn_names, k)
-        permuted = list(chosen)
-        rng.shuffle(permuted)
-        return dict(zip(chosen, permuted))
-
-    def _tokenise_preamble(self, name_map: dict[str, str]) -> list[int]:
-        """Emit ``<mapped> ≜ <orig> \\n`` lines in a fixed canonical order
-        (alphabetical by mapped_fn_name), terminated by ``<SEP> \\n``. The fixed
-        order means the only signal the model gets about the permutation is
-        the ``≜`` lines themselves, not positional cues. The trailing newline
-        gives a clean visual / token-level break before the I/O examples."""
-        order = sorted(name_map.items(), key=lambda kv: kv[1])
-        toks: list[int] = []
-        for orig, mapped in order:
-            toks.append(self.tokeniser.tokenise_element(mapped))
-            toks.append(self.defined_as)
-            toks.append(self.tokeniser.tokenise_element(orig))
-            toks.append(self.newline)
-        toks.append(self.sep)
-        toks.append(self.newline)
-        return toks
+        return self.io.sample_partial_name_map(rng, k)
 
     def tokenise_program_item(
         self,
@@ -273,12 +239,7 @@ class ProgramDataset(Dataset):
         io_pairs: list[tuple[list[int], list[int]]],
         name_map: dict[str, str] | None = None,
     ) -> tuple[list[int], list[int]]:
-        x: list[int] = []
-        if name_map is not None:
-            x.extend(self._tokenise_preamble(name_map))
-        x.extend(self._tokenise_io_pairs(io_pairs))
-        y = [self.start] + self.tokeniser.tokenise_program(program_str, name_map) + [self.end]
-        return x, y
+        return self.io.tokenise_program_item(program_str, io_pairs, name_map)
 
     def __getitem__(self, idx: int, include_program: bool = False):
         prog_idx = self._resolve_prog_idx(idx // self.n_io_views)

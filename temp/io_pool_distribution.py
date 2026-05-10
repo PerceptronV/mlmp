@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from src.data.io_sampler import RuleIOSampler
+from src.data.sampler import RuleIOSampler
 
 
 @contextmanager
