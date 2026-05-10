@@ -29,7 +29,7 @@ analyses:
     primitives: [MemorizeAll, Memorize, AntiUnify, Recurse, Variable, Delete]
     n_folds: 5
     n_perm: 200
-    label_aggregation: soft       # "soft" (BCE-against-y, recommended) or "majority" (round at threshold)
+    label_aggregation: majority   # "soft" (BCE-against-y, recommended) or "majority" (round at threshold)
     majority_threshold: 0.5       # fraction of replicates needed for label=1; also AUROC ground truth + CV stratification key
     embedding_pool: mean
     n_io_shown: 11
