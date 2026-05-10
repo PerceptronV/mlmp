@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 _RCPARAMS = {
     "figure.figsize": (6.0, 4.0),
     "figure.dpi": 100,
-    "savefig.dpi": 200,
+    "savefig.dpi": 300,
     "savefig.bbox": "tight",
     "axes.spines.top": False,
     "axes.spines.right": False,
