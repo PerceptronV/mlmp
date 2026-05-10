@@ -170,7 +170,13 @@ class ProbingResult(AnalysisResult):
         ax.set_ylim(0.4, 1.02)
         ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
         ax.set_ylabel("AUROC (5-fold CV)")
-        ax.legend(fontsize=8, ncols=min(n_m, 4))
+        ax.legend(
+            fontsize=8,
+            ncols=min(n_m, 3),
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.12),
+            frameon=False,
+        )
         save_fig(fig, outdir, "bars_per_primitive.pdf")
 
 
