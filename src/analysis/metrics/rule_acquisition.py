@@ -166,7 +166,7 @@ class RuleAcquisitionResult(AnalysisResult):
                     ax.set_xticks(range(1, len(non_human) + 1))
                     ax.set_xticklabels(non_human, rotation=30, ha="right")
                     ax.axhline(1.0, color="black", lw=0.5, alpha=0.5)
-                    ax.set_ylabel("model mean accuracy / human mean accuracy")
+                    ax.set_ylabel("mean acc / human mean acc")
                     save_fig(fig, outdir, "violin_human_relative.pdf")
 
 

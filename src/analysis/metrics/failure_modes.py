@@ -69,15 +69,40 @@ class FailureModesResult(AnalysisResult):
             self.accuracy_by_feature[self.accuracy_by_feature["value"] == False]  # noqa: E712
             .pivot(index="method", columns="feature", values="mean")
         )
+        n_t = (
+            self.accuracy_by_feature[self.accuracy_by_feature["value"] == True]  # noqa: E712
+            .pivot(index="method", columns="feature", values="n")
+        )
         gap = (wide - wide_f).fillna(0.0)
         if gap.size:
-            fig, ax = plt.subplots(figsize=(max(6, 0.35 * gap.shape[1]), 0.35 * gap.shape[0] + 1.5))
+            # Pin reference rows so they read as the comparison baseline.
+            pinned = [m for m in ["humans", "mpl", "fleet"] if m in gap.index]
+            rest = [m for m in gap.index if m not in pinned]
+            gap = gap.loc[pinned + rest]
+            n_t = n_t.loc[pinned + rest]
+            sig_lookup: dict[tuple[str, str], float] = {}
+            if not self.chi2_table.empty:
+                for _, r in self.chi2_table.iterrows():
+                    sig_lookup[(r["method"], r["feature"])] = float(r["q"])
+            fig, ax = plt.subplots(figsize=(max(7, 0.6 * gap.shape[1] + 3),
+                                             0.45 * gap.shape[0] + 2))
             im = ax.imshow(gap.values, cmap="RdBu_r", vmin=-0.5, vmax=0.5, aspect="auto")
             ax.set_xticks(range(gap.shape[1]))
-            ax.set_xticklabels(gap.columns, rotation=75, ha="right", fontsize=7)
+            ns = n_t.iloc[0]  # n is the same across methods (per-feature task count)
+            ax.set_xticklabels(
+                [f"{c}\n(n={int(ns[c])})" for c in gap.columns],
+                rotation=30, ha="right", fontsize=9,
+            )
             ax.set_yticks(range(gap.shape[0]))
             ax.set_yticklabels(gap.index)
-            fig.colorbar(im, ax=ax, label="acc(feat=T) − acc(feat=F)")
+            for i, m in enumerate(gap.index):
+                for j, f in enumerate(gap.columns):
+                    v = gap.values[i, j]
+                    q = sig_lookup.get((m, f), 1.0)
+                    star = "*" if q < 0.05 else ""
+                    ax.text(j, i, f"{v:+.2f}{star}", ha="center", va="center", fontsize=7,
+                            color="white" if abs(v) > 0.3 else "black")
+            fig.colorbar(im, ax=ax, label="acc(feat=T) − acc(feat=F)  (* = χ² q<0.05)")
             save_fig(fig, outdir, "heatmap.pdf")
 
         # Difference profile bars per pair.

@@ -73,14 +73,47 @@ class ClusteringResult(AnalysisResult):
         outdir = Path(outdir)
         outdir.mkdir(parents=True, exist_ok=True)
 
+        # Per-method, per-cluster top-2 positively-enriched features (q<0.05).
+        # Drives both the scatter legend and the heatmap filtering below.
+        cf = self.cluster_features
+        top_feats: dict[tuple[str, int], list[str]] = {}
+        if not cf.empty:
+            sig_pos = cf[(cf["q"] < 0.05) & (cf["enrichment"] > 0)]
+            for (m, c), g in sig_pos.groupby(["method", "cluster"]):
+                top_feats[(m, int(c))] = (
+                    g.sort_values("enrichment", ascending=False)["feature"].head(2).tolist()
+                )
+
+        cmap = plt.get_cmap("tab10")
         for (method, reducer), arr in self.reductions.items():
             sub = self.clusters[self.clusters["method"] == method].set_index("function").loc[self.task_ids]
             cluster_ids = sub["cluster"].values
-            fig, ax = plt.subplots(figsize=(5, 4.5))
-            sc = ax.scatter(arr[:, 0], arr[:, 1], c=cluster_ids, cmap="tab10", s=14)
+            sil = float(sub["silhouette"].iloc[0]) if "silhouette" in sub.columns else float("nan")
+            n_clusters = int(len(set(cluster_ids)))
+            fig, ax = plt.subplots(figsize=(7.5, 5.5))
+            for cid in sorted(set(cluster_ids)):
+                mask = cluster_ids == cid
+                feats = top_feats.get((method, int(cid)), [])
+                lab = f"c{cid} (n={int(mask.sum())})"
+                if feats:
+                    lab += ": " + ", ".join(feats)
+                ax.scatter(
+                    arr[mask, 0], arr[mask, 1],
+                    color=cmap(int(cid) % 10), s=42, alpha=0.85,
+                    edgecolors="white", linewidth=0.5, label=lab,
+                )
+                cx = float(arr[mask, 0].mean())
+                cy = float(arr[mask, 1].mean())
+                ax.annotate(
+                    f"c{cid}", (cx, cy),
+                    fontsize=11, fontweight="bold",
+                    ha="center", va="center",
+                    bbox=dict(boxstyle="circle,pad=0.25", fc="white",
+                              ec=cmap(int(cid) % 10), lw=1.5),
+                )
             ax.set_xlabel(f"{reducer}-1")
             ax.set_ylabel(f"{reducer}-2")
-            fig.colorbar(sc, ax=ax, label="cluster")
+            ax.legend(loc="best", fontsize=7, frameon=True, framealpha=0.85)
             save_fig(fig, outdir, f"scatter_{method}_{reducer}.pdf")
 
         # ARI heatmap.
@@ -104,19 +137,42 @@ class ClusteringResult(AnalysisResult):
             fig.colorbar(im, ax=ax, label="ARI")
             save_fig(fig, outdir, "ari_heatmap.pdf")
 
-        # Cluster-feature enrichment heatmap, per method.
+        # Cluster-feature enrichment heatmap, per method. Filter to features
+        # that pass q<0.05 in some cluster — the full table has 100+ columns,
+        # most of them flat, and is unreadable as a single image.
         for method in self.cluster_features["method"].unique():
             sub = self.cluster_features[self.cluster_features["method"] == method]
-            wide = sub.pivot(index="cluster", columns="feature", values="enrichment")
-            if wide.empty:
+            sig_feats = sub[sub["q"] < 0.05]["feature"].unique().tolist()
+            if not sig_feats:
                 continue
-            fig, ax = plt.subplots(figsize=(max(6, 0.3 * wide.shape[1]), 0.5 * wide.shape[0] + 1.5))
-            im = ax.imshow(wide.values, cmap="RdBu_r", vmin=-0.5, vmax=0.5, aspect="auto")
+            sub_sig = sub[sub["feature"].isin(sig_feats)]
+            wide = sub_sig.pivot(index="cluster", columns="feature", values="enrichment")
+            sig_mat = sub_sig.pivot(index="cluster", columns="feature", values="q") < 0.05
+            col_order = wide.abs().max(axis=0).sort_values(ascending=False).index.tolist()
+            wide = wide[col_order]
+            sig_mat = sig_mat[col_order]
+            fig_w = max(10, 0.55 * wide.shape[1] + 3.0)
+            fig_h = max(3.5, 0.75 * wide.shape[0] + 2.5)
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            vmax = max(0.3, float(wide.abs().to_numpy().max()))
+            im = ax.imshow(wide.values, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
             ax.set_xticks(range(wide.shape[1]))
-            ax.set_xticklabels(wide.columns, rotation=75, ha="right", fontsize=7)
+            ax.set_xticklabels(wide.columns, rotation=55, ha="right", fontsize=10)
             ax.set_yticks(range(wide.shape[0]))
-            ax.set_yticklabels([f"c{c}" for c in wide.index])
-            fig.colorbar(im, ax=ax, label="P(feat=T | cluster) − P(feat=T)")
+            ax.set_yticklabels([f"c{c}" for c in wide.index], fontsize=11)
+            for i in range(wide.shape[0]):
+                for j in range(wide.shape[1]):
+                    v = wide.values[i, j]
+                    if np.isnan(v):
+                        continue
+                    star = "*" if sig_mat.values[i, j] else ""
+                    ax.text(
+                        j, i, f"{v:+.2f}{star}",
+                        ha="center", va="center", fontsize=8,
+                        color="white" if abs(v) > vmax * 0.6 else "black",
+                    )
+            cb = fig.colorbar(im, ax=ax, label="P(feat=T | cluster) − P(feat=T)")
+            cb.ax.tick_params(labelsize=9)
             save_fig(fig, outdir, f"cluster_features_{method}.pdf")
 
 

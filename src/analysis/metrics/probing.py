@@ -81,8 +81,27 @@ class ProbingResult(AnalysisResult):
         )
         wide = per_mp.pivot(index="method", columns="primitive", values="auroc")
 
+        # Pin the surface_features baseline at the bottom so it reads as the
+        # comparison reference, not just another method.
+        if _SURFACE_NAME in wide.index:
+            order = [m for m in wide.index if m != _SURFACE_NAME] + [_SURFACE_NAME]
+            wide = wide.loc[order]
+
+        # Per-(method, primitive) one-sided permutation p (real ≥ shuffled-null).
+        pmat = pd.DataFrame(np.nan, index=wide.index, columns=wide.columns)
+        if not self.null.empty:
+            null_dist = self.null.groupby(["method", "primitive"])["auroc"].agg(list)
+            for m in wide.index:
+                for p in wide.columns:
+                    if (m, p) not in null_dist.index:
+                        continue
+                    arr = np.asarray(null_dist.loc[(m, p)])
+                    real = float(wide.loc[m, p])
+                    if arr.size and not np.isnan(real):
+                        pmat.loc[m, p] = (np.sum(arr >= real) + 1) / (arr.size + 1)
+
         # 1) Heatmap: methods × primitives.
-        fig, ax = plt.subplots(figsize=(0.7 * wide.shape[1] + 2.5, 0.5 * wide.shape[0] + 1.5))
+        fig, ax = plt.subplots(figsize=(0.9 * wide.shape[1] + 3.0, 0.6 * wide.shape[0] + 2.0))
         im = ax.imshow(wide.values, cmap="viridis", vmin=0.4, vmax=1.0, aspect="auto")
         ax.set_xticks(range(wide.shape[1]))
         ax.set_xticklabels(wide.columns, rotation=30, ha="right")
@@ -93,9 +112,11 @@ class ProbingResult(AnalysisResult):
                 v = wide.values[i, j]
                 if np.isnan(v):
                     continue
-                ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=8,
+                p = pmat.values[i, j]
+                star = "*" if (not np.isnan(p)) and p < 0.05 else ""
+                ax.text(j, i, f"{v:.2f}{star}", ha="center", va="center", fontsize=9,
                         color="white" if v < 0.7 else "black")
-        fig.colorbar(im, ax=ax, label="AUROC")
+        fig.colorbar(im, ax=ax, label="AUROC  (* = permutation p<0.05)")
         save_fig(fig, outdir, "heatmap.pdf")
 
         # 2) Per-primitive grouped bars across methods, with null distribution
