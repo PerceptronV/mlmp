@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from ..capability import Capability, CapabilityMissing
 from ..plotting import apply_rc, save_fig
@@ -161,22 +162,48 @@ class ClusteringAnalysis(Analysis):
             )
 
         task_ids = bundle.task_ids
-        # Pick the trial with the desired observed_examples count for embed.
-        # ``observed_examples`` at trial=k has k-1 pairs; we want k = n_io_shown+1
-        # so that observed + (query, expected) gives n_io_shown pairs.
-        target_trial_n = self.n_io_shown + 1
+        # Pick the trial whose observed + (query, expected) gives exactly
+        # ``n_io_shown`` pairs — i.e. trial=n_io_shown (observed has n-1 pairs,
+        # plus query = n total). Earlier this used ``n_io_shown + 1`` which
+        # would only ever match trial=12 (which doesn't exist), silently
+        # falling back to the first trial in the order — embedding at 1 IO
+        # pair instead of 11.
+        target_trial_n = self.n_io_shown
         trial_for: dict[str, "object"] = {}
+        fallback_tasks: list[str] = []
         for task in bundle:
-            tr = max(
-                (t for t in task.trials if t.order == self.order),
-                key=lambda t: 1 if t.trial == target_trial_n else 0,
+            tr = next(
+                (t for t in task.trials if t.order == self.order and t.trial == target_trial_n),
+                None,
             )
+            if tr is None:
+                tr = next((t for t in task.trials if t.order == self.order), None)
+                if tr is not None:
+                    fallback_tasks.append(f"{task.task_id}(no t={target_trial_n})")
+            if tr is None and task.trials:
+                tr = task.trials[0]
+                fallback_tasks.append(f"{task.task_id}(no order={self.order})")
+            if tr is None:
+                raise RuntimeError(
+                    f"ClusteringAnalysis: task {task.task_id!r} has no trials"
+                )
             trial_for[task.task_id] = tr
+        if fallback_tasks:
+            logger.warning(
+                "ClusteringAnalysis: %d task(s) used a fallback trial: %s",
+                len(fallback_tasks), ", ".join(fallback_tasks[:8]),
+            )
 
         embeddings: dict[str, np.ndarray] = {}
         for method in ok_methods:
             vecs = []
-            for tid in task_ids:
+            needs_compute = any(
+                not cache.has_embedding(method, tid, self.order) for tid in task_ids
+            )
+            tids_iter = task_ids
+            if needs_compute:
+                tids_iter = tqdm(task_ids, desc=f"clustering embed:{method.name}", leave=True)
+            for tid in tids_iter:
                 tr = trial_for[tid]
                 v = cache.get_or_compute_embedding(method, tid, self.order, lambda m=method, t=tr: m.embed(t))
                 vecs.append(v)

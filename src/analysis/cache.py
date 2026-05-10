@@ -104,6 +104,19 @@ class Cache:
         self._caches[method.name] = cache
         return cache
 
+    def has_prediction(self, method: "Method", trial: "Trial") -> bool:
+        """True iff the cache already holds a prediction for ``(method, trial)``.
+        Used by the analysis trial loops to suppress tqdm when the cache is
+        fully warm (no decode work to do).
+        """
+        c = self._ensure(method)
+        return (trial.task_id, trial.order, trial.trial) in c.predictions
+
+    def has_embedding(self, method: "Method", task_id: str, order: int) -> bool:
+        """True iff the cache already holds an embedding for ``(method, task_id, order)``."""
+        c = self._ensure(method)
+        return (task_id, order) in c.embeddings
+
     def get_or_compute(
         self,
         method: "Method",
@@ -120,6 +133,65 @@ class Cache:
         if c.pending_pred >= _BATCH_FLUSH:
             self._flush_predictions(c)
         return pred
+
+    def compute_many(
+        self,
+        method: "Method",
+        trials: list["Trial"],
+        *,
+        batch_size: int | None = None,
+        progress_desc: str | None = None,
+    ) -> list["Prediction"]:
+        """Return predictions for ``trials``, hitting the cache where present
+        and dispatching the remaining misses through ``method.predict_many`` in
+        chunks of ``batch_size``. Order of returned list matches ``trials``.
+
+        ``batch_size`` defaults to ``method.predict_batch_size`` if defined,
+        else 32. ``progress_desc`` (when set) drives a tqdm bar over the
+        chunks of misses; pass ``None`` to suppress progress.
+        """
+        c = self._ensure(method)
+        out: list = [None] * len(trials)
+        miss_idx: list[int] = []
+        miss_trials: list = []
+        for i, t in enumerate(trials):
+            key = (t.task_id, t.order, t.trial)
+            if key in c.predictions:
+                out[i] = c.predictions[key]
+            else:
+                miss_idx.append(i)
+                miss_trials.append(t)
+
+        if not miss_trials:
+            return out
+
+        bs = batch_size if batch_size is not None else getattr(method, "predict_batch_size", 32)
+        bs = max(1, int(bs))
+
+        chunks = range(0, len(miss_trials), bs)
+        if progress_desc is not None:
+            from tqdm import tqdm  # local import to keep cache.py torch-free
+            chunks = tqdm(
+                chunks,
+                total=(len(miss_trials) + bs - 1) // bs,
+                desc=progress_desc,
+                leave=True,
+                unit="batch",
+            )
+
+        for start in chunks:
+            chunk = miss_trials[start : start + bs]
+            preds = method.predict_many(chunk)
+            for j, p in enumerate(preds):
+                idx = miss_idx[start + j]
+                t = miss_trials[start + j]
+                key = (t.task_id, t.order, t.trial)
+                c.predictions[key] = p
+                out[idx] = p
+                c.pending_pred += 1
+                if c.pending_pred >= _BATCH_FLUSH:
+                    self._flush_predictions(c)
+        return out
 
     def get_or_compute_embedding(
         self,

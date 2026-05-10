@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
+from ..capability import Capability
 from ..plotting import apply_rc, colour_for, save_fig
 from ..stats import bootstrap_ci, paired_wilcoxon, spearman_with_ci
 from .base import Analysis, AnalysisResult
@@ -131,14 +132,28 @@ class ErrorSimilarityAnalysis(Analysis):
         if not non_human:
             logger.warning("Only humans in methods list — humans excluded from comparison set as the reference")
 
-        # Per-cell (function, order, trial) human distribution.
+        # Per-cell (function, order, trial) human distribution. Pre-compute
+        # predictions per method as a batch so transformers run through their
+        # batched ``predict_many`` path; the inner cell loop is then pure
+        # lookup. Tqdm is driven by ``Cache.compute_many`` per method.
+        all_trials = list(bundle.iter_trials())
+        preds_by_method: dict[str, list] = {}
+        for m in non_human:
+            show = m.supports(Capability.EMBEDDINGS) and any(
+                not cache.has_prediction(m, t) for t in all_trials
+            )
+            preds_by_method[m.name] = cache.compute_many(
+                m, all_trials,
+                progress_desc=f"error_sim predict:{m.name}" if show else None,
+            )
+
         cell_rows: list[dict] = []
-        for trial in bundle.iter_trials():
+        for cell_idx, trial in enumerate(all_trials):
             dist = humans.response_distribution(trial)
             total = sum(dist.values()) or 1
             probs = {k: v / total for k, v in dist.items()}
             for method in non_human:
-                p = cache.get_or_compute(method, trial, method.predict)
+                p = preds_by_method[method.name][cell_idx]
                 response = p.response
                 from ..methods.csv_method import EMPTY, NO_RESPONSE  # lazy
                 if response is None:

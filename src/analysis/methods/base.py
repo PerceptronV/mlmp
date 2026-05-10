@@ -34,6 +34,12 @@ class Method(ABC):
     @abstractmethod
     def predict(self, trial: Trial) -> Prediction: ...
 
+    def predict_many(self, trials: list[Trial]) -> list[Prediction]:
+        """Default: per-trial fan-out. Methods with a meaningful batched
+        forward (``TransformerMethod``) should override.
+        """
+        return [self.predict(t) for t in trials]
+
     def embed(self, trial: Trial) -> "np.ndarray":
         raise CapabilityMissing(self.name, Capability.EMBEDDINGS)
 

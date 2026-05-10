@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
+from ..capability import Capability
 from ..plotting import apply_rc, save_fig
 from ..stats import bootstrap_ci, chi2_p, fdr_bh
 from .base import Analysis, AnalysisResult
@@ -113,8 +114,15 @@ class FailureModesAnalysis(Analysis):
         # at 50% before aggregating.
         rows: list[dict] = []
         for method in methods:
-            for trial in bundle.iter_trials():
-                p = cache.get_or_compute(method, trial, method.predict)
+            trials = list(bundle.iter_trials())
+            show = method.supports(Capability.EMBEDDINGS) and any(
+                not cache.has_prediction(method, t) for t in trials
+            )
+            preds = cache.compute_many(
+                method, trials,
+                progress_desc=f"failure_modes predict:{method.name}" if show else None,
+            )
+            for trial, p in zip(trials, preds):
                 acc = float(p.correct)
                 if p.effort and "mean_correct" in p.effort:
                     try:

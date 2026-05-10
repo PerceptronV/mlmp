@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from ..capability import Capability
 from ..methods.mpl import META_PRIMITIVE_VOCAB
@@ -302,7 +303,13 @@ class ProbingAnalysis(Analysis):
 
             for method in embed_methods:
                 vecs = []
-                for tid in kept_tasks:
+                needs_compute = any(
+                    not cache.has_embedding(method, tid, self.order) for tid in kept_tasks
+                )
+                tids_iter = kept_tasks
+                if needs_compute:
+                    tids_iter = tqdm(kept_tasks, desc=f"probing embed:{method.name}", leave=True)
+                for tid in tids_iter:
                     tr = trial_for[tid]
                     v = cache.get_or_compute_embedding(
                         method, tid, self.order, lambda m=method, t=tr: m.embed(t)

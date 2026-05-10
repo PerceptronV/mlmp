@@ -238,6 +238,79 @@ class ProgramIO:
                 break
         return out[1:]  # drop <start>
 
+    def greedy_decode_batch(
+        self,
+        model,
+        src_tokens_list,  # list of 1-D LongTensors (any device); empty / ``None`` entries are handled
+        max_tokens: int,
+        device,
+    ) -> list[list[int]]:
+        """Batched greedy decode over the *jagged* path. Each row is one
+        independent (src, gen) pair; rows can have different src lengths and
+        finish at different times. Returns a list of generated token-id lists
+        (excluding ``<start>``, including ``<end>`` if emitted), one per
+        non-empty input. Empty / ``None`` entries in ``src_tokens_list`` map
+        to empty output lists.
+
+        Falls through to ``greedy_decode`` for the single-row case because
+        jagged SDPA in PyTorch 2.11 is broken at ``B=1`` (see ``greedy_decode``
+        for the dense workaround). Above ``B=1`` the jagged path is the same
+        one training uses every step.
+        """
+        import torch
+        from ..models.seq2seq import from_token_ids
+
+        valid_idx: list[int] = []
+        valid_srcs: list = []
+        for i, s in enumerate(src_tokens_list):
+            if s is None or s.numel() == 0:
+                continue
+            valid_idx.append(i)
+            valid_srcs.append(s.to(device))
+
+        out_lists: list[list[int]] = [[] for _ in src_tokens_list]
+        if not valid_srcs:
+            return out_lists
+        if len(valid_srcs) == 1:
+            # B=1: jagged SDPA is broken, take the dense path.
+            out_lists[valid_idx[0]] = self.greedy_decode(
+                model, valid_srcs[0], max_tokens, device
+            )
+            return out_lists
+
+        src_batch = from_token_ids(valid_srcs)
+        memory = model.encode(src_batch)
+
+        n = len(valid_srcs)
+        per_row: list[list[int]] = [[self.start] for _ in range(n)]
+        done = [False] * n
+
+        for _ in range(max_tokens):
+            if all(done):
+                break
+            # Each row's tgt grows in lockstep for active rows; done rows stay
+            # frozen at their previous length. Jagged NT tolerates ragged
+            # lengths so we don't need to resize the batch.
+            tgt_batch = from_token_ids(
+                [torch.tensor(o, dtype=torch.long, device=device) for o in per_row]
+            )
+            logits_nt = model.project(model.decode(tgt_batch, memory))
+            vals = logits_nt.values()                       # (sum_len, n_tokens)
+            offsets = logits_nt.offsets()                   # (B+1,)
+            last_idx = (offsets[1:] - 1).tolist()
+            next_tokens = vals[last_idx].argmax(dim=-1).tolist()
+
+            for i, tok in enumerate(next_tokens):
+                if done[i]:
+                    continue
+                per_row[i].append(int(tok))
+                if int(tok) == self.end:
+                    done[i] = True
+
+        for slot, gen in zip(valid_idx, per_row):
+            out_lists[slot] = gen[1:]                       # drop <start>
+        return out_lists
+
     # ------------------------------------------------------------------
     # Encoder pooling (for analysis-time embeddings)
     # ------------------------------------------------------------------

@@ -199,6 +199,10 @@ class TaskBundle:
         for task in self:
             yield from task.trials
 
+    @property
+    def n_trials(self) -> int:
+        return sum(len(t.trials) for t in self.tasks.values())
+
     def get_trial(self, task_id: str, order: int, trial: int) -> Trial:
         for tr in self.tasks[task_id].trials:
             if tr.order == order and tr.trial == trial:

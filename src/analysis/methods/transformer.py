@@ -47,6 +47,7 @@ class TransformerMethod(Method):
     exec_timeout: float = 1.0
     embed_n_io_shown: int = 11
     embed_order: int = 1
+    predict_batch_size: int = 128
 
     _model: object = field(init=False, repr=False, default=None)
     _io: ProgramIO | None = field(init=False, repr=False, default=None)
@@ -168,7 +169,7 @@ class TransformerMethod(Method):
             return io.sample_partial_name_map(rng, k)
         raise ValueError(f"Unknown mode {self.mode!r}")
 
-    # ---- predict ----
+    # ---- predict (single) ----
     def predict(self, trial: Trial) -> Prediction:
         self._ensure_loaded()
         io = self._io
@@ -189,6 +190,54 @@ class TransformerMethod(Method):
         response = io.execute(program_str, list(trial.query_input), timeout=self.exec_timeout)
         correct = response is not None and response == list(trial.expected_output)
         return Prediction(response=response, program=program_str, correct=correct)
+
+    # ---- predict (batched) ----
+    def predict_many(self, trials: list[Trial]) -> list[Prediction]:
+        """Batched encode + greedy decode. Per-trial CPU work (parse + JIT
+        compile + SIGALRM execute) stays sequential — only the GPU pass is
+        amortised across the batch. Trials with empty observed_examples or
+        empty src tokens collapse to a vacuous Prediction without touching
+        the GPU.
+        """
+        self._ensure_loaded()
+        io = self._io
+        assert io is not None
+        if not trials:
+            return []
+
+        # Tokenise per trial. ``None`` entries skip the GPU path and produce
+        # a vacuous Prediction below.
+        srcs: list = []
+        name_maps: list = []
+        for trial in trials:
+            if not trial.observed_examples:
+                srcs.append(None)
+                name_maps.append(None)
+                continue
+            observed = [(list(inp), list(out)) for inp, out in trial.observed_examples]
+            nm = self._name_map_for(trial)
+            tok_list = io.tokenise_input(observed, nm)
+            if not tok_list:
+                srcs.append(None)
+                name_maps.append(None)
+                continue
+            srcs.append(torch.tensor(tok_list, dtype=torch.long))
+            name_maps.append(nm)
+
+        gen_lists = io.greedy_decode_batch(
+            self._model, srcs, self.max_program_tokens, self._device
+        )
+
+        out: list[Prediction] = []
+        for trial, src, nm, gen in zip(trials, srcs, name_maps, gen_lists):
+            if src is None:
+                out.append(Prediction(response=None, program=None, correct=False))
+                continue
+            program_str = io.detokenise_program(gen, nm)
+            response = io.execute(program_str, list(trial.query_input), timeout=self.exec_timeout)
+            correct = response is not None and response == list(trial.expected_output)
+            out.append(Prediction(response=response, program=program_str, correct=correct))
+        return out
 
     # ---- embed ----
     def embed(self, trial: Trial) -> np.ndarray:
