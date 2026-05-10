@@ -18,16 +18,13 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-eval "$(micromamba shell hook --shell bash)"
-micromamba activate ml13
-
 if [ -z "${RUN_NAME:-}" ]; then
     echo "Error: RUN_NAME is required." >&2
     echo "Usage: RUN_NAME=<run> [MODE=...] $0 [extra flags forwarded to python]" >&2
     exit 1
 fi
 
-DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
+DATA_ROOT="${DATA_ROOT:-$HOME/mlmp_datasets}"
 CKPT_ROOT="${CKPT_DIR:-$HOME/mlmp_checkpoints}"
 MODE="${MODE:-in-weight}"
 

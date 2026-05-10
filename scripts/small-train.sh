@@ -19,10 +19,7 @@
 
 cd "$(dirname "$0")/.."
 
-eval "$(micromamba shell hook --shell bash)"
-micromamba activate ml13
-
-DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
+DATA_ROOT="${DATA_ROOT:-$HOME/mlmp_datasets}"
 ENUM_CORPUS="${DATA_ROOT}/corpus-a/enum_corpus_no_rule.json"
 VAL_CORPUS="${DATA_ROOT}/rule_val.json"
 CKPT_ROOT="${CKPT_DIR:-$HOME/mlmp_checkpoints}"

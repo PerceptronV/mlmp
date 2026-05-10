@@ -24,7 +24,7 @@ set -e
 cd "$(dirname "$0")/.."
 mkdir -p logs
 
-OUTPUT_DIR="${OUTPUT_DIR:-output/corpus-a}"
+OUTPUT_DIR="${OUTPUT_DIR:-datasets/corpus-a}"
 SEED="${SEED:-42}"
 VAL_OUT="${VAL_OUT:-$(dirname "${OUTPUT_DIR}")/rule_val.json}"
 
