@@ -1,0 +1,37 @@
+run_name: study_v1
+output_dir: outputs/analysis
+rule_data_root: src/data/osf_gq2hj/analysis/data
+device: cuda
+
+# Probing requires:
+#   1. an ``mpl_best`` method entry to read MPL meta-primitive labels from, and
+#   2. an ``acquired.parquet`` produced by a prior ``rule_acquisition`` run
+#      keyed by a method named ``mpl`` (filter handled in YAML below).
+# Run rule_acquisition first (e.g. with configs/main.yaml) so acquired.parquet
+# is on disk before invoking probing.
+methods:
+  - { kind: transformer, name: tx_enum_in_weight, run_name: wild-dawn-50,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/no-rl-in-weight }
+  - { kind: transformer, name: tx_enum_easy_shuf, run_name: revived-voice-51, mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/no-rl-easy-symbol-shuffling }
+  - { kind: transformer, name: tx_enrl_in_weight, run_name: warm-dust-48,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/in-weight }
+  - { kind: transformer, name: tx_enrl_easy_shuf, run_name: sandy-puddle-49,  mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/easy-symbol-shuffling }
+  - { kind: mpl_best,    name: mpl_best, filters: { lesion: 'None', mode: Online, steps: '500000' } }
+
+analyses:
+  - kind: probing
+    methods:
+      - tx_enum_in_weight
+      - tx_enum_easy_shuf
+      - tx_enrl_in_weight
+      - tx_enrl_easy_shuf
+      - mpl_best
+    mpl_method: mpl_best          # which method-list entry holds the metaprogram column
+    acquired_method: mpl          # which name to filter acquired.parquet by (rule_acquisition output)
+    primitives: [MemorizeAll, Memorize, AntiUnify, Recurse, Variable, Delete]
+    n_folds: 5
+    n_perm: 200
+    label_aggregation: soft       # "soft" (BCE-against-y, recommended) or "majority" (round at threshold)
+    majority_threshold: 0.5       # fraction of replicates needed for label=1; also AUROC ground truth + CV stratification key
+    embedding_pool: mean
+    n_io_shown: 11
+    order: 1
+    surface_baseline: true

@@ -211,7 +211,6 @@ __marimo__/
 # MacOS, Wandb, Claude etc.
 .DS_Store
 wandb/
-.claude/
 .gneiss.json
 
 # MLMP

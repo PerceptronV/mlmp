@@ -77,8 +77,7 @@ class FailureModesResult(AnalysisResult):
             ax.set_yticks(range(gap.shape[0]))
             ax.set_yticklabels(gap.index)
             fig.colorbar(im, ax=ax, label="acc(feat=T) − acc(feat=F)")
-            ax.set_title("Failure-mode heatmap (positive = method better when feature is on)")
-            save_fig(fig, outdir, "heatmap.png")
+            save_fig(fig, outdir, "heatmap.pdf")
 
         # Difference profile bars per pair.
         for (a, b), df in self.difference_profiles.items():
@@ -90,8 +89,7 @@ class FailureModesResult(AnalysisResult):
             ax.invert_yaxis()
             ax.axvline(0, color="black", lw=0.6)
             ax.set_xlabel(f"acc({a}) − acc({b})")
-            ax.set_title(f"Difference profile: {a} vs {b}")
-            save_fig(fig, outdir, f"difference_profile_{a}__vs__{b}.png")
+            save_fig(fig, outdir, f"difference_profile_{a}__vs__{b}.pdf")
 
 
 @dataclass

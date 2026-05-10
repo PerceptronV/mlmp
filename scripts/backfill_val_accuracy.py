@@ -21,7 +21,11 @@ import torch
 from src.data.dataloader import ProgramDataset
 from src.data.inverse_mlc_dataloader import InverseMLCDataset
 from src.models.seq2seq import Seq2SeqTransformer
-from src.train import compute_validation_accuracy, _parse_corpus_arg
+from src.train import (
+    _easy_shuffle_k_for_epoch,
+    _parse_corpus_arg,
+    compute_validation_accuracy,
+)
 
 
 def _epoch_of(path: Path) -> int:
@@ -85,6 +89,17 @@ def main():
     val_dataset = _build_val_dataset(saved_args)
     print(f"Val dataset: {len(val_dataset.programs):,} programs")
 
+    # Live training mutates ``val_dataset.n_permuted`` per epoch so val matches
+    # the easy-shuffle curriculum (src/train.py:671). Without this, ProgramDataset
+    # falls back to K = len(fn_names) — the *hardest* full-shuffling distribution
+    # — and accuracy collapses for early-ramp checkpoints. Mirror the live
+    # behaviour by recomputing K per checkpoint below.
+    is_easy_shuf_program = (
+        getattr(saved_args, 'mode', None) == 'easy-symbol-shuffling'
+        and getattr(saved_args, 'dataset', 'program') == 'program'
+    )
+    n_fns = len(getattr(val_dataset, 'fn_names', [])) if is_easy_shuf_program else 0
+
     n_tokens = len(val_dataset.tokeniser.vocab)
     device = torch.device(args.device)
     model = Seq2SeqTransformer(
@@ -106,6 +121,10 @@ def main():
         model.load_state_dict(ckpt['model_state_dict'])
         model.to(device)
 
+        if is_easy_shuf_program:
+            curriculum_k = _easy_shuffle_k_for_epoch(int(ckpt.get('epoch', 0)), saved_args, n_fns)
+            val_dataset.n_permuted = curriculum_k
+
         acc = compute_validation_accuracy(
             model, val_dataset, device,
             max_program_tokens=args.max_program_tokens,
@@ -117,7 +136,8 @@ def main():
             best_path = path
 
         results.append((path, ckpt.get('epoch'), acc))
-        print(f"  epoch {ckpt.get('epoch'):>4}  val_accuracy={acc:.2%}  "
+        k_note = f"  K={val_dataset.n_permuted}/{n_fns}" if is_easy_shuf_program else ""
+        print(f"  epoch {ckpt.get('epoch'):>4}  val_accuracy={acc:.2%}{k_note}  "
               f"(running best {running_best:.2%} @ {best_path.name if best_path else '?'})")
 
         if args.dry_run:

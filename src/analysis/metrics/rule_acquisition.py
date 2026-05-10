@@ -124,11 +124,10 @@ class RuleAcquisitionResult(AnalysisResult):
             ax.step(xs, cum, where="post", label=method, color=colour_for(method))
         ax.set_xlabel("trial")
         ax.set_ylabel("cumulative fraction acquired")
-        ax.set_title("Rule acquisition (strict criterion)")
         ax.set_xlim(1, _NEVER_ACQUIRED)
         ax.set_ylim(0, 1)
         ax.legend()
-        save_fig(fig, outdir, "curves_acquisition.png")
+        save_fig(fig, outdir, "curves_acquisition.pdf")
 
         # 2. Per-trial mean accuracy curve.
         fig, ax = plt.subplots()
@@ -138,10 +137,9 @@ class RuleAcquisitionResult(AnalysisResult):
             ax.fill_between(sub["trial"], sub["lo"], sub["hi"], alpha=0.15, color=colour_for(method))
         ax.set_xlabel("trial")
         ax.set_ylabel("mean accuracy")
-        ax.set_title("Per-trial mean accuracy")
         ax.set_ylim(0, 1)
         ax.legend()
-        save_fig(fig, outdir, "curves_per_trial.png")
+        save_fig(fig, outdir, "curves_per_trial.pdf")
 
         # 3. Human-relative score violin (Rule Fig 3B): per-function mean
         # accuracy across all 11 trials, divided by the human mean for that
@@ -168,8 +166,7 @@ class RuleAcquisitionResult(AnalysisResult):
                     ax.set_xticklabels(non_human, rotation=30, ha="right")
                     ax.axhline(1.0, color="black", lw=0.5, alpha=0.5)
                     ax.set_ylabel("model mean accuracy / human mean accuracy")
-                    ax.set_title("Human-relative score (per function, all trials)")
-                    save_fig(fig, outdir, "violin_human_relative.png")
+                    save_fig(fig, outdir, "violin_human_relative.pdf")
 
 
 @dataclass

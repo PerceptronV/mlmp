@@ -77,11 +77,10 @@ class ClusteringResult(AnalysisResult):
             cluster_ids = sub["cluster"].values
             fig, ax = plt.subplots(figsize=(5, 4.5))
             sc = ax.scatter(arr[:, 0], arr[:, 1], c=cluster_ids, cmap="tab10", s=14)
-            ax.set_title(f"{method} ({reducer})")
             ax.set_xlabel(f"{reducer}-1")
             ax.set_ylabel(f"{reducer}-2")
             fig.colorbar(sc, ax=ax, label="cluster")
-            save_fig(fig, outdir, f"scatter_{method}_{reducer}.png")
+            save_fig(fig, outdir, f"scatter_{method}_{reducer}.pdf")
 
         # ARI heatmap.
         if not self.pairwise.empty:
@@ -102,8 +101,7 @@ class ClusteringResult(AnalysisResult):
                         ax.text(j, i, f"{mat[i, j]:.2f}", ha="center", va="center", fontsize=8,
                                 color="white" if mat[i, j] < 0.5 else "black")
             fig.colorbar(im, ax=ax, label="ARI")
-            ax.set_title("Cluster agreement (ARI)")
-            save_fig(fig, outdir, "ari_heatmap.png")
+            save_fig(fig, outdir, "ari_heatmap.pdf")
 
         # Cluster-feature enrichment heatmap, per method.
         for method in self.cluster_features["method"].unique():
@@ -118,8 +116,7 @@ class ClusteringResult(AnalysisResult):
             ax.set_yticks(range(wide.shape[0]))
             ax.set_yticklabels([f"c{c}" for c in wide.index])
             fig.colorbar(im, ax=ax, label="P(feat=T | cluster) − P(feat=T)")
-            ax.set_title(f"Cluster-feature enrichment — {method}")
-            save_fig(fig, outdir, f"cluster_features_{method}.png")
+            save_fig(fig, outdir, f"cluster_features_{method}.pdf")
 
 
 @dataclass

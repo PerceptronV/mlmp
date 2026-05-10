@@ -217,3 +217,76 @@ def chi2_p(table: np.ndarray) -> float:
         return 1.0
     res = chi2_contingency(table, correction=False)
     return float(res.pvalue)
+
+
+def delong_auroc_test(
+    y_true: np.ndarray,
+    scores_a: np.ndarray,
+    scores_b: np.ndarray,
+) -> tuple[float, float, float]:
+    """DeLong's test for the difference between two paired AUROCs on the same
+    binary outcome ``y_true`` and two score vectors.
+
+    Returns ``(auroc_a, auroc_b, p_two_sided)``.
+
+    Implementation follows Sun & Xu (2014)'s fast O(n log n) version using
+    midrank-based estimates of the AUC variance/covariance. ``y_true`` must be
+    in {0, 1}; ``scores_a`` / ``scores_b`` are arbitrary real-valued (higher =
+    more confident positive).
+    """
+    from scipy.stats import norm  # type: ignore[import-untyped]
+
+    y = np.asarray(y_true).astype(int)
+    sa = np.asarray(scores_a, dtype=float)
+    sb = np.asarray(scores_b, dtype=float)
+    pos = y == 1
+    neg = ~pos
+    m = int(pos.sum())
+    n = int(neg.sum())
+    if m == 0 or n == 0:
+        return (float("nan"), float("nan"), float("nan"))
+
+    # Sun & Xu midrank trick: AUC_k = (mean midrank of positives among all
+    # samples - (m+1)/2) / n. Variance via per-sample structural components.
+    def _structural(scores: np.ndarray) -> tuple[float, np.ndarray, np.ndarray]:
+        x_p = scores[pos]
+        x_n = scores[neg]
+        tx = _midrank(x_p)
+        ty = _midrank(x_n)
+        tz = _midrank(np.concatenate([x_p, x_n]))
+        auc = float((tz[:m].sum() / (m * n)) - (m + 1) / (2 * n))
+        v01 = (tz[:m] - tx) / n  # length-m structural components for positives
+        v10 = 1.0 - (tz[m:] - ty) / m  # length-n structural components for negatives
+        return auc, v01, v10
+
+    auc_a, v01_a, v10_a = _structural(sa)
+    auc_b, v01_b, v10_b = _structural(sb)
+
+    s_x = np.cov(np.stack([v01_a, v01_b], axis=0), ddof=1)
+    s_y = np.cov(np.stack([v10_a, v10_b], axis=0), ddof=1)
+    cov = s_x / m + s_y / n
+    var_diff = float(cov[0, 0] + cov[1, 1] - 2 * cov[0, 1])
+    if var_diff <= 0:
+        # Identical scores → p=1; numerically negative → 0 effective variance.
+        return (auc_a, auc_b, 1.0)
+    z = (auc_a - auc_b) / np.sqrt(var_diff)
+    p = float(2 * (1 - norm.cdf(abs(z))))
+    return (auc_a, auc_b, p)
+
+
+def _midrank(x: np.ndarray) -> np.ndarray:
+    """Average rank with ties broken by midrank. Used by ``delong_auroc_test``."""
+    order = np.argsort(x, kind="mergesort")
+    x_sorted = x[order]
+    n = x.shape[0]
+    ranks = np.empty(n, dtype=float)
+    i = 0
+    while i < n:
+        j = i
+        while j < n and x_sorted[j] == x_sorted[i]:
+            j += 1
+        ranks[i:j] = 0.5 * (i + j - 1) + 1  # 1-indexed midrank
+        i = j
+    out = np.empty(n, dtype=float)
+    out[order] = ranks
+    return out

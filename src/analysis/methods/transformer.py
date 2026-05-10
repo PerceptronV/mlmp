@@ -43,7 +43,6 @@ class TransformerMethod(Method):
     device: str = "cuda"
     max_program_tokens: int = 80
     embedding_pool: Literal["mean", "last"] = "mean"
-    corpus: str | Path | None = None
     checkpoint_dir: str | Path = "checkpoints"
     exec_timeout: float = 1.0
     embed_n_io_shown: int = 11

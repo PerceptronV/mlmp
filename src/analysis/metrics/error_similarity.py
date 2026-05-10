@@ -69,8 +69,7 @@ class ErrorSimilarityResult(AnalysisResult):
                color=[colour_for(m) for m in pm["method"]])
         ax.set_xticks(xs); ax.set_xticklabels(pm["method"], rotation=30, ha="right")
         ax.set_ylabel("mean P_human(model response)")
-        ax.set_title("Human-likeness (humans excluded as reference)")
-        save_fig(fig, outdir, "bar_human_likeness.png")
+        save_fig(fig, outdir, "bar_human_likeness.pdf")
 
         # 2. Per-trial human-likeness curves.
         if not self.per_trial.empty:
@@ -80,8 +79,8 @@ class ErrorSimilarityResult(AnalysisResult):
                 ax.plot(sub["trial"], sub["mean"], label=method, color=colour_for(method))
             ax.set_xlabel("trial"); ax.set_ylabel("mean P_human(model response)")
             ax.set_ylim(0, max(0.6, self.per_trial["mean"].max() * 1.1))
-            ax.legend(); ax.set_title("Human-likeness vs trial")
-            save_fig(fig, outdir, "curves_per_trial.png")
+            ax.legend()
+            save_fig(fig, outdir, "curves_per_trial.pdf")
 
         # 3. Scatter of human-likeness vs accuracy per method.
         if {"mean", "accuracy"}.issubset(self.per_method.columns):
@@ -92,8 +91,7 @@ class ErrorSimilarityResult(AnalysisResult):
                             xytext=(4, 4), textcoords="offset points", fontsize=8)
             ax.set_xlabel("mean accuracy (all trials)")
             ax.set_ylabel("mean human-likeness")
-            ax.set_title("Human-likeness vs accuracy")
-            save_fig(fig, outdir, "scatter_humanness_vs_accuracy.png")
+            save_fig(fig, outdir, "scatter_humanness_vs_accuracy.pdf")
 
         # 4. Conditional bars (correct vs incorrect cells).
         if {"cond_correct", "cond_incorrect"}.issubset(self.per_method.columns):
@@ -104,9 +102,8 @@ class ErrorSimilarityResult(AnalysisResult):
             ax.bar(xs + w / 2, self.per_method["cond_incorrect"], w, label="model incorrect")
             ax.set_xticks(xs); ax.set_xticklabels(self.per_method["method"], rotation=30, ha="right")
             ax.set_ylabel("mean P_human(model response)")
-            ax.set_title("Conditional human-likeness")
             ax.legend()
-            save_fig(fig, outdir, "bars_conditional.png")
+            save_fig(fig, outdir, "bars_conditional.pdf")
 
 
 @dataclass
