@@ -8,13 +8,19 @@ version = "0.1.0"
 description = "Metalearning metaprogram search for efficient program induction"
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.8.0",
+    "torch>=2.11",
+    "torchtext>=0.6.0",
+    "torchtune>=0.6.0",
     "wandb>=0.20.0",
     "tqdm>=4.65.0",
-    "torchtext>=0.6.0",
-    "torchao>=0.14.0",
-    "torchtune>=0.6.0",
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "pyyaml>=6.0",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
 ]
 
 [project.scripts]
-generate-dataset = "data.generate_dataset:main"
+generate-dataset = "data.generate:main"

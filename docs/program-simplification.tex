@@ -1,0 +1,691 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[round,sort,comma]{natbib}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks,backref=section]{hyperref}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\definecolor{skyblue}{RGB}{48, 141, 222}
+\definecolor{northblue}{RGB}{49, 126, 204}
+\definecolor{darkblue}{RGB}{1, 81, 144}
+\definecolor{fade_darkblue}{RGB}{179, 222, 255}
+\definecolor{arizona}{RGB}{83, 76, 76}
+\definecolor{emerald}{RGB}{0, 129, 133}
+\definecolor{forest}{RGB}{12, 153, 69}
+\definecolor{fade_emerald}{RGB}{161, 227, 230}
+\definecolor{crayon}{RGB}{255, 207, 0}
+\definecolor{peel}{RGB}{255, 102, 0}
+\definecolor{fade_peel}{RGB}{255, 209, 179}
+\definecolor{chocolate}{RGB}{117, 48, 3}
+\definecolor{prisma}{RGB}{64, 59, 121}
+\definecolor{darkpurple}{RGB}{104, 59, 121}
+\definecolor{lush}{RGB}{2, 163, 68}
+\definecolor{fade_lush}{RGB}{166, 237, 193}
+\definecolor{flame}{RGB}{232, 51, 81}
+
+\hypersetup{
+    colorlinks = true,
+    linkcolor = skyblue,
+    citecolor = chocolate,
+    filecolor = peel,
+    urlcolor = flame
+}
+
+\renewcommand*{\backref}[1]{}
+\renewcommand*{\backrefalt}[4]{%
+  \ifcase #1 %
+    {\hfill \it}%
+  \or
+    {\hfill {\it In sec. {\hypersetup{linkcolor=chocolate}#2}.}}%
+  \else
+    {\hfill {\it In sec. {\hypersetup{linkcolor=chocolate}#2}.}}%
+  \fi
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  breaklines=true,
+  keepspaces=true,
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+
+\title{Quotienting Synthesised Programs:\\Term Rewriting, E-Graphs, and Equality Saturation}
+\author{Yiding Song}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Motivation}
+
+This document is a theoretical companion to the enumeration--RL document. It addresses an open problem flagged in §A.3 of that document:
+
+\begin{quote}
+Some RL-generated programs suffer from internal redundancies. While their overall behaviour is interesting, they may be represented by shorter programs. For example, \texttt{product (repeat 10 8)} is a constant internal node in the AST. In the future, it may be worth simplifying RL-generated programs.
+\end{quote}
+
+The pipeline currently deduplicates programs by their \emph{observational} behaviour: two programs $p, q$ with the same fingerprint $\Phi(p) = \Phi(q)$ on the test suite are considered equivalent. This catches programs that compute the same overall function, but is blind to redundancy \emph{inside} a program. Two programs may have distinct fingerprints (and so both be retained in the corpus) while one of them contains a sub-tree that is itself constant or otherwise reducible.
+
+We want a transformation $\mathcal{Q}: \mathrm{programs} \to \mathrm{programs}$ such that:
+\begin{enumerate}
+\item $\Phi(\mathcal{Q}(p)) = \Phi(p)$ on the test suite (behaviour preserved);
+\item $|\mathcal{Q}(p)| \le |p|$ in the size metric of §2.1 of the enumeration document (programs only shrink);
+\item $\mathcal{Q}$ is well-defined on a quotient: programs in the same equivalence class map to a common canonical representative.
+\end{enumerate}
+
+The remainder of this document develops the machinery from the programming-languages literature that addresses this problem rigorously: equational theories and term rewriting (§\ref{sec:rewriting}), the phase-ordering obstacle (§\ref{sec:fragile}), e-graphs as a non-destructive representation (§\ref{sec:egraph}), equality saturation as the algorithm that grows them (§\ref{sec:saturation}), extraction as the optimisation pass that picks shortest representatives (§\ref{sec:extraction}), and a concrete instantiation against the MLMP DSL (§\ref{sec:mlmp}). We close with how this slots into the existing pipeline (§\ref{sec:fit}), adjacent techniques (§\ref{sec:adjacent}), and a summary (§\ref{sec:summary}).
+
+\section{Equational Theories and Term Rewriting}\label{sec:rewriting}
+
+\subsection{Signatures and Term Algebras}\label{sec:signatures}
+
+A \textbf{many-sorted signature} is a pair $\Sigma = (S, F)$ where $S$ is a set of sorts and $F$ is a set of function symbols, each $f \in F$ equipped with an arity $f : s_1 \times \cdots \times s_k \to s_0$ with $s_i \in S$. In our setting $S = \{\mathrm{int}, \mathrm{bool}, \mathrm{list}[\mathrm{int}], \ldots\}$ as in §1.2 of the enumeration document, and $F$ is the set of DSL primitives.
+
+Given a sort-respecting set of variables $X = \bigsqcup_{s \in S} X_s$, the \textbf{term algebra} $T(\Sigma, X)$ is built inductively: every $x \in X_s$ is a term of sort $s$; if $f : s_1 \times \cdots \times s_k \to s_0$ and each $t_i$ has sort $s_i$, then $f(t_1, \ldots, t_k)$ is a term of sort $s_0$.
+
+A \textbf{substitution} is a sort-preserving map $\theta : X \to T(\Sigma, X)$, lifted homomorphically: $\theta(f(t_1,\ldots,t_k)) = f(\theta(t_1),\ldots,\theta(t_k))$.
+
+\textbf{Positions} in a term are sequences over $\mathbb{N}$: $\varepsilon$ is the root, and if $t = f(t_1,\ldots,t_k)$ then $i \cdot p$ addresses position $p$ within $t_i$. We write $t|_p$ for the subterm at $p$ and $t[s]_p$ for the term obtained by replacing $t|_p$ with $s$.
+
+\subsection{Equational Theories and the Word Problem}\label{sec:equational}
+
+Given a set of axioms $E = \{l_i \approx r_i\}_{i \in I}$, the \textbf{equational theory} $\approx_E$ is the smallest $\Sigma$-congruence on $T(\Sigma, X)$ containing every instance $\theta(l_i) \approx \theta(r_i)$. Concretely, $s \approx_E t$ iff there exists a finite chain $s = u_0, u_1, \ldots, u_n = t$ where each $u_{j+1}$ is obtained from $u_j$ by replacing some occurrence of $\theta(l)$ by $\theta(r)$ (or vice versa) for some axiom $l \approx r$.
+
+The \textbf{word problem} for $E$ asks: given $s, t$, decide whether $s \approx_E t$. It is undecidable for arbitrary $E$ but tractable for the systems we consider.
+
+\subsection{Rewrite Rules and Reduction}\label{sec:rewrite-rules}
+
+A \textbf{rewrite system} $R$ is a set of oriented pairs $\{l \to r\}$. The single-step rewrite relation $\to_R$ is defined by
+\[
+  s \to_R t
+  \quad\Longleftrightarrow\quad
+  \exists\, p,\, l \to r \in R,\, \theta:\
+  s|_p = \theta(l) \;\text{ and }\; t = s[\theta(r)]_p.
+\]
+Its reflexive-transitive closure is denoted $\to_R^*$. A term $t$ is in \textbf{normal form} (with respect to $R$) if no rule applies anywhere in $t$.
+
+\subsection{Confluence, Termination, Canonical Forms}\label{sec:confluence}
+
+$R$ is \textbf{terminating} iff no infinite chain $t_0 \to_R t_1 \to_R \cdots$ exists.
+
+$R$ is \textbf{confluent} iff whenever $u \to_R^* s$ and $u \to_R^* t$, there exists $v$ with $s \to_R^* v$ and $t \to_R^* v$. Equivalently (Church--Rosser), the symmetric closure of $\to_R^*$ coincides with $\approx_R$.
+
+\textbf{Newman's lemma} states that a terminating system is confluent iff it is \emph{locally} confluent: divergences from a single step always rejoin. The point is that local confluence is decidable (via the \emph{critical pair lemma}: check joinability of every pair of overlapping rule applications), so for terminating systems we can decide confluence mechanically.
+
+\textbf{Canonicalisation theorem.} If $R$ is confluent and terminating, every $\approx_R$-equivalence class contains a unique normal form, and any reduction strategy reaches it. This is precisely the property we want from $\mathcal{Q}$: pick the (unique) normal form as the canonical representative.
+
+\subsection{Knuth--Bendix Completion}\label{sec:kb}
+
+Knuth--Bendix completion \citep{knuth1970simple} takes an equational theory $E$ and tries to construct a confluent and terminating $R$ presenting the same congruence:
+\begin{enumerate}
+\item Choose a \textbf{reduction order} $\succ$: a well-founded order on terms compatible with substitution and context.
+\item Orient each $l \approx r$ as $l \to r$ if $l \succ r$, else $r \to l$ if $r \succ l$, else \textbf{fail}.
+\item Compute \textbf{critical pairs} from overlapping rules.
+\item Normalise each critical pair. If they reach the same normal form, discard. Otherwise add the new equation as a rule (re-orienting if needed).
+\item Repeat until no new critical pairs.
+\end{enumerate}
+
+Outcomes are \emph{success} (a confluent and terminating $R$), \emph{divergence} (the procedure runs forever), or \emph{failure} (an unorientable equation appears). The canonical failure is commutativity $x + y \approx y + x$: neither side is smaller under any reasonable order. Equally, associativity-plus-commutativity (AC) generates infinitely many equivalent permutations, defeating naive completion.
+
+This is the practical motivation for equality saturation: rather than committing to a confluent rewrite system up front, both directions of every equation are kept simultaneously inside an e-graph, and the choice of representative is deferred to extraction time.
+
+\subsection{Worked Example}\label{sec:reverse-concat-example}
+
+Consider the signature with sort $L$ (lists), constant $\mathtt{nil}$, unary $\mathtt{reverse}$, and binary $\mathtt{concat}$. Take the rules
+\begin{align*}
+R_1 &: \mathtt{reverse}(\mathtt{nil}) \to \mathtt{nil} \\
+R_2 &: \mathtt{reverse}(\mathtt{reverse}(x)) \to x \\
+R_3 &: \mathtt{concat}(\mathtt{nil}, x) \to x \\
+R_4 &: \mathtt{concat}(x, \mathtt{nil}) \to x.
+\end{align*}
+
+Reduce $\mathtt{reverse}(\mathtt{reverse}(\mathtt{concat}(xs, \mathtt{nil})))$ in two different orders:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Step & Trace A (outermost) & Trace B (innermost) \\
+\midrule
+0 & $\mathtt{reverse}(\mathtt{reverse}(\mathtt{concat}(xs, \mathtt{nil})))$ &
+    $\mathtt{reverse}(\mathtt{reverse}(\mathtt{concat}(xs, \mathtt{nil})))$ \\
+1 & by $R_2$: $\mathtt{concat}(xs, \mathtt{nil})$ &
+    by $R_4$: $\mathtt{reverse}(\mathtt{reverse}(xs))$ \\
+2 & by $R_4$: $xs$ & by $R_2$: $xs$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Both traces reach the same normal form $xs$. To verify confluence in general one inspects every critical pair: the only nontrivial overlap is between $R_1$ and $R_2$ at $x = \mathtt{nil}$, where both routes reach $\mathtt{nil}$. Termination follows because every rule strictly decreases AST size. By Newman's lemma the system is confluent, so every term has a unique normal form reachable by any strategy.
+
+\section{Why Naive Rewriting Is Fragile}\label{sec:fragile}
+
+The previous example was lucky: the rules were locally confluent and strictly size-decreasing. Realistic DSLs are not so accommodating. Two pathologies arise even when each individual rule shrinks the program.
+
+\subsection{Phase Ordering}\label{sec:phase-ordering}
+
+Consider the rules
+\begin{align*}
+\rho_1 &: \mathtt{map}\ (\lambda x.\ x)\ xs \to xs \\
+\rho_2 &: \mathtt{reverse}\ (\mathtt{reverse}\ xs) \to xs \\
+\rho_3 &: \mathtt{add}\ y\ 0 \to y
+\end{align*}
+applied to
+\[
+  t_0 = \mathtt{map}\ (\lambda x.\ \mathtt{add}\ x\ 0)\ (\mathtt{reverse}\ (\mathtt{reverse}\ xs)).
+\]
+Different orderings produce different outcomes. Following an outermost-leftmost strategy:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Step & Term \\
+\midrule
+0 & $\mathtt{map}\ (\lambda x.\ \mathtt{add}\ x\ 0)\ (\mathtt{reverse}\ (\mathtt{reverse}\ xs))$ \\
+1 & by $\rho_2$: $\mathtt{map}\ (\lambda x.\ \mathtt{add}\ x\ 0)\ xs$ \\
+2 & by $\rho_3$ (under $\lambda$): $\mathtt{map}\ (\lambda x.\ x)\ xs$ \\
+3 & by $\rho_1$: $xs$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A strategy that does not look under lambdas, or that gives up after one full sweep finds no more matches at the top level, would stop at step~1 with size 7. The rule $\rho_1$ is \emph{enabled by} the prior firing of $\rho_3$ inside the lambda body; missing this enablement leaves a redex on the table.
+
+One can patch the strategy to keep iterating until no rule applies — but this only works for rewrite systems that strictly decrease some monotone measure on terms. As soon as bidirectional rules enter the picture, ``iterate to fixpoint'' loops forever.
+
+\subsection{Bidirectional Rules}\label{sec:bidirectional}
+
+Several useful equalities are not directional. For example,
+\[
+  x \cdot 2 \;\approx\; x + x.
+\]
+Each side is preferable in a different context: $x \cdot 2$ is shorter (two AST nodes versus three for $x + x$) but $x + x$ might be cheaper to evaluate when $x$ is already cached. Similarly, the fusion law $\mathtt{map}\ f\ (\mathtt{map}\ g\ xs) \approx \mathtt{map}\ (\lambda x.\ f\,(g\,x))\ xs$ shrinks the program in the right-to-left direction (one pass instead of two) but unfusing is sometimes useful for enabling further rewrites in the bodies of the inner maps.
+
+If we orient such a rule one way, we lose the other. If we orient both ways, every rewriter that does not detect the cycle loops indefinitely. The fix — which is what equality saturation provides — is to give up on rewriting as a destructive operation and instead represent both sides of every equation simultaneously, deferring the choice of representative to extraction time.
+
+\section{E-Graphs}\label{sec:egraph}
+
+\subsection{Definitions}\label{sec:egraph-def}
+
+Fix a signature $\Sigma$. An \textbf{e-node} is a pair $(f, [c_1, \ldots, c_k])$ where $f \in F$ has arity $k$ and each $c_i$ is an \textbf{e-class identifier}. An \textbf{e-class} is a set of e-nodes deemed equivalent. An \textbf{e-graph} $E$ is a set of e-classes $\mathcal{C}$, together with a partition $\mathrm{nodes}(E) = \bigsqcup_{c \in \mathcal{C}} c$ and a union--find structure $\mathrm{uf}$ over the e-class identifiers.
+
+The crucial design choice: an e-node's \emph{children} are e-classes, not specific e-nodes. Alternative representations of the same sub-term inhabit a common e-class, and parents reference the e-class once. This is what makes the structure compact.
+
+\subsection{Hash Consing}\label{sec:hashcons}
+
+Two e-nodes are \emph{syntactically equal} iff they have the same operator and the same children list (up to canonical e-class identifiers). Hash consing maintains the invariant that syntactically equal e-nodes share an e-class. On insertion of a new e-node $n = (f, [c_1, \ldots, c_k])$:
+\begin{enumerate}
+\item Canonicalise the children list via $\mathrm{uf}.\mathtt{find}$.
+\item Look up $n$ in a global hash table keyed by canonical form.
+\item If present, return the existing e-class identifier.
+\item Otherwise, create a fresh e-class containing $n$ and return its identifier.
+\end{enumerate}
+
+\subsection{Congruence}\label{sec:congruence}
+
+The structural invariant of the e-graph is the \textbf{congruence axiom}: if two e-nodes have the same operator and pointwise-equal children classes, they are in the same e-class. Symbolically,
+\[
+  (f, [c_1, \ldots, c_k]),\,(f, [c_1', \ldots, c_k']) \in \mathrm{nodes}(E)
+  \;\;\text{and}\;\;
+  c_i \equiv c_i' \;\forall i
+  \;\Longrightarrow\;
+  \text{they share an e-class}.
+\]
+
+Maintaining this invariant is the job of a procedure \texttt{rebuild()} run after every union:
+\begin{enumerate}
+\item For every e-node whose children list contains a class that has been merged, re-canonicalise the list.
+\item If the canonicalised e-node now collides with another e-node, union their e-classes.
+\item Repeat until no more unions occur.
+\end{enumerate}
+Without rebuild, asserting an equality at a sub-term would fail to propagate through the parent contexts that reference it.
+
+\subsection{Compactness}\label{sec:compactness}
+
+Suppose the e-graph contains $G$ e-nodes representing $G$ distinct sub-terms. An equation $a \approx b$ that licenses $N$ rewrites in the original term language would expand to $G \cdot N$ distinct alternative terms if everything were materialised. In the e-graph, asserting $a \approx b$ is a constant-time union plus a sub-graph-bounded congruence cascade; the total e-graph size grows by $O(N)$, not $O(GN)$. This compactness is what makes equality saturation tractable for non-trivial rewrite systems.
+
+\subsection{Worked Example}\label{sec:egraph-worked}
+
+Build the e-graph for $\{(a + b) \cdot c,\; (b + a) \cdot c\}$. After insertion (every e-node in its own singleton e-class):
+
+\begin{lstlisting}
+C0:  var a
+C1:  var b
+C2:  var c
+C3:  add(C0, C1)        -- represents (a + b)
+C4:  add(C1, C0)        -- represents (b + a)
+C5:  mul(C3, C2)        -- represents (a + b) * c
+C6:  mul(C4, C2)        -- represents (b + a) * c
+\end{lstlisting}
+
+Now assert commutativity by adding the rewrite $\mathtt{add}(x, y) \to \mathtt{add}(y, x)$. The e-matcher finds matches at $C_3$ (with $\theta = \{x \mapsto C_0, y \mapsto C_1\}$) and at $C_4$ (symmetric). Firing the first match constructs $\mathtt{add}(C_1, C_0)$, which already lives in $C_4$; we therefore union $C_3$ and $C_4$. Now \texttt{rebuild} runs: the e-nodes $\mathtt{mul}(C_3, C_2)$ and $\mathtt{mul}(C_4, C_2)$ have congruent canonical children lists (both become $[\{C_3, C_4\}, C_2]$), so they collide and their e-classes are unioned. Final state:
+
+\begin{lstlisting}
+C0:  var a
+C1:  var b
+C2:  var c
+{C3, C4}:  add(C0, C1), add(C1, C0)
+{C5, C6}:  mul({C3,C4}, C2)
+\end{lstlisting}
+
+Note: the multiplication e-class collapsed automatically as a downstream effect of the addition union, without any rewrite being applied at the multiplication level. This is the power of congruence closure --- it lifts equalities through every parent context for free.
+
+\section{Equality Saturation}\label{sec:saturation}
+
+\subsection{The Algorithm}\label{sec:sat-algo}
+
+Equality saturation grows the e-graph by repeatedly applying every rewrite rule everywhere it matches:
+
+\begin{lstlisting}
+function saturate(initial_terms, R, budget):
+    E <- empty e-graph
+    for t in initial_terms: E.add(t)
+    repeat:
+        matches <- []
+        for each rule l -> r in R:
+            for each e-match sigma of l in E:
+                matches.append( (r, sigma, eclass-of(sigma(l))) )
+        for (r, sigma, c) in matches:
+            c' <- E.add(sigma(r))
+            E.union(c, c')
+        E.rebuild()
+        if no new equalities or budget exhausted: break
+    return E
+\end{lstlisting}
+
+The two-phase structure --- collect matches first, apply later --- is essential. Applying matches as we find them would mean the new e-nodes interfere with ongoing matching within the same iteration, leading to schedule-dependent behaviour and potentially missed matches.
+
+\subsection{E-matching}\label{sec:e-matching}
+
+\textbf{E-matching} is pattern matching against an e-graph rather than against a term: given a pattern $l$ (a term with variables) and an e-graph $E$, find every substitution $\sigma$ such that $\sigma(l)$ is represented in $E$. The complication is that an e-class may contain multiple e-nodes that match different sub-patterns of $l$, and exploring all combinations is exponential in the worst case. In practice, sophisticated indexing structures (those described by \citet{willsey2021egg}) make e-matching the practical bottleneck of the algorithm. We treat it as an oracle here.
+
+\subsection{Termination Obstacles}\label{sec:sat-termination}
+
+Saturation may not reach fixpoint. The canonical pathology is the combination of associativity
+\[
+  \mathtt{add}(\mathtt{add}(x, y), z) \;\approx\; \mathtt{add}(x, \mathtt{add}(y, z))
+\]
+and commutativity
+\[
+  \mathtt{add}(x, y) \;\approx\; \mathtt{add}(y, x).
+\]
+Together they generate every parenthesisation of every permutation, which is infinite. Practical implementations therefore:
+\begin{itemize}
+\item Cap iteration count and total e-node count.
+\item \textbf{Schedule} rules: cheap rules apply every iteration, costly ones (notably AC laws) apply less often, or only after the cheap rules saturate.
+\item Use AC-aware matching: treat $\mathtt{add}$ as an associative--commutative operator, store its arguments as a multiset, and reason modulo AC rather than enumerating permutations.
+\end{itemize}
+
+\subsection{Soundness vs. Completeness}\label{sec:sat-soundness}
+
+\textbf{Soundness.} Every equality the e-graph claims is genuinely $\approx_R$-derivable. Two e-nodes occupy a common e-class only because of (a) initial hash consing (syntactic identity), (b) explicit unions from rewrites $l \to r$ where $l \approx_R r$ holds by definition, or (c) congruence closure (semantic identity in any congruence). All three preserve $\approx_R$.
+
+\textbf{Completeness.} Under unbounded saturation in a system that does terminate, the e-graph captures every $\approx_R$-equivalence reachable from the initial terms. With a budget, it is an under-approximation: some derivable equalities may be absent. Crucially, under-approximation is safe --- everything in one e-class is genuinely equal, even if the e-graph is missing other equalities. We never lose semantic correctness, only optimisation opportunities.
+
+\subsection{Worked Example}\label{sec:sat-worked}
+
+Saturate with rules $\{\rho_1, \rho_2, \rho_3\}$:
+\begin{align*}
+\rho_1 &: \mathtt{map}\ (\lambda x.\ x)\ xs \to xs, \\
+\rho_2 &: \mathtt{reverse}\ (\mathtt{reverse}\ xs) \to xs, \\
+\rho_3 &: \mathtt{length}\ (\mathtt{repeat}\ x\ n) \to n,
+\end{align*}
+on the term $t_0 = \mathtt{length}\ (\mathtt{reverse}\ (\mathtt{reverse}\ (\mathtt{repeat}\ 0\ 5)))$.
+
+Initial e-graph:
+
+\begin{lstlisting}
+C0: 0
+C1: 5
+C2: repeat(C0, C1)
+C3: reverse(C2)
+C4: reverse(C3)
+C5: length(C4)              <- root
+\end{lstlisting}
+
+\textbf{Iteration 1.} Search for matches: $\rho_2$ matches at $C_4$ (the outer reverse of an inner reverse), with $\theta = \{xs \mapsto C_2\}$. Apply: union $C_4$ with $C_2$. (Rules $\rho_1$ does not match: no map node yet. $\rho_3$ does not match: $C_5$'s argument is $C_4$, not in the same e-class as $C_2$ until the union just performed.)
+
+After rebuild, the e-class structure becomes:
+
+\begin{lstlisting}
+C0: 0
+C1: 5
+{C2, C4}: repeat(C0, C1), reverse(C3)
+C3: reverse({C2, C4})
+C5: length({C2, C4})
+\end{lstlisting}
+
+\textbf{Iteration 2.} Now $C_5 = \mathtt{length}(\{C_2, C_4\})$, and the class $\{C_2, C_4\}$ contains $\mathtt{repeat}(C_0, C_1)$. Therefore $\rho_3$ matches at $C_5$ with $\theta = \{x \mapsto C_0, n \mapsto C_1\}$. Apply: the RHS is $C_1 = 5$. Union $C_5$ with $C_1$.
+
+\textbf{Iteration 3.} No new matches; saturation reached.
+
+Final state: the root e-class contains both the original $\mathtt{length}(\mathtt{reverse}(\mathtt{reverse}(\mathtt{repeat}(0, 5))))$ expression and the literal $5$. Extraction (next section) will pick the literal.
+
+\section{Extraction}\label{sec:extraction}
+
+\subsection{Problem Statement}\label{sec:extr-problem}
+
+Given a saturated e-graph $E$ and a designated \textbf{root e-class} $r$, choose one e-node from each reachable e-class such that the resulting term has minimum cost. Equivalently, find a selection $\mathrm{sel}: \mathcal{C} \to \mathrm{nodes}(E)$ with $\mathrm{sel}(c) \in c$ for every $c$, that minimises the cost of the term obtained by following $\mathrm{sel}$ recursively from $r$.
+
+\subsection{Tree Cost}\label{sec:tree-cost}
+
+Assume an additive cost function $w : F \to \mathbb{R}_{\ge 0}$ on operators. The cost of a term is
+\[
+  \mathrm{cost}(f(t_1, \ldots, t_k)) \;=\; w(f) + \sum_{i} \mathrm{cost}(t_i).
+\]
+Lifted to e-graphs:
+\[
+  \mathrm{cost}(\text{e-node } (f, [c_1, \ldots, c_k]))
+    \;=\; w(f) + \sum_i \mathrm{cost}(c_i),
+  \qquad
+  \mathrm{cost}(c) \;=\; \min_{n \in c} \mathrm{cost}(n).
+\]
+
+\subsection{Fixpoint Algorithm}\label{sec:extr-fixpoint}
+
+\begin{lstlisting}
+for c in classes: cost[c] <- infinity
+repeat until no change:
+    for c in classes:
+        for n = (f, [c1, ..., ck]) in c:
+            candidate <- w(f) + sum(cost[ci] for ci in children)
+            if candidate < cost[c]:
+                cost[c] <- candidate
+                best[c] <- n
+\end{lstlisting}
+
+\textbf{Termination.} Cost values decrease monotonically and are bounded below by zero (or by $\min_f w(f)$ for non-leaf classes), so only finitely many iterations occur.
+
+\textbf{Correctness.} The final values satisfy the recurrence $\mathrm{cost}(c) = \min_n (w(f) + \sum_i \mathrm{cost}(c_i))$. Reading off the chosen e-node $\mathrm{best}(c)$ at the root and recursing yields a term of cost $\mathrm{cost}(r)$, which by construction is the minimum tree cost.
+
+\textbf{Cycles.} E-classes may be cyclic. For example, the rule $\rho: x \to \mathtt{add}(x, 0)$ adds $\mathtt{add}(x, 0)$ to the e-class of $x$, where the first child is the same e-class. Initialising $\mathrm{cost} = \infty$ and relaxing handles this gracefully: the cyclic e-node gives cost $\infty + 1 = \infty$ in the first iteration, but any non-cyclic e-node in the same class gives a finite cost, breaking the cycle. The fixpoint converges on a non-cyclic selection.
+
+\subsection{DAG Cost is NP-hard}\label{sec:extr-nphard}
+
+Tree cost double-counts shared sub-terms. A more realistic cost model --- count each distinct sub-term once --- is \textbf{DAG cost}, where the cost is the sum of $w(f)$ over a \emph{set} of e-nodes (one per chosen e-class) rather than a sum over the tree. Optimising DAG cost is NP-hard via reduction from set cover: each e-node ``covers'' the e-classes of its chosen children, and minimising the total weight of chosen e-nodes such that the root is reachable is exactly weighted set cover. Practical implementations (notably \texttt{egg}) provide an integer-linear-programming extractor; recent algorithmic work has produced faster approximations and exact methods for special cases.
+
+For our purposes (size-minimisation in a DSL where sub-term sharing is uncommon), tree-cost extraction with the fixpoint algorithm is sufficient.
+
+\subsection{Worked Example}\label{sec:extr-worked}
+
+Consider the e-graph after iteration 2 of §\ref{sec:sat-worked}, with the root e-class containing both the literal $5$ and the original length expression. Take $w(\text{leaf}) = 1$ and $w(\text{op}) = 1$ (matching the size metric of §2.1 of the enumeration document).
+
+\begin{center}
+\begin{tabular}{lrrrr}
+\toprule
+Iteration & $C_0$ & $C_1 \cup C_5$ & $C_2 \cup C_4$ & $C_3$ \\
+\midrule
+0 & $\infty$ & $\infty$ & $\infty$ & $\infty$ \\
+1 & $1$ & $1$ (literal $5$) & $\infty$ & $\infty$ \\
+2 & $1$ & $1$ & $1 + 1 + 1 = 3$ & $\infty$ \\
+3 & $1$ & $1$ & $3$ & $1 + 3 = 4$ \\
+4 & $1$ & $1$ & $3$ & $4$ (no change) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The root e-class has cost $1$, achieved by selecting the literal $5$. The original program of size $5$ has been quotiented to a literal of size $1$.
+
+\section{Application to the MLMP DSL}\label{sec:mlmp}
+
+\subsection{The DSL Recap}\label{sec:dsl-recap}
+
+The DSL (cf. §1 of the enumeration document) is a simply-typed lambda calculus with conditionals over a fixed set of primitives. The full primitive set, taken from \texttt{src/lang/grammar.py}, is:
+
+\begin{itemize}
+\item \textit{Arithmetic and predicates:} \texttt{add, subtract, multiply, divide, modulo, less\_than, greater\_than, equals, boolean\_and, boolean\_or, boolean\_not, is\_even, is\_odd}.
+\item \textit{List constructors and indexing:} \texttt{singleton, repeat, range, cons, append, concat, first, second, third, last, nth}.
+\item \textit{List manipulation:} \texttt{insert, replace, swap, cut\_idx, cut\_val, cut\_vals, drop, droplast, take, takelast, slice, cut\_slice, splice, zip, is\_in}.
+\item \textit{Aggregation and structural:} \texttt{length, max, min, product, sum, reverse, flatten, unique}.
+\item \textit{Higher-order:} \texttt{map, mapi, filter, filteri, fold, foldi, count, find, sort, group}.
+\end{itemize}
+
+All numeric values are computed modulo 100 (the project convention). Rewrites involving constant folding must respect this.
+
+\subsection{A Candidate Rewrite System $R_{\text{MLMP}}$}\label{sec:rewrite-system}
+
+We propose the following equational laws, organised by category. Each line carries a side condition column where applicable; the absence of one means the rule applies unconditionally to type-correct matches.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+LHS & RHS & Side condition \\
+\midrule
+\multicolumn{3}{l}{\textit{Identity laws}} \\
+$\mathtt{map}\ (\lambda x.\ x)\ xs$ & $xs$ & --- \\
+$\mathtt{filter}\ (\lambda x.\ \top)\ xs$ & $xs$ & --- \\
+$\mathtt{concat}\ xs\ [\,]$ & $xs$ & --- \\
+$\mathtt{concat}\ [\,]\ xs$ & $xs$ & --- \\
+$\mathtt{add}\ x\ 0$ & $x$ & second arg literal $0$ \\
+$\mathtt{multiply}\ x\ 1$ & $x$ & second arg literal $1$ \\
+\midrule
+\multicolumn{3}{l}{\textit{Annihilators}} \\
+$\mathtt{multiply}\ x\ 0$ & $0$ & second arg literal $0$ \\
+$\mathtt{filter}\ (\lambda x.\ \bot)\ xs$ & $[\,]$ & --- \\
+$\mathtt{map}\ f\ [\,]$ & $[\,]$ & --- \\
+\midrule
+\multicolumn{3}{l}{\textit{Involutions}} \\
+$\mathtt{reverse}\ (\mathtt{reverse}\ xs)$ & $xs$ & --- \\
+$\mathtt{boolean\_not}\ (\mathtt{boolean\_not}\ b)$ & $b$ & --- \\
+\midrule
+\multicolumn{3}{l}{\textit{Constant folding}} \\
+$\mathtt{length}\ (\mathtt{repeat}\ x\ n)$ & $n$ & --- \\
+$\mathtt{product}\ (\mathtt{repeat}\ c\ n)$ & $c^n \bmod 100$ & both $c, n$ literal \\
+$\mathtt{sum}\ (\mathtt{repeat}\ c\ n)$ & $(c \cdot n) \bmod 100$ & both $c, n$ literal \\
+$\mathtt{reverse}\ (\mathtt{repeat}\ x\ n)$ & $\mathtt{repeat}\ x\ n$ & --- \\
+$\mathtt{first}\ (\mathtt{repeat}\ x\ n)$ & $x$ & $n \ge 1$ \\
+\midrule
+\multicolumn{3}{l}{\textit{Conditional collapse}} \\
+$\mathtt{if}\ \top\ \mathtt{then}\ a\ \mathtt{else}\ b$ & $a$ & --- \\
+$\mathtt{if}\ \bot\ \mathtt{then}\ a\ \mathtt{else}\ b$ & $b$ & --- \\
+$\mathtt{if}\ c\ \mathtt{then}\ a\ \mathtt{else}\ a$ & $a$ & --- \\
+\midrule
+\multicolumn{3}{l}{\textit{Fusion}} \\
+$\mathtt{map}\ f\ (\mathtt{map}\ g\ xs)$ & $\mathtt{map}\ (\lambda x.\ f\,(g\,x))\ xs$ & --- \\
+$\mathtt{filter}\ p\ (\mathtt{filter}\ q\ xs)$ & $\mathtt{filter}\ (\lambda x.\ p\,x \wedge q\,x)\ xs$ & --- \\
+$\mathtt{reverse}\ (\mathtt{map}\ f\ xs)$ & $\mathtt{map}\ f\ (\mathtt{reverse}\ xs)$ & --- \\
+\midrule
+\multicolumn{3}{l}{\textit{Length distribution}} \\
+$\mathtt{length}\ (\mathtt{concat}\ xs\ ys)$ & $\mathtt{add}\ (\mathtt{length}\ xs)\ (\mathtt{length}\ ys)$ & --- \\
+$\mathtt{length}\ (\mathtt{map}\ f\ xs)$ & $\mathtt{length}\ xs$ & --- \\
+$\mathtt{length}\ (\mathtt{reverse}\ xs)$ & $\mathtt{length}\ xs$ & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This is a starting set, not a final one. The rule set should be tuned empirically against the corpus by measuring how many programs are simplified and by how much. Any rewrite that ever produces a fingerprint mismatch with its LHS on the test suite is unsound and must be rejected.
+
+\subsection{Cost Function}\label{sec:mlmp-cost}
+
+Use the size metric of §2.1 of the enumeration document: $w(\text{leaf}) = 1$, $w(f) = 1$ for every internal operator (including $\lambda$ and $\mathrm{if}$). The total tree cost of a term is precisely its AST size. Consequently, the fixpoint extractor of §\ref{sec:extr-fixpoint} returns the smallest representation of the root e-class under tree cost, with no further tuning required.
+
+\subsection{Type-correctness of Rewrites}\label{sec:type-correctness}
+
+A rewrite $l \approx r$ is type-correct iff $l$ and $r$ have the same principal type under the same typing context $\Gamma$. The DSL's polymorphic primitives (cf. §1.2 of the enumeration document) are stored in $R_{\text{MLMP}}$ as polymorphic schemas; at e-match time, the type substitution is recovered from the matched e-class and the rewrite is instantiated accordingly. Concretely, $\mathtt{reverse}\ (\mathtt{reverse}\ xs) \approx xs$ holds for any $xs : \mathrm{list}[\sigma]$, and is matched against e-classes of any list type without duplication of the rule.
+
+\subsection{Integer Holes}\label{sec:holes-rewrites}
+
+The pipeline operates on \emph{sketches} containing integer holes $\square_{\mathbb{Z}}$ (cf. §2.4 of the enumeration document). Rewrites that pattern-match on integer literals must include a side condition that excludes holes:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Rewrite & Hole-aware side condition \\
+\midrule
+$\mathtt{add}\ x\ 0 \to x$ & second argument is literal $0$, not a hole \\
+$\mathtt{multiply}\ x\ 0 \to 0$ & likewise \\
+$\mathtt{multiply}\ x\ 1 \to x$ & likewise \\
+$\mathtt{product}\ (\mathtt{repeat}\ c\ n) \to c^n \bmod 100$ & both $c, n$ are literals, neither a hole \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A rewrite that ignores this side condition would incorrectly fire on $\mathtt{add}\ x\ \square_{\mathbb{Z}}$, rewriting it to $x$. The eventual instantiation of $\square_{\mathbb{Z}}$ is unknown, and could be any value in $C_{\text{seed}}$ --- typically not zero. The rewrite is therefore unsound on sketches.
+
+The cleanest treatment is to perform equality saturation \emph{after} hole instantiation, on concrete programs only. This preserves the simplicity of the rewrite system at the cost of running saturation per concrete program. An alternative is to extend $R_{\text{MLMP}}$ with hole-aware rules (e.g.\ ``$\mathtt{add}\ x\ \square_{\mathbb{Z}}$ is irreducible''), which is more efficient at scale but harder to verify.
+
+\subsection{Worked End-to-end Example}\label{sec:mlmp-worked}
+
+Consider the synthetic but plausible RL output:
+\[
+  t_0 = \mathtt{length}\ (\mathtt{reverse}\ (\mathtt{concat}\ (\mathtt{map}\ (\lambda x.\ \mathtt{add}\ x\ 0)\ xs)\ (\mathtt{repeat}\ 8\ 10))).
+\]
+Its size is $13$: one each for \texttt{length}, \texttt{reverse}, \texttt{concat}, \texttt{map}, $\lambda$, \texttt{add}, $x$, $0$, $xs$, \texttt{repeat}, $8$, $10$, plus the lambda body's outer node count.
+
+Initial e-graph (abbreviated):
+
+\begin{lstlisting}
+C0: var x        C1: 0           C2: 8         C3: 10        C4: var xs
+C5: add(C0, C1)
+C6: lambda(x, C5)
+C7: map(C6, C4)
+C8: repeat(C2, C3)
+C9: concat(C7, C8)
+C10: reverse(C9)
+C11: length(C10)              <- root
+\end{lstlisting}
+
+\textbf{Iteration 1.} The rule $\rho_{\text{add0}}: \mathtt{add}\ y\ 0 \to y$ matches $C_5$ with $\theta = \{y \mapsto C_0\}$. Union $C_5$ with $C_0$.
+
+\textbf{Iteration 2.} After rebuild, the lambda body's e-class is $\{C_0, C_5\}$, which contains the bound variable $x$. Therefore $\rho_{\text{map-id}}: \mathtt{map}\ (\lambda x.\ x)\ xs \to xs$ matches $C_7$ with $\theta = \{xs \mapsto C_4\}$. Union $C_7$ with $C_4$.
+
+\textbf{Iteration 3.} $C_9 = \mathtt{concat}(\{C_4, C_7\}, C_8)$. The length-of-concat law $\rho_{\text{len-concat}}$ applies at $C_{11}$ (after $C_{10}$, but the length-of-reverse law $\rho_{\text{len-rev}}$ first reduces $\mathtt{length}(\mathtt{reverse}\ xs) \approx \mathtt{length}\ xs$, which adds $\mathtt{length}(C_9)$ to the root e-class). So union $C_{11}$ with the new $\mathtt{length}(C_9)$ class. Then $\rho_{\text{len-concat}}$ fires: $\mathtt{length}(\mathtt{concat}\ xs\ ys) \to \mathtt{add}(\mathtt{length}\ xs, \mathtt{length}\ ys)$, adding $\mathtt{add}(\mathtt{length}\{C_4,C_7\}, \mathtt{length}(C_8))$ to the root e-class.
+
+\textbf{Iteration 4.} The rule $\rho_{\text{len-rep}}: \mathtt{length}(\mathtt{repeat}\ x\ n) \to n$ matches at $\mathtt{length}(C_8)$, unioning that e-class with $C_3 = 10$.
+
+\textbf{Iteration 5.} Saturated.
+
+Extraction. Selected entries from the cost table:
+
+\begin{center}
+\begin{tabular}{llr}
+\toprule
+e-class & best representative & cost \\
+\midrule
+$\{C_0, C_5\}$ & var $x$ & $1$ \\
+$\{C_4, C_7\}$ & var $xs$ & $1$ \\
+$\mathtt{length}(\{C_4, C_7\})$ & $\mathtt{length}(xs)$ & $2$ \\
+$\mathtt{length}(C_8)$ (joined with $C_3$) & literal $10$ & $1$ \\
+root e-class & $\mathtt{add}(\mathtt{length}(xs), 10)$ & $4$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Extracted output:
+\[
+  \mathcal{Q}(t_0) \;=\; \mathtt{add}\ (\mathtt{length}\ xs)\ 10,
+\]
+of size $4$.
+
+\textbf{Verification.} On every input $xs$, the original program computes $\mathrm{length}(\mathrm{reverse}(\mathrm{concat}(xs', \mathrm{repeat}(8, 10))))$ where $xs' = \mathrm{map}(\lambda x.\ x + 0, xs) = xs$. Therefore the value is $|xs| + 10$, which is exactly what the simplified program computes. By computing fingerprints on the 10-input test suite of the enumeration document, $\Phi(t_0) = \Phi(\mathcal{Q}(t_0))$ holds entry-wise, confirming behaviour preservation. The simplification ratio is $13 / 4 \approx 3.3 \times$.
+
+\section{Where This Fits in the Pipeline}\label{sec:fit}
+
+\subsection{Two Notions of Equivalence}\label{sec:two-equivs}
+
+The pipeline currently uses one notion of equivalence; this document introduces a second.
+
+\textbf{Observational equivalence} ($\approx_T$). $p \approx_T q$ iff $\Phi(p) = \Phi(q)$ on the test suite $T$. This is what §2.2 of the enumeration document calls observational equivalence. It is sound for diversity claims about the corpus (with rare false-positive collisions on the test suite), and crucially it operates only on \emph{root behaviour} --- a program's internal structure is invisible to it.
+
+\textbf{Equational equivalence} ($\approx_E$). $p \approx_E q$ iff $p$ and $q$ are equal under the equational theory of $R_{\text{MLMP}}$. This is the subject of this document. It is sound under $E$ (every equality is provably valid), incomplete in general (semantic equalities not derivable from $E$ are missed), and operates on internal structure --- it can detect that a sub-tree is constant or that two structurally distinct sub-trees compute the same value when $E$ knows the relevant law.
+
+\subsection{Hybrid Usage}\label{sec:hybrid}
+
+The natural integration is to apply $\mathcal{Q}$ as a normaliser \emph{before} fingerprinting:
+\begin{enumerate}
+\item After enumeration or RL sampling, replace every program $p$ with its extraction $\mathcal{Q}(p)$.
+\item Compute $\Phi(\mathcal{Q}(p))$; deduplicate against the running \texttt{corpus\_fingerprints} table from §3.5 of the enumeration document.
+\item The corpus shrinks because programs that differ only in compressible sub-trees (the \texttt{product (repeat 10 8)} example) collapse to the same canonical form.
+\end{enumerate}
+
+This composition has three desirable properties. First, every retained program is in canonical form, so the corpus is more compact and downstream training trajectories are shorter. Second, the diversity guarantee is preserved: if $\Phi(\mathcal{Q}(p)) \ne \Phi(\mathcal{Q}(q))$ on the test suite, then certainly $p \not\approx_T q$. Third, since $\mathcal{Q}$ is a function, two programs that simplify to the same canonical form are guaranteed to be deduplicated --- a stronger property than observational equivalence, which only catches programs that happen to agree on $T$.
+
+\subsection{Sanity-checking Rewrites}\label{sec:rewrite-sanity}
+
+Every rule $l \to r$ in $R_{\text{MLMP}}$ should be validated against the test suite before deployment: instantiate $l$ on a randomised set of probe values, evaluate both sides, and reject the rule if they ever disagree. This catches bugs in hand-written rules (e.g.\ wrong argument order, missing side conditions, off-by-one) without requiring a formal proof of soundness for each rule. The cost is a one-off validation pass; the benefit is confidence that $\mathcal{Q}$ never silently corrupts behaviour.
+
+\subsection{Cost Considerations}\label{sec:cost-considerations}
+
+Equality saturation is more expensive than the existing fingerprint-and-hash deduplication. E-matching is the bottleneck (potentially exponential), and the e-graph itself can grow large during saturation. Mitigations:
+\begin{itemize}
+\item Bound the saturation by node count and iteration count.
+\item Run only on programs above a size threshold; small programs are unlikely to contain compressible sub-trees.
+\item Parallelise across programs (each saturation is independent).
+\item Cache canonical forms by AST hash; identical programs need only be saturated once.
+\end{itemize}
+Empirical measurement on a sample of the corpus is the right way to choose budgets; we leave specific numbers to a future implementation.
+
+\section{Adjacent Techniques}\label{sec:adjacent}
+
+\textbf{Knuth--Bendix completion} \citep{knuth1970simple} is the procedure described in §\ref{sec:kb}. When it succeeds, it gives a confluent and terminating rewrite system, and rewriting to normal form is a complete decision procedure for $\approx_E$. It complements equality saturation: where completion succeeds, no e-graph is needed; where it fails (notably under AC laws), e-graphs are the pragmatic alternative.
+
+\textbf{Superoptimisation} \citep{massalin1987superoptimizer,schkufza2013stoke} searches for a shorter program equivalent to a given one, using SMT solvers or stochastic search rather than directed rewriting. STOKE in particular uses MCMC sampling over candidate programs, accepting moves that decrease cost without changing observable behaviour. This is a generalisation of equality saturation in the sense that it allows arbitrary equivalences (not only those derivable from a fixed rule set), at the cost of much more expensive verification per step.
+
+\textbf{Partial evaluation} \citep{jones1993partial} specialises a program to known inputs by aggressively unfolding and constant-folding. The classical Futamura projections relate partial evaluation to compilation. Pure constant folding (e.g.\ \texttt{product (repeat 10 8)} $\to$ value) is a special case; equality saturation subsumes it when the relevant evaluation rules are added to $R$.
+
+\textbf{Abstract interpretation} \citep{cousot1977abstract} computes sound over-approximations of program behaviour by interpreting the program in an abstract domain (e.g.\ intervals, polyhedra, sign domains). It does not rewrite the program but \emph{licenses} rewrites: knowing that a sub-tree always evaluates to a constant or to a value in a known range justifies replacing it with that constant or with a simpler form. In a fuller pipeline, abstract interpretation could discover side conditions (``$n \ge 1$ here'') that enable rewrites otherwise blocked by uncertainty.
+
+\textbf{Translation validation} verifies after the fact that two programs are observationally equivalent, without committing to a specific rewriting strategy. It is most useful when the optimiser is a black box: given input and output, prove they agree. We do not need this in the present setting --- our optimiser is precisely $\mathcal{Q}$, whose soundness follows from the soundness of $R_{\text{MLMP}}$ --- but it is a useful safety net for compositions of multiple optimisation passes.
+
+\section{Summary}\label{sec:summary}
+
+The four pieces compose as follows. An \textbf{equational theory} $E$ specifies which programs are considered equal --- it is the user-facing definition of program equivalence beyond mere syntactic identity. An \textbf{e-graph} is a data structure that compactly represents a set of equivalence classes of terms, maintained under hash consing and congruence closure. \textbf{Equality saturation} is the algorithm that grows the e-graph by repeatedly applying every rule in the oriented presentation of $E$, to fixpoint or to a budget. \textbf{Extraction} is the optimisation pass that picks one representative per e-class minimising a chosen cost, returning a single canonical term per equivalence class.
+
+Decoupling \emph{what is equal} (the rules) from \emph{what is good} (the cost) is the central design win. We can specify equational laws independently of the cost we want to minimise --- size, latency, numerical accuracy, register pressure --- and tune each independently. We never have to commit to a directional reading of any equation, sidestepping the phase-ordering pitfalls of naive term rewriting.
+
+Precisely: under tree cost, the extractor returns the e-node in the root e-class with minimum cost \emph{among representations realised in the e-graph}. With unbounded saturation in a confluent and terminating $R$, this is globally minimum; with a bounded saturation, it is the best in the explored subset --- still sound, possibly suboptimal.
+
+Returning to the open problem from §A.3 of the enumeration document: equality saturation, applied with a rewrite system like $R_{\text{MLMP}}$ from §\ref{sec:rewrite-system}, addresses precisely the redundancy described there. The \texttt{product (repeat 10 8)} example reduces to a literal in one iteration. More elaborate cases --- map fusion, identity collapse, length distribution --- compose via the e-graph without phase-ordering hazards.
+
+\appendix
+
+\section{A Second Worked Example}\label{sec:appendix-example}
+
+Take a longer program with several layered redundancies:
+\[
+  t_0' = \mathtt{sum}\ (\mathtt{map}\ (\lambda x.\ \mathtt{multiply}\ x\ 1)\ (\mathtt{filter}\ (\lambda y.\ \top)\ (\mathtt{reverse}\ (\mathtt{reverse}\ (\mathtt{map}\ (\lambda z.\ z)\ xs))))).
+\]
+
+Size: $17$. Apply rewrites:
+\begin{itemize}
+\item $\rho_{\text{mul1}}: \mathtt{multiply}\ x\ 1 \to x$ at the inner lambda.
+\item $\rho_{\text{filter-true}}: \mathtt{filter}\ (\lambda y.\ \top)\ ys \to ys$ at the filter.
+\item $\rho_{\text{rev2}}: \mathtt{reverse}(\mathtt{reverse}\ ys) \to ys$ at the double reverse.
+\item $\rho_{\text{map-id}}: \mathtt{map}\ (\lambda z.\ z)\ ys \to ys$ at both the inner and the (post-collapse) outer map.
+\end{itemize}
+
+Iteration trace:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Iter & Effect \\
+\midrule
+1 & $\rho_{\text{mul1}}$ unions the body of the outer $\lambda x$ with $x$. \\
+2 & After rebuild, the outer map's lambda has body equivalent to its bound variable. $\rho_{\text{map-id}}$ matches the outer map; unions it with its argument. \\
+2 & In parallel, $\rho_{\text{rev2}}$ fires on the double reverse, unioning with the inner $\mathtt{map}(\lambda z. z, xs)$. \\
+2 & $\rho_{\text{filter-true}}$ fires on the filter, unioning with the (now-collapsed) reverse argument. \\
+3 & $\rho_{\text{map-id}}$ fires on the inner $\mathtt{map}(\lambda z. z, xs)$, unioning with $xs$. \\
+4 & After rebuild, the entire \texttt{filter/reverse/reverse/map} chain collapses by congruence into the e-class of $xs$. \\
+5 & Saturation. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Extraction selects $\mathtt{sum}(xs)$ from the root e-class --- size $2$. Reduction by $17 / 2 = 8.5\times$.
+
+This illustrates how rewrites cascade: each rule fires opens up further matches in the next iteration, and after saturation the entire chain of nested redundancies has been collapsed by a combination of explicit rewrites and free congruence-driven unions on parent contexts.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import inspect
 import random
+from collections import defaultdict
 from typing import TypeVar, Callable, Optional
 from .type_utils import (
     CallableOrig,
@@ -15,6 +16,16 @@ from .lexer import SPECIAL_CHARS, IDENT_CHARS, KEYWORDS
 
 
 T1, T2 = TypeVar('T1'), TypeVar('T2')
+
+MAX_LIST_SIZE = 1000
+
+class ListSizeExceeded(ValueError):
+    """Raised when a list operation would produce a list exceeding MAX_LIST_SIZE."""
+    pass
+
+def _check_list_size(n: int) -> None:
+    if n > MAX_LIST_SIZE:
+        raise ListSizeExceeded(f"List size {n} exceeds maximum {MAX_LIST_SIZE}")
 
 # ============================================================================
 # Base Grammar Class
@@ -302,27 +313,35 @@ def singleton(x: T1) -> list[T1]:
 @DefaultGrammar
 def repeat(x: T1, n: int) -> list[T1]:
     """Repeat element n times: (repeat x n)"""
+    _check_list_size(n)
     return [x] * n
 
 @DefaultGrammar(name='range')
 def range_fn(start: int, end: int, step: int) -> list[int]:
     """Range of numbers: (range i j n)"""
+    if step == 0:
+        raise ValueError("range: step cannot be 0")
+    size = max(0, (end + 1 - start + step - (1 if step > 0 else -1)) // step)
+    _check_list_size(size)
     return list(range(start, end + 1, step))
 
 @DefaultGrammar
 def cons(x: T1, xs: list[T1]) -> list[T1]:
     """Prepend element: (cons x xs)"""
+    _check_list_size(len(xs) + 1)
     return [x] + xs
 
 # list combination
 @DefaultGrammar
 def append(xs: list[T1], x: T1) -> list[T1]:
     """Append element: (append xs x)"""
+    _check_list_size(len(xs) + 1)
     return xs + [x]
 
 @DefaultGrammar
 def concat(xs: list[T1], ys: list[T1]) -> list[T1]:
     """Concatenate lists: (concat xs ys)"""
+    _check_list_size(len(xs) + len(ys))
     return xs + ys
 
 @DefaultGrammar(name='zip')
@@ -370,6 +389,7 @@ def nth(i: int, xs: list[T1]) -> T1:
 @DefaultGrammar
 def insert(x: T1, i: int, xs: list[T1]) -> list[T1]:
     """Insert at index: (insert x i xs)"""
+    _check_list_size(len(xs) + 1)
     result = xs.copy()
     result.insert(i, x)
     return result
@@ -451,6 +471,7 @@ def cut_slice(i: int, j: int, xs: list[T1]) -> list[T1]:
 @DefaultGrammar
 def splice(ys: list[T1], i: int, xs: list[T1]) -> list[T1]:
     """Insert list at index: (splice ys i xs)"""
+    _check_list_size(len(xs) + len(ys))
     return xs[:i] + ys + xs[i:]
 
 # list queries
@@ -500,6 +521,8 @@ def reverse_fn(xs: list[T1]) -> list[T1]:
 @DefaultGrammar
 def flatten(xss: list[list[T1]]) -> list[T1]:
     """Flatten list of lists: (flatten xss)"""
+    total = sum(len(xs) for xs in xss)
+    _check_list_size(total)
     result = []
     for xs in xss:
         result.extend(xs)
@@ -578,7 +601,6 @@ def sort(f: Callable[[T1], int], xs: list[T1]) -> list[T1]:
 @DefaultGrammar
 def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
     """Group by key function: (group f xs)"""
-    from collections import defaultdict
     groups = defaultdict(list)
     for x in xs:
         key = f(x)

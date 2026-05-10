@@ -11,13 +11,17 @@ This provides significant speedup for expressions that are compiled once
 and executed many times.
 """
 
+import time
 from typing import Any, Dict, Set, Callable, Optional
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
-    LambdaNode, ApplicationNode, ListNode, IfNode
+    LambdaNode, ApplicationNode, ListNode, IfNode, IntHoleNode,
 )
+from .evaluator import Evaluator
 from .grammar import Grammar, DefaultGrammar
+from .parser import parse
 from .type_utils import get_origin, CallableOrig
+from .utils import RANDINT_PROBE_SEQUENCE
 
 
 class JITCompilationError(Exception):
@@ -82,7 +86,7 @@ class JITCompiler:
     """
     
     def __init__(self, grammar: Grammar = DefaultGrammar):
-        """Initialize the JIT compiler with a grammar."""
+        """Initialise the JIT compiler with a grammar."""
         self.grammar = grammar
         self._var_counter = 0
         self._builtins = self._extract_raw_builtins(grammar)
@@ -109,37 +113,43 @@ class JITCompiler:
         self._var_counter += 1
         return f"{prefix}{self._var_counter}"
     
-    def compile(self, node: ASTNode) -> Callable:
+    def compile(self, node: ASTNode, substitution: list[int] | None = None) -> tuple[Callable, ASTNode]:
         """
         Compile an AST node to a native Python callable.
-        
+
         Args:
             node: AST node to compile
-            
+            substitution: Optional list of integer values for IntHoleNodes,
+                indexed by pre-order traversal position. If None, uses
+                RANDINT_PROBE_SEQUENCE for fingerprinting.
+
         Returns:
-            A Python callable. If the AST is a lambda, returns a function.
-            Otherwise, returns a zero-argument callable that returns the value.
+            A tuple (callable, concrete_ast) where callable is a native Python
+            function and concrete_ast is the AST with holes filled in.
+            If the AST is a lambda, callable is a function.
+            Otherwise, callable is a zero-argument callable that returns the value.
         """
-        # Reset variable counter for each compilation
+        # Reset variable counter and hole state for each compilation
         self._var_counter = 0
-        
-        # Find free variables in the expression
-        free_vars = self._find_free_variables(node, set())
-        
-        # Generate Python code
-        code, _ = self._generate(node, set())
-        
-        # If the node is a lambda, we compile it as a function directly
+        self._hole_counter = 0
+        self._substitution = substitution
+
+        # If the node is a lambda, compile it as a function directly
         if isinstance(node, LambdaNode):
             return self._compile_lambda_to_native(node)
-        
+
         # Otherwise, wrap in a zero-argument function that returns the value
         return self._compile_expression_to_native(node)
+
+    def execute(self, sketch: ASTNode, substitution: list[int], x) -> tuple:
+        """Compile sketch with substitution and evaluate on input x."""
+        fn, concrete_ast = self.compile(sketch, substitution)
+        return fn(x), concrete_ast
     
-    def _compile_expression_to_native(self, node: ASTNode) -> Callable:
+    def _compile_expression_to_native(self, node: ASTNode) -> tuple[Callable, ASTNode]:
         """Compile a non-lambda expression to a native callable."""
-        code, _ = self._generate(node, set())
-        
+        code, concrete_node, _ = self._generate(node, set())
+
         # Create the function source
         # Use *args, **kwargs to allow calling the result if it's a callable
         # This handles cases like (if cond lambda1 lambda2) where the result
@@ -151,177 +161,199 @@ class JITCompiler:
         return result(*args, **kwargs)
     return result
 """
-        
+
         # Compile and execute
         namespace = {"_builtins": self._builtins}
         exec(compile(source, "<jit>", "exec"), namespace)
-        
-        return namespace[func_name]
+
+        return namespace[func_name], concrete_node
     
-    def _compile_lambda_to_native(self, node: LambdaNode) -> Callable:
+    def _compile_lambda_to_native(self, node: LambdaNode) -> tuple[Callable, ASTNode]:
         """
         Compile a lambda node to a native Python function.
-        
+
         Handles:
         - Single and multiple parameters
         - Captured variables (closures)
         - Nested lambdas
         """
         params = node.param
-        body_code, _ = self._generate(node.body, set(params))
-        
+        body_code, concrete_body, _ = self._generate(node.body, set(params))
+
         # Generate function definition
         func_name = self._fresh_var("_lambda")
         params_str = ", ".join(params)
         source = f"def {func_name}({params_str}):\n    return {body_code}\n"
-        
+
         # Compile and execute
         namespace = {"_builtins": self._builtins}
         exec(compile(source, "<jit>", "exec"), namespace)
-        
+
         fn = namespace[func_name]
-        
+
         # Add metadata for compatibility with code that checks for Closure attributes
         fn.param = params
-        fn.body = node.body
+        fn.body = concrete_body
         fn.env = {}  # Empty dict since captured vars are in closure
-        
-        return fn
+
+        concrete_ast = LambdaNode(params, concrete_body)
+        return fn, concrete_ast
     
     def compile_to_source(self, node: ASTNode) -> str:
         """
         Compile an AST to Python source code (for debugging/inspection).
-        
+
         Args:
             node: AST node to compile
-            
+
         Returns:
             Generated Python source code as a string
         """
         self._var_counter = 0
-        
+        self._hole_counter = 0
+        self._substitution = None
+
         if isinstance(node, LambdaNode):
             params = node.param
-            body_code, _ = self._generate(node.body, set(params))
+            body_code, _, _ = self._generate(node.body, set(params))
             params_str = ", ".join(params)
             return f"lambda {params_str}: {body_code}"
         else:
-            code, _ = self._generate(node, set())
+            code, _, _ = self._generate(node, set())
             return code
     
-    def _generate(self, node: ASTNode, bound_vars: Set[str]) -> tuple[str, Set[str]]:
+    def _generate(self, node: ASTNode, bound_vars: Set[str]) -> tuple[str, ASTNode, Set[str]]:
         """
         Generate Python code for an AST node.
-        
+
         Args:
             node: AST node to generate code for
             bound_vars: Set of currently bound variable names
-            
+
         Returns:
-            Tuple of (generated_code, set_of_free_variables_used)
+            Tuple of (generated_code, concrete_ast_node, set_of_free_variables_used)
         """
         node_type = type(node)
-        
+
         if node_type is NumberNode:
-            return str(node.value), set()
-        
+            return str(node.value), NumberNode(node.value), set()
+
         elif node_type is BooleanNode:
-            return str(node.value), set()
-        
+            return str(node.value), BooleanNode(node.value), set()
+
         elif node_type is VariableNode:
             name = node.name
             if name in bound_vars:
                 # Local variable - use directly
-                return name, set()
+                return name, VariableNode(name), set()
             elif name in self._builtins:
                 # Built-in function - access from _builtins dict
-                return f"_builtins[{repr(name)}]", set()
+                return f"_builtins[{repr(name)}]", VariableNode(name), set()
             else:
                 # Free variable - this will be an error at runtime
                 raise JITCompilationError(f"Undefined variable: {name}")
-        
+
+        elif node_type is IntHoleNode:
+            values = self._substitution if self._substitution is not None else RANDINT_PROBE_SEQUENCE
+            v = values[self._hole_counter % len(values)]
+            self._hole_counter += 1
+            return str(v), NumberNode(v), set()
+
         elif node_type is ListNode:
             if not node.elements:
-                return "[]", set()
+                return "[]", ListNode([]), set()
             elem_codes = []
+            concrete_elems = []
             free_vars = set()
             for elem in node.elements:
-                code, fv = self._generate(elem, bound_vars)
+                code, concrete_elem, fv = self._generate(elem, bound_vars)
                 elem_codes.append(code)
+                concrete_elems.append(concrete_elem)
                 free_vars |= fv
-            return f"[{', '.join(elem_codes)}]", free_vars
-        
+            return f"[{', '.join(elem_codes)}]", ListNode(concrete_elems), free_vars
+
         elif node_type is LambdaNode:
             return self._generate_lambda(node, bound_vars)
-        
+
         elif node_type is IfNode:
             return self._generate_if(node, bound_vars)
-        
+
         elif node_type is ApplicationNode:
             return self._generate_application(node, bound_vars)
-        
+
         else:
             raise JITCompilationError(f"Unknown node type: {node_type.__name__}")
     
-    def _generate_lambda(self, node: LambdaNode, bound_vars: Set[str]) -> tuple[str, Set[str]]:
+    def _generate_lambda(self, node: LambdaNode, bound_vars: Set[str]) -> tuple[str, ASTNode, Set[str]]:
         """Generate code for a lambda expression."""
         params = node.param
         new_bound = bound_vars | set(params)
-        body_code, free_vars = self._generate(node.body, new_bound)
-        
+        body_code, concrete_body, free_vars = self._generate(node.body, new_bound)
+
         params_str = ", ".join(params)
         code = f"(lambda {params_str}: {body_code})"
-        
+
         # Remove the lambda's own parameters from free vars
         free_vars -= set(params)
-        
-        return code, free_vars
-    
-    def _generate_if(self, node: IfNode, bound_vars: Set[str]) -> tuple[str, Set[str]]:
+
+        return code, LambdaNode(params, concrete_body), free_vars
+
+    def _generate_if(self, node: IfNode, bound_vars: Set[str]) -> tuple[str, ASTNode, Set[str]]:
         """Generate code for an if expression."""
-        cond_code, cond_fv = self._generate(node.condition, bound_vars)
-        then_code, then_fv = self._generate(node.then_expr, bound_vars)
-        else_code, else_fv = self._generate(node.else_expr, bound_vars)
-        
+        cond_code, concrete_cond, cond_fv = self._generate(node.condition, bound_vars)
+        then_code, concrete_then, then_fv = self._generate(node.then_expr, bound_vars)
+        else_code, concrete_else, else_fv = self._generate(node.else_expr, bound_vars)
+
         # Python's conditional expression
         code = f"({then_code} if {cond_code} else {else_code})"
-        
-        return code, cond_fv | then_fv | else_fv
-    
-    def _generate_application(self, node: ApplicationNode, bound_vars: Set[str]) -> tuple[str, Set[str]]:
+
+        return code, IfNode(concrete_cond, concrete_then, concrete_else), cond_fv | then_fv | else_fv
+
+    def _generate_application(self, node: ApplicationNode, bound_vars: Set[str]) -> tuple[str, ASTNode, Set[str]]:
         """Generate code for a function application."""
         func_node = node.function
         args = node.arguments
-        
+
         free_vars = set()
-        
+
         # Generate argument code
         arg_codes = []
+        concrete_args = []
         for arg in args:
-            code, fv = self._generate(arg, bound_vars)
+            code, concrete_arg, fv = self._generate(arg, bound_vars)
             arg_codes.append(code)
+            concrete_args.append(concrete_arg)
             free_vars |= fv
-        
+
         # Check if this is a direct call to a built-in
         if isinstance(func_node, VariableNode) and func_node.name in self._builtins:
             func_name = func_node.name
             args_str = ", ".join(arg_codes)
-            return f"_builtins[{repr(func_name)}]({args_str})", free_vars
-        
+            concrete_func = VariableNode(func_name)
+            return (
+                f"_builtins[{repr(func_name)}]({args_str})",
+                ApplicationNode(concrete_func, concrete_args),
+                free_vars,
+            )
+
         # General case: compile the function and call it
-        func_code, func_fv = self._generate(func_node, bound_vars)
+        func_code, concrete_func, func_fv = self._generate(func_node, bound_vars)
         free_vars |= func_fv
-        
+
         args_str = ", ".join(arg_codes)
-        return f"({func_code})({args_str})", free_vars
+        return (
+            f"({func_code})({args_str})",
+            ApplicationNode(concrete_func, concrete_args),
+            free_vars,
+        )
     
     def _find_free_variables(self, node: ASTNode, bound_vars: Set[str]) -> Set[str]:
         """Find all free variables in an expression."""
         node_type = type(node)
-        
-        if node_type is NumberNode or node_type is BooleanNode:
+
+        if node_type is NumberNode or node_type is BooleanNode or node_type is IntHoleNode:
             return set()
-        
+
         elif node_type is VariableNode:
             if node.name in bound_vars or node.name in self._builtins:
                 return set()
@@ -393,20 +425,20 @@ def jit_compile(code: str, grammar: Grammar = DefaultGrammar) -> Callable:
         >>> increment(100)
         101
     """
-    from .parser import parse
     ast = parse(code)
     jit = JITCompiler(grammar)
-    return jit.compile(ast)
+    fn, _ = jit.compile(ast)
+    return fn
 
 
 def jit_compile_and_run(code: str, grammar: Grammar = DefaultGrammar) -> Any:
     """
     Convenience function to parse, JIT compile, and execute code.
-    
+
     Args:
         code: Source code string
         grammar: Grammar to use
-        
+
     Returns:
         Execution result
     """
@@ -415,10 +447,6 @@ def jit_compile_and_run(code: str, grammar: Grammar = DefaultGrammar) -> Any:
 
 
 if __name__ == "__main__":
-    import time
-    from .parser import parse
-    from .evaluator import Evaluator
-    
     print("JIT Compiler Examples:")
     print("=" * 80)
     
@@ -446,57 +474,57 @@ if __name__ == "__main__":
         print(f"\n{name}: {code}")
         try:
             ast = parse(code)
-            fn = jit.compile(ast)
+            fn, _ = jit.compile(ast)
             result = fn()
             source = jit.compile_to_source(ast)
             print(f"Generated: {source}")
             print(f"Result: {result}")
         except Exception as e:
             print(f"Error: {e}")
-    
+
     # Demo: compile a lambda and use it as a Python function
     print("\n" + "=" * 80)
     print("Demo: JIT-Compiled Lambda as Python Function")
     print("=" * 80)
-    
+
     # Compile a lambda expression
     increment_code = "(λ x (+ x 1))"
     increment_ast = parse(increment_code)
-    increment_fn = jit.compile(increment_ast)
-    
+    increment_fn, _ = jit.compile(increment_ast)
+
     print(f"\nCompiled function: {increment_fn}")
     print(f"Callable: {callable(increment_fn)}")
     print(f"Generated source: {jit.compile_to_source(increment_ast)}")
-    
+
     # Use it like a normal Python function
     print("\nCalling increment_fn(5):")
     print(f"Result: {increment_fn(5)}")
-    
+
     print("\nCalling increment_fn(100):")
     print(f"Result: {increment_fn(100)}")
-    
+
     # Multi-parameter lambda
     multiply_code = "(λ (x y) (* x y))"
     multiply_ast = parse(multiply_code)
-    multiply_fn = jit.compile(multiply_ast)
-    
+    multiply_fn, _ = jit.compile(multiply_ast)
+
     print(f"\nCompiled multiply: {jit.compile_to_source(multiply_ast)}")
     print(f"multiply_fn(3, 7) = {multiply_fn(3, 7)}")
-    
+
     # Performance comparison
     print("\n" + "=" * 80)
     print("Performance Comparison: Interpreter vs JIT")
     print("=" * 80)
-    
+
     test_code = "(map (λ x (* x x)) [1 2 3 4 5])"
     test_ast = parse(test_code)
-    
+
     # Interpreter
     evaluator = Evaluator()
-    
+
     # Warm up
     evaluator.eval(test_ast)
-    jit_fn = jit.compile(test_ast)
+    jit_fn, _ = jit.compile(test_ast)
     jit_fn()
     
     # Benchmark

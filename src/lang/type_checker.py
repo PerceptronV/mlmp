@@ -6,17 +6,17 @@ It uses Algorithm W to infer types for lambda expressions and check type
 consistency throughout the program.
 """
 
-from typing import Optional
+from typing import Optional, TypeVar
 from .ast_nodes import (
     ASTNode, NumberNode, BooleanNode, VariableNode,
     LambdaNode, ApplicationNode, ListNode, IfNode
 )
 from .grammar import Grammar, DefaultGrammar
+from .parser import parse
 from .type_utils import (
     TypeType, Callable, CallableOrig, SubstitutionTable,
     substitute_type_vars, matchable, get_origin, get_args, isvariable
 )
-from typing import TypeVar
 
 
 class TypeCheckError(Exception):
@@ -254,7 +254,7 @@ class TypeChecker:
             raise TypeCheckError(f"Invalid function type: {func_type}")
 
         # Match first parameter with argument
-        # Use strict=False to allow unifying type variables with parameterized types
+        # Use strict=False to allow unifying type variables with parameterised types
         expected_param = param_types[0]
         if not matchable(expected_param, arg_type, substitutions, strict=False):
             raise TypeCheckError(
@@ -358,8 +358,6 @@ def type_check(code: str, grammar: Grammar = DefaultGrammar) -> str:
         >>> type_check("(λ x (+ x 1))")
         "Int → Int"
     """
-    from .parser import parse
-
     ast = parse(code)
     checker = TypeChecker(grammar)
     inferred_type = checker.check(ast)

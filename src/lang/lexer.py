@@ -1,7 +1,7 @@
 r"""
 Lexer for Functional Programming Language with S-expressions
 
-This module provides a lexer (tokenizer) for parsing a Lisp/Scheme-style
+This module provides a lexer (tokeniser) for parsing a Lisp/Scheme-style
 functional programming language with lambda expressions, lists, and built-in operations.
 
 Supported syntax:
@@ -249,7 +249,7 @@ class Lexer:
     
     def tokenise(self) -> List[Token]:
         """
-        Tokenize the entire input and return a list of tokens.
+        Tokenise the entire input and return a list of tokens.
         
         Returns:
             List of Token objects, ending with EOF token

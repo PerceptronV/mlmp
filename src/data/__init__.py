@@ -1,10 +1,6 @@
 """
 Data Generation Module
 
-This module provides utilities for generating datasets of
-program induction meta-learning episodes.
+Provides utilities for synthesising program corpora and loading them into
+training pipelines.
 """
-
-from .generate import DatasetGenerator, ValidationDatasetGenerator, MetaLearningEpisode
-
-__all__ = ['DatasetGenerator', 'ValidationDatasetGenerator', 'MetaLearningEpisode']
