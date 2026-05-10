@@ -65,7 +65,7 @@ class TransformerMethod(Method):
         self._loaded = True
 
     def _resolve_ckpt(self) -> Path:
-        ckpt_dir = Path(self.checkpoint_dir) / self.run_name
+        ckpt_dir = Path(self.checkpoint_dir).expanduser() / self.run_name
         if not ckpt_dir.exists():
             raise FileNotFoundError(f"No checkpoint dir {ckpt_dir}")
         select = self.ckpt_select

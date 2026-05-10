@@ -9,10 +9,10 @@ device: cuda
 # scripts/train.sh (<mode>). CSV-only smoke runs can drop the transformer entries.
 # TODO: update run_names to the actual run names you used.
 methods:
-  - { kind: transformer, name: tx_enum_in_weight, run_name: wild-dawn-50,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/no-rl-in-weight }
-  - { kind: transformer, name: tx_enum_easy_shuf, run_name: revived-voice-51, mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/no-rl-easy-symbol-shuffling }
-  - { kind: transformer, name: tx_enrl_in_weight, run_name: warm-dust-48,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/in-weight }
-  - { kind: transformer, name: tx_enrl_easy_shuf, run_name: sandy-puddle-49,  mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: checkpoints/easy-symbol-shuffling }
+  - { kind: transformer, name: tx_enum_in_weight, run_name: wild-dawn-50,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: ~/mlmp_checkpoints/no-rl-in-weight }
+  - { kind: transformer, name: tx_enum_easy_shuf, run_name: revived-voice-51, mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: ~/mlmp_checkpoints/no-rl-easy-symbol-shuffling }
+  - { kind: transformer, name: tx_enrl_in_weight, run_name: warm-dust-48,     mode: in-weight,             ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: ~/mlmp_checkpoints/in-weight }
+  - { kind: transformer, name: tx_enrl_easy_shuf, run_name: sandy-puddle-49,  mode: easy-symbol-shuffling, ckpt_select: best_acc, embedding_pool: mean, checkpoint_dir: ~/mlmp_checkpoints/easy-symbol-shuffling }
   - { kind: human,       name: humans }
   - { kind: mpl,         name: mpl,    filters: { lesion: 'None', mode: Online, steps: '500000' } }
   - { kind: fleet,       name: fleet,  filters: { mode: Online, steps: '500000' } }
