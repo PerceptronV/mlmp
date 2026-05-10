@@ -46,6 +46,7 @@ _PALETTE_BASE = {
     "enumeration": "#7f7f7f",
     "metagol": "#e377c2",
     "robustfill": "#bcbd22",
+    "surface_features": "#e377c2",
 }
 
 

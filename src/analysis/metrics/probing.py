@@ -265,10 +265,11 @@ class ProbingAnalysis(Analysis):
         Y_bin = (Y_soft >= self.majority_threshold).astype(np.int8)     # b = (y ≥ τ)
         N, P = Y_bin.shape
 
-        # 4. Per-primitive base rates (under ``majority_threshold``). Only skip
-        # primitives with zero class variation (rate exactly 0 or 1) — those
-        # are unprobeable. Severely imbalanced primitives are kept and warned
-        # about; the inner fold loop drops degenerate folds gracefully.
+        # 4. Per-primitive base rates (under ``majority_threshold``). Drop
+        # primitives with positive base rate below 10% — too few positives to
+        # fit a probe meaningfully. No upper-bound filter: high-rate primitives
+        # (eg. MemorizeAll at 0.82) are kept; they have few negatives but the
+        # AUROC is still interpretable.
         base_rate = Y_bin.mean(axis=0)
         base_rows = [
             {"primitive": p, "base_rate": float(base_rate[i]), "n_acquired_tasks": N}
@@ -279,11 +280,12 @@ class ProbingAnalysis(Analysis):
         for i, p in enumerate(primitive_names):
             n_pos = int(Y_bin[:, i].sum())
             n_neg = N - n_pos
-            if n_pos == 0 or n_neg == 0:
+            rate = float(base_rate[i])
+            if rate < 0.10:
                 logger.warning(
-                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — no class "
-                    "variation; skipping.",
-                    p, n_pos, n_neg,
+                    "ProbingAnalysis: primitive %s base rate %.3f < 0.10 "
+                    "(under majority_threshold=%.2f) — skipping.",
+                    p, rate, self.majority_threshold,
                 )
                 continue
             if min(n_pos, n_neg) < self.n_folds:
