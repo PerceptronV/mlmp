@@ -28,7 +28,7 @@ if [ -z "${RUN_NAME:-}" ]; then
 fi
 
 DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
-CKPT_ROOT="${CKPT_DIR:-$HOME/yiding-in-georgia/mlmp_checkpoints}"
+CKPT_ROOT="${CKPT_DIR:-$HOME/mlmp_checkpoints}"
 MODE="${MODE:-in-weight}"
 
 # Identical to small-train.sh: <CKPT_ROOT>/no-rl-<MODE>/<RUN_NAME>/

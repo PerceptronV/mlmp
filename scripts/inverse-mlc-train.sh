@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate ml13
 
-CKPT_ROOT="${CKPT_DIR:-$HOME/yiding-in-georgia/mlmp_checkpoints}"
+CKPT_ROOT="${CKPT_DIR:-$HOME/mlmp_checkpoints}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
 SEED="${SEED:-42}"
 EPISODE_TYPE="${EPISODE_TYPE:-algebraic+biases}"

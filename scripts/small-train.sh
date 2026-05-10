@@ -25,7 +25,7 @@ micromamba activate ml13
 DATA_ROOT="${DATA_ROOT:-$HOME/yiding-in-georgia/datasets}"
 ENUM_CORPUS="${DATA_ROOT}/corpus-a/enum_corpus_no_rule.json"
 VAL_CORPUS="${DATA_ROOT}/rule_val.json"
-CKPT_ROOT="${CKPT_DIR:-$HOME/yiding-in-georgia/mlmp_checkpoints}"
+CKPT_ROOT="${CKPT_DIR:-$HOME/mlmp_checkpoints}"
 NUM_WORKERS="${NUM_WORKERS:-8}"
 EPOCHS="${EPOCHS:-500}"
 SEED="${SEED:-42}"
