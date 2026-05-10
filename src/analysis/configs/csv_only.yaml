@@ -1,0 +1,25 @@
+run_name: csv_only_smoke
+output_dir: outputs/analysis
+rule_data_root: src/data/osf_gq2hj/analysis/data
+
+methods:
+  - { kind: human,       name: humans }
+  - { kind: mpl,         name: mpl,    filters: { lesion: 'None', mode: Online, steps: '500000' } }
+  - { kind: fleet,       name: fleet,  filters: { mode: Online, steps: '500000' } }
+  - { kind: codex,       name: codex_g, filters: { source: codex_code_G } }
+  - { kind: enumeration, name: enumeration }
+  - { kind: metagol,     name: metagol }
+  - { kind: robustfill,  name: robustfill }
+
+analyses:
+  - kind: rule_acquisition
+    pairs: all
+
+  - kind: failure_modes
+    features: [recursive, higher, conditional, arithmetic, mapping, filtering, indexing, unfolding, counting]
+    pairs: [[humans, mpl], [humans, fleet], [mpl, fleet]]
+
+  - kind: clustering
+    methods: [humans, mpl, fleet]      # all skip — emits CapabilityMissing warnings, returns empty result
+
+  - kind: error_similarity
