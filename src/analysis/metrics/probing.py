@@ -167,7 +167,7 @@ class ProbingResult(AnalysisResult):
         labels = [f"{p}\n(rate={rate_by.get(p, float('nan')):.2f})" for p in primitives]
         ax.set_xticks(x)
         ax.set_xticklabels(labels, rotation=0, fontsize=8)
-        ax.set_ylim(0.4, 1.02)
+        ax.set_ylim(0.0, 1.02)
         ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
         ax.set_ylabel("AUROC (5-fold CV)")
         ax.legend(
@@ -265,11 +265,10 @@ class ProbingAnalysis(Analysis):
         Y_bin = (Y_soft >= self.majority_threshold).astype(np.int8)     # b = (y ≥ τ)
         N, P = Y_bin.shape
 
-        # 4. Per-primitive base rates (under ``majority_threshold``). Drop
-        # primitives whose positive base rate is < 5% or > 95% — too few
-        # examples on one side to fit a probe meaningfully (and the same 5%
-        # rule used to drop ``Compose`` in §3). Also drop primitives where
-        # min(pos, neg) < n_folds, which would make stratified CV impossible.
+        # 4. Per-primitive base rates (under ``majority_threshold``). Only skip
+        # primitives with zero class variation (rate exactly 0 or 1) — those
+        # are unprobeable. Severely imbalanced primitives are kept and warned
+        # about; the inner fold loop drops degenerate folds gracefully.
         base_rate = Y_bin.mean(axis=0)
         base_rows = [
             {"primitive": p, "base_rate": float(base_rate[i]), "n_acquired_tasks": N}
@@ -280,20 +279,19 @@ class ProbingAnalysis(Analysis):
         for i, p in enumerate(primitive_names):
             n_pos = int(Y_bin[:, i].sum())
             n_neg = N - n_pos
-            rate = float(base_rate[i])
-            if rate < 0.05 or rate > 0.95:
+            if n_pos == 0 or n_neg == 0:
                 logger.warning(
-                    "ProbingAnalysis: primitive %s base rate %.3f outside [0.05, 0.95] "
-                    "(under majority_threshold=%.2f) — skipping.",
-                    p, rate, self.majority_threshold,
+                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — no class "
+                    "variation; skipping.",
+                    p, n_pos, n_neg,
                 )
                 continue
             if min(n_pos, n_neg) < self.n_folds:
                 logger.warning(
-                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — < n_folds; skipping.",
-                    p, n_pos, n_neg,
+                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — < n_folds=%d; "
+                    "some folds will be skipped, AUROC will be noisy.",
+                    p, n_pos, n_neg, self.n_folds,
                 )
-                continue
             valid_primitives.append(p)
             valid_idx.append(i)
 
