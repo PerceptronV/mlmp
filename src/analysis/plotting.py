@@ -56,9 +56,16 @@ def colour_for(name: str) -> str:
 
 
 def save_fig(fig, outdir: Path, name: str) -> Path:
+    """Save ``fig`` as <name> (PDF, archival) and a sibling .png (for quick
+    visual inspection / for tools that don't render vector PDFs). Returns the
+    PDF path.
+    """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     path = outdir / name
     fig.savefig(path)
+    # Automatically save both PDF and PNG for analysis and archival purposes.
+    fig.savefig(path.with_suffix(".png"))
+    fig.savefig(path.with_suffix(".pdf"))
     plt.close(fig)
     return path
