@@ -564,7 +564,7 @@ class ProbingAnalysis(Analysis):
                 for tid in kept_tasks:
                     tr = trial_for[tid]
                     pred = cache.get_or_compute(
-                        method, tr, lambda m=method, t=tr: m.predict(t)
+                        method, tr, lambda t, m=method: m.predict(t)
                     )
                     per[tid] = bool(pred.correct)
                 method_correct[method.name] = per
