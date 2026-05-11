@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
 from ..capability import Capability
-from ..plotting import apply_rc, colour_for, save_fig
+from ..plotting import apply_rc, colour_for, label_for, save_fig
 from ..stats import bootstrap_ci, paired_wilcoxon, spearman_with_ci
 from .base import Analysis, AnalysisResult
 
@@ -68,7 +68,7 @@ class ErrorSimilarityResult(AnalysisResult):
         xs = np.arange(len(pm))
         ax.bar(xs, pm["mean"], yerr=[pm["mean"] - pm["lo"], pm["hi"] - pm["mean"]],
                color=[colour_for(m) for m in pm["method"]])
-        ax.set_xticks(xs); ax.set_xticklabels(pm["method"], rotation=30, ha="right")
+        ax.set_xticks(xs); ax.set_xticklabels([label_for(m) for m in pm["method"]], rotation=30, ha="right")
         ax.set_ylabel("mean P_human(model response)")
         save_fig(fig, outdir, "bar_human_likeness.pdf")
 
@@ -77,7 +77,7 @@ class ErrorSimilarityResult(AnalysisResult):
             fig, ax = plt.subplots()
             for method in sorted(self.per_trial["method"].unique()):
                 sub = self.per_trial[self.per_trial["method"] == method].sort_values("trial")
-                ax.plot(sub["trial"], sub["mean"], label=method, color=colour_for(method))
+                ax.plot(sub["trial"], sub["mean"], label=label_for(method), color=colour_for(method))
             ax.set_xlabel("trial"); ax.set_ylabel("mean P_human(model response)")
             ax.set_ylim(0, max(0.6, self.per_trial["mean"].max() * 1.1))
             ax.legend()
@@ -88,7 +88,7 @@ class ErrorSimilarityResult(AnalysisResult):
             fig, ax = plt.subplots()
             for _, row in self.per_method.iterrows():
                 ax.scatter(row["accuracy"], row["mean"], color=colour_for(row["method"]), s=60)
-                ax.annotate(row["method"], (row["accuracy"], row["mean"]),
+                ax.annotate(label_for(row["method"]), (row["accuracy"], row["mean"]),
                             xytext=(4, 4), textcoords="offset points", fontsize=8)
             ax.set_xlabel("mean accuracy (all trials)")
             ax.set_ylabel("mean human-likeness")
@@ -101,7 +101,7 @@ class ErrorSimilarityResult(AnalysisResult):
             w = 0.4
             ax.bar(xs - w / 2, self.per_method["cond_correct"], w, label="model correct")
             ax.bar(xs + w / 2, self.per_method["cond_incorrect"], w, label="model incorrect")
-            ax.set_xticks(xs); ax.set_xticklabels(self.per_method["method"], rotation=30, ha="right")
+            ax.set_xticks(xs); ax.set_xticklabels([label_for(m) for m in self.per_method["method"]], rotation=30, ha="right")
             ax.set_ylabel("mean P_human(model response)")
             ax.legend()
             save_fig(fig, outdir, "bars_conditional.pdf")

@@ -37,6 +37,7 @@ class TransformerMethod(Method):
     capabilities: ClassVar[Capability] = Capability.PREDICTIONS | Capability.EMBEDDINGS
 
     name: str = ""
+    label: str = ""
     run_name: str = ""
     mode: Literal["in-weight", "symbol-shuffling", "easy-symbol-shuffling"] = "in-weight"
     ckpt_select: str = "best_acc"     # "latest" | "best_loss" | "best_acc" | "epoch_<N>"

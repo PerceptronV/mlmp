@@ -26,7 +26,7 @@ import pandas as pd  # type: ignore[import-untyped]
 from tqdm import tqdm
 
 from ..capability import Capability, CapabilityMissing
-from ..plotting import apply_rc, save_fig
+from ..plotting import apply_rc, label_for, save_fig
 from ..stats import ari_nmi, chi2_p, fdr_bh
 from .base import Analysis, AnalysisResult
 
@@ -174,8 +174,8 @@ class ClusteringResult(AnalysisResult):
         np.fill_diagonal(mat, 1.0)
         fig, ax = plt.subplots(figsize=(0.6 * len(methods) + 2, 0.6 * len(methods) + 2))
         im = ax.imshow(mat, cmap="viridis", vmin=-0.1, vmax=1.0)
-        ax.set_xticks(range(len(methods))); ax.set_xticklabels(methods, rotation=45, ha="right")
-        ax.set_yticks(range(len(methods))); ax.set_yticklabels(methods)
+        ax.set_xticks(range(len(methods))); ax.set_xticklabels([label_for(m) for m in methods], rotation=45, ha="right")
+        ax.set_yticks(range(len(methods))); ax.set_yticklabels([label_for(m) for m in methods])
         for i in range(len(methods)):
             for j in range(len(methods)):
                 if not np.isnan(mat[i, j]):
@@ -360,7 +360,7 @@ class ClusteringResult(AnalysisResult):
             pos = axes[i][0].get_position()
             fig.text(
                 0.09, pos.y0 + pos.height / 2,
-                m,
+                label_for(m),
                 fontsize=11, fontweight="bold",
                 ha="right", va="center",
             )

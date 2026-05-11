@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
 from ..capability import Capability
-from ..plotting import apply_rc, colour_for, save_fig
+from ..plotting import apply_rc, colour_for, label_for, save_fig
 from ..stats import CI, log_rank, paired_wilcoxon, pearson_with_ci
 from .base import Analysis, AnalysisResult
 
@@ -122,7 +122,7 @@ class RuleAcquisitionResult(AnalysisResult):
                 continue
             sub = self.acquired[self.acquired["method"] == method]
             cum = np.array([(sub["acquired_on"] <= t).mean() for t in xs])
-            ax.step(xs, cum, where="post", label=method, color=colour_for(method))
+            ax.step(xs, cum, where="post", label=label_for(method), color=colour_for(method))
         ax.set_xlabel("trial")
         ax.set_ylabel("cumulative fraction acquired")
         ax.set_xlim(1, _NEVER_ACQUIRED)
@@ -134,7 +134,7 @@ class RuleAcquisitionResult(AnalysisResult):
         fig, ax = plt.subplots()
         for method in sorted(self.per_trial_mean["method"].unique()):
             sub = self.per_trial_mean[self.per_trial_mean["method"] == method].sort_values("trial")
-            ax.plot(sub["trial"], sub["mean"], label=method, color=colour_for(method))
+            ax.plot(sub["trial"], sub["mean"], label=label_for(method), color=colour_for(method))
             ax.fill_between(sub["trial"], sub["lo"], sub["hi"], alpha=0.15, color=colour_for(method))
         ax.set_xlabel("trial")
         ax.set_ylabel("mean accuracy")
@@ -164,7 +164,7 @@ class RuleAcquisitionResult(AnalysisResult):
                         showextrema=False,
                     )
                     ax.set_xticks(range(1, len(non_human) + 1))
-                    ax.set_xticklabels(non_human, rotation=30, ha="right")
+                    ax.set_xticklabels([label_for(m) for m in non_human], rotation=30, ha="right")
                     ax.axhline(1.0, color="black", lw=0.5, alpha=0.5)
                     ax.set_ylabel("mean acc / human mean acc")
                     save_fig(fig, outdir, "violin_human_relative.pdf")

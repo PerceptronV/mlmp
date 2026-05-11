@@ -7,7 +7,7 @@ device: cpu
 # Reuses the ``csv_only_smoke`` rule_acquisition output — its acquired.parquet
 # has the rows ProbingAnalysis filters on. fast: n_perm=0, n_folds=2.
 methods:
-  - { kind: mpl_best, name: mpl_best, filters: { lesion: 'None', mode: Online, steps: '500000' } }
+  - { kind: mpl_best, name: mpl_best, label: "MPL (Best)", filters: { lesion: 'None', mode: Online, steps: '500000' } }
 
 analyses:
   - kind: probing

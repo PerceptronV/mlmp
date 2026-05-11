@@ -27,7 +27,7 @@ from tqdm import tqdm
 
 from ..capability import Capability
 from ..methods.mpl import META_PRIMITIVE_VOCAB
-from ..plotting import apply_rc, colour_for, save_fig
+from ..plotting import apply_rc, colour_for, label_for, save_fig
 from ..stats import delong_auroc_test, paired_wilcoxon
 from .base import Analysis, AnalysisResult
 
@@ -109,7 +109,7 @@ class ProbingResult(AnalysisResult):
         ax.set_xticks(range(wide.shape[1]))
         ax.set_xticklabels(wide.columns, rotation=30, ha="right")
         ax.set_yticks(range(wide.shape[0]))
-        ax.set_yticklabels(wide.index)
+        ax.set_yticklabels([label_for(m) for m in wide.index])
         for i in range(wide.shape[0]):
             for j in range(wide.shape[1]):
                 v = wide.values[i, j]
@@ -147,7 +147,7 @@ class ProbingResult(AnalysisResult):
                 x + (i - (n_m - 1) / 2) * width,
                 heights,
                 width=width,
-                label=m,
+                label=label_for(m),
                 color=colour_for(m),
                 yerr=yerr,
                 capsize=2,
@@ -205,7 +205,7 @@ class ProbingResult(AnalysisResult):
                         xc + (i - (n_mc - 1) / 2) * wc,
                         heights,
                         width=wc,
-                        label=m,
+                        label=label_for(m),
                         color=colour_for(m),
                     )
                 # n_eligible (min across methods per primitive) annotation.

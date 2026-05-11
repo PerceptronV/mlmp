@@ -22,6 +22,7 @@ from .csv_method import _Sentinel, _modal, _parse_response, _parse_truthy
 class HumanMethod(Method):
     capabilities: ClassVar[Capability] = Capability.PREDICTIONS
     name: str = "humans"
+    label: str = ""
     root: str | Path = ""
 
     def __post_init__(self) -> None:

@@ -3,13 +3,13 @@ output_dir: outputs/analysis
 rule_data_root: src/data/osf_gq2hj/analysis/data
 
 methods:
-  - { kind: human,       name: humans }
-  - { kind: mpl,         name: mpl,    filters: { lesion: 'None', mode: Online, steps: '500000' } }
-  - { kind: fleet,       name: fleet,  filters: { mode: Online, steps: '500000' } }
-  - { kind: codex,       name: codex_g, filters: { source: codex_code_G } }
-  - { kind: enumeration, name: enumeration }
-  - { kind: metagol,     name: metagol }
-  - { kind: robustfill,  name: robustfill }
+  - { kind: human,       name: humans,      label: "Humans" }
+  - { kind: mpl,         name: mpl,         label: "MPL",       filters: { lesion: 'None', mode: Online, steps: '500000' } }
+  - { kind: fleet,       name: fleet,       label: "Fleet",     filters: { mode: Online, steps: '500000' } }
+  - { kind: codex,       name: codex_g,     label: "Codex (G)", filters: { source: codex_code_G } }
+  - { kind: enumeration, name: enumeration, label: "Enumeration" }
+  - { kind: metagol,     name: metagol,     label: "Metagol" }
+  - { kind: robustfill,  name: robustfill,  label: "RobustFill" }
 
 analyses:
   - kind: rule_acquisition
