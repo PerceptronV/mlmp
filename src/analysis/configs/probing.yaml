@@ -35,3 +35,4 @@ analyses:
     n_io_shown: 11
     order: 1
     surface_baseline: true
+    conditional: true             # additive: AUROC on tasks where the probe method itself was correct (set is already MPL-correct)

@@ -4,7 +4,7 @@ rule_data_root: src/data/osf_gq2hj/analysis/data
 device: cuda
 
 # Transformer entries assume checkpoints exist under
-# ``<checkpoint_dir>/<run_name>/checkpoint_best_acc.pt`` (or whichever ``ckpt`` selects).
+# ``<checkpoint_dir>/<run_name>/checkpoint_latest.pt`` (or whichever ``ckpt`` selects).
 # enum-only runs come from scripts/small-train.sh (no-rl-<mode>); enum+rl runs from
 # scripts/train.sh (<mode>). CSV-only smoke runs can drop the transformer entries.
 # TODO: update run_names to the actual run names you used.

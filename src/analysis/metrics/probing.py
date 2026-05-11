@@ -48,6 +48,7 @@ class ProbingResult(AnalysisResult):
     null: pd.DataFrame               # (method, primitive, perm_idx, auroc)
     base: pd.DataFrame               # (primitive, base_rate, n_acquired_tasks)
     cross_method: pd.DataFrame       # (method_a, method_b, primitive, auroc_a, auroc_b, p_delong, p_wilcoxon)
+    auroc_conditional: pd.DataFrame = field(default_factory=pd.DataFrame)  # (method, primitive, auroc, n_eligible, n_total)
     config: dict = field(default_factory=dict)
 
     def save(self, outdir: Path) -> None:
@@ -59,6 +60,8 @@ class ProbingResult(AnalysisResult):
         self.base.to_parquet(outdir / "base.parquet", index=False)
         if not self.cross_method.empty:
             self.cross_method.to_csv(outdir / "cross_method.csv", index=False)
+        if not self.auroc_conditional.empty:
+            self.auroc_conditional.to_parquet(outdir / "auroc_conditional.parquet", index=False)
         # Stash the config so re-plotting from disk can reconstruct labels etc.
         import json
 
@@ -179,6 +182,49 @@ class ProbingResult(AnalysisResult):
         )
         save_fig(fig, outdir, "bars_per_primitive.pdf")
 
+        # 3) Conditional bars: AUROC restricted to tasks where MPL AND the
+        # method were both correct at label_trial. Mirrors error_similarity's
+        # bars_conditional. surface_features is excluded (no model correctness).
+        if not self.auroc_conditional.empty:
+            cond = self.auroc_conditional.copy()
+            cond_primitives = [p for p in primitives if p in set(cond["primitive"])]
+            cond_methods = [m for m in methods if m in set(cond["method"]) and m != _SURFACE_NAME]
+            n_pc = len(cond_primitives)
+            n_mc = len(cond_methods)
+            if n_pc and n_mc:
+                fig, ax = plt.subplots(figsize=(max(6.0, 1.4 * n_pc), 4.5))
+                xc = np.arange(n_pc)
+                wc = 0.8 / max(n_mc, 1)
+                cond_wide = cond.pivot(index="method", columns="primitive", values="auroc")
+                for i, m in enumerate(cond_methods):
+                    heights = [
+                        float(cond_wide.loc[m, p]) if (m in cond_wide.index and p in cond_wide.columns) else np.nan
+                        for p in cond_primitives
+                    ]
+                    ax.bar(
+                        xc + (i - (n_mc - 1) / 2) * wc,
+                        heights,
+                        width=wc,
+                        label=m,
+                        color=colour_for(m),
+                    )
+                # n_eligible (min across methods per primitive) annotation.
+                n_elig = cond.groupby("primitive")["n_eligible"].min().reindex(cond_primitives)
+                cond_labels = [f"{p}\n(n={int(n_elig.loc[p])})" for p in cond_primitives]
+                ax.set_xticks(xc)
+                ax.set_xticklabels(cond_labels, rotation=0, fontsize=8)
+                ax.set_ylim(0.0, 1.02)
+                ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
+                ax.set_ylabel("AUROC (MPL-correct ∩ method-correct)")
+                ax.legend(
+                    fontsize=8,
+                    ncols=min(n_mc, 3),
+                    loc="upper center",
+                    bbox_to_anchor=(0.5, -0.12),
+                    frameon=False,
+                )
+                save_fig(fig, outdir, "bars_conditional.pdf")
+
 
 @dataclass
 class ProbingAnalysis(Analysis):
@@ -197,6 +243,12 @@ class ProbingAnalysis(Analysis):
     surface_baseline: bool = True
     random_state: int = 0
     label_trial: int = 11
+    # Additive: when True, also compute per-(method, primitive) AUROC on the
+    # subset of tasks where the probe method itself was correct at label_trial.
+    # The full task set is already MPL-correct (acquired_on ≤ label_trial), so
+    # this conditions on the model also getting the task right. Triggers a
+    # prediction pass for each embed method (cached).
+    conditional: bool = False
 
     def run(
         self,
@@ -498,11 +550,61 @@ class ProbingAnalysis(Analysis):
                 })
         cross_df = pd.DataFrame(cross_rows)
 
+        # 9. Conditional AUROC (additive — does not touch any prior output).
+        # Per (probe method, primitive), restrict eval to tasks where the
+        # probe method itself was correct at label_trial. The probing set is
+        # already MPL-correct (acquired_on ≤ label_trial via acquired.parquet),
+        # so this conditions on "MPL-correct ∩ method-correct". surface_features
+        # is excluded since it has no model-level correctness.
+        auroc_cond_rows: list[dict] = []
+        if self.conditional and embed_methods:
+            method_correct: dict[str, dict[str, bool]] = {}
+            for method in embed_methods:
+                per: dict[str, bool] = {}
+                for tid in kept_tasks:
+                    tr = trial_for[tid]
+                    pred = cache.get_or_compute(
+                        method, tr, lambda m=method, t=tr: m.predict(t)
+                    )
+                    per[tid] = bool(pred.correct)
+                method_correct[method.name] = per
+            cache.flush()
+
+            for method_name, mc in method_correct.items():
+                for p in valid_primitives:
+                    pi = primitive_names.index(p)
+                    y = Y_bin[:, pi]
+                    scores = cv_scores.get((method_name, p))
+                    if scores is None:
+                        continue
+                    mask = np.array([
+                        (not np.isnan(scores[i])) and mc.get(kept_tasks[i], False)
+                        for i in range(N)
+                    ])
+                    n_eligible = int(mask.sum())
+                    n_total = int((~np.isnan(scores)).sum())
+                    if n_eligible < 5 or len(set(y[mask].tolist())) < 2:
+                        auc = float("nan")
+                    else:
+                        try:
+                            auc = float(roc_auc_score(y[mask], scores[mask]))
+                        except ValueError:
+                            auc = float("nan")
+                    auroc_cond_rows.append({
+                        "method": method_name,
+                        "primitive": p,
+                        "auroc": auc,
+                        "n_eligible": n_eligible,
+                        "n_total": n_total,
+                    })
+        auroc_cond_df = pd.DataFrame(auroc_cond_rows)
+
         return ProbingResult(
             auroc=auroc_df,
             null=null_df,
             base=base_df,
             cross_method=cross_df,
+            auroc_conditional=auroc_cond_df,
             config={
                 "n_folds": self.n_folds,
                 "n_perm": self.n_perm,
@@ -518,5 +620,6 @@ class ProbingAnalysis(Analysis):
                 "mpl_method": self.mpl_method,
                 "acquired_method": self.acquired_method,
                 "surface_baseline": bool(self.surface_baseline),
+                "conditional": bool(self.conditional),
             },
         )
