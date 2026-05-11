@@ -422,7 +422,10 @@ class ProbingAnalysis(Analysis):
         null_rows: list[dict] = []
 
         def _fit_probe(Xs: np.ndarray, b: np.ndarray, ys: np.ndarray, tr_idx: np.ndarray):
-            clf = LogisticRegression(C=1.0, solver="liblinear", max_iter=1000)
+            clf = LogisticRegression(
+                C=1.0, solver="liblinear", max_iter=1000,
+                random_state=self.random_state,
+            )
             if self.label_aggregation == "soft":
                 X_tr = Xs[tr_idx]
                 ys_tr = ys[tr_idx]
