@@ -584,10 +584,21 @@ class ProbingAnalysis(Analysis):
             clf.fit(Xs[tr_idx], b[tr_idx])
             return clf
 
+        # Total LR fits per (method, primitive): n_folds (CV) + n_perm * n_folds
+        # (null). With 48 methods × ~6 valid primitives × (5 + 50 × 5), this is
+        # the slow phase after embeddings are cached — surface a pbar with
+        # per-pair ETA so the wait time is visible.
+        fit_pbar = tqdm(
+            total=len(embeddings) * len(valid_primitives),
+            desc="probe fits (CV + perm null)",
+            leave=True,
+            unit="pair",
+        )
         for method_name, X in embeddings.items():
             scaler = StandardScaler()
             Xs = scaler.fit_transform(X)
             for i, p in zip(valid_idx, valid_primitives):
+                fit_pbar.set_postfix_str(f"{method_name}:{p}")
                 b = Y_bin[:, i]
                 ys = Y_soft[:, i].astype(np.float64)
                 # 5-fold stratified CV. Stratification key is ``b`` regardless
@@ -636,6 +647,8 @@ class ProbingAnalysis(Analysis):
                             "perm_idx": int(perm),
                             "auroc": float(np.mean(fold_aucs)),
                         })
+                fit_pbar.update(1)
+        fit_pbar.close()
 
         auroc_df = pd.DataFrame(auroc_rows)
         null_df = pd.DataFrame(null_rows)
@@ -649,9 +662,16 @@ class ProbingAnalysis(Analysis):
         # Pre-build CV scores per (method, primitive) for DeLong. Uses the
         # same _fit_probe (so soft-mode probes power the DeLong test too).
         cv_scores: dict[tuple[str, str], np.ndarray] = {}
+        cv_pbar = tqdm(
+            total=len(embeddings) * len(valid_primitives),
+            desc="cv scores (DeLong)",
+            leave=True,
+            unit="pair",
+        )
         for method_name, X in embeddings.items():
             Xs = StandardScaler().fit_transform(X)
             for i, p in zip(valid_idx, valid_primitives):
+                cv_pbar.set_postfix_str(f"{method_name}:{p}")
                 b = Y_bin[:, i]
                 ys = Y_soft[:, i].astype(np.float64)
                 skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
@@ -662,6 +682,8 @@ class ProbingAnalysis(Analysis):
                     clf = _fit_probe(Xs, b, ys, tr_idx)
                     scores_full[te_idx] = clf.predict_proba(Xs[te_idx])[:, 1]
                 cv_scores[(method_name, p)] = scores_full
+                cv_pbar.update(1)
+        cv_pbar.close()
 
         for a, b in combinations(method_names, 2):
             for p in valid_primitives:
