@@ -17,6 +17,7 @@ from src.analysis.metrics.probing import (
     plot_layer_robustness,
     plot_max_per_primitive,
 )
+from src.analysis.plotting import apply_rc
 
 
 def main() -> None:
@@ -25,6 +26,7 @@ def main() -> None:
                     help="Path to the probing run dir, e.g. outputs/analysis/probe_robustness_v1/probing")
     args = ap.parse_args()
 
+    apply_rc()
     auroc = pd.read_parquet(args.run_dir / "auroc.parquet")
     wrote_lines = plot_layer_robustness(auroc, args.run_dir)
     wrote_heat = plot_layer_heatmaps(auroc, args.run_dir)

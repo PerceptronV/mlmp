@@ -59,15 +59,31 @@ def _parse_sweep_method(name: str) -> tuple[str, str, int] | None:
     return m.group("ckpt"), m.group("src"), layer
 
 
-def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
-    """Emit per-primitive + grid plots of AUROC vs layer (encoder vs decoder).
+# Map the sweep-config's short ckpt ids back to the canonical method names
+# used in the headline plotting palette. This lets the sweep plots reuse
+# ``colour_for`` (defined in ..plotting) so the same checkpoint reads as the
+# same colour everywhere.
+_CKPT_TO_METHOD = {
+    "enum_iw": "tx_enum_in_weight",
+    "enum_es": "tx_enum_easy_shuf",
+    "enrl_iw": "tx_enrl_in_weight",
+    "enrl_es": "tx_enrl_easy_shuf",
+}
 
-    Returns ``True`` if a robustness plot was written, ``False`` if no sweep
-    method names were detected (so callers can no-op silently). Used by
-    :meth:`ProbingResult.plot` and by ``scripts/plot_probing_robustness.py``.
+
+def _ckpt_colour(ck: str) -> str:
+    return colour_for(_CKPT_TO_METHOD.get(ck, ck))
+
+
+def _layer_tag(layer: int) -> str:
+    return "post-norm" if layer == -1 else f"L{layer}"
+
+
+def _sweep_long(auroc: pd.DataFrame) -> pd.DataFrame:
+    """Parse rows whose ``method`` follows the sweep convention into a
+    long-form ``(ckpt, src, layer, primitive, auroc)`` dataframe. Empty
+    return signals "not a sweep — caller should no-op".
     """
-    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
-
     rows: list[dict] = []
     for _, r in auroc.iterrows():
         parsed = _parse_sweep_method(r["method"])
@@ -78,69 +94,76 @@ def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
             "ckpt": ckpt, "src": src, "layer": layer,
             "primitive": r["primitive"], "auroc": float(r["auroc"]),
         })
-    if not rows:
+    return pd.DataFrame(rows)
+
+
+def _sweep_axes(df: pd.DataFrame) -> tuple[list[str], list[str], int, list[int]]:
+    """Stable orderings derived from a long-form sweep frame.
+
+    Returns ``(primitives, ckpts, n_layers, layer_seq)`` where ``primitives``
+    follow ``META_PRIMITIVE_VOCAB`` insertion order (extras alpha-sorted) and
+    ``layer_seq`` is ``[0, 1, ..., n_layers, -1]`` (post-norm placed last).
+    """
+    seen = set(df["primitive"].unique())
+    primitives = [p for p in META_PRIMITIVE_VOCAB.keys() if p in seen]
+    primitives += sorted(seen - set(primitives))
+    ckpts = sorted(df["ckpt"].unique())
+    n_layers = max((l for l in df["layer"] if l != -1), default=0)
+    return primitives, ckpts, n_layers, list(range(n_layers + 1)) + [-1]
+
+
+_SRC_COLOUR = {"enc": "#1f77b4", "dec": "#d62728"}
+_SRC_LABEL = {"enc": "encoder", "dec": "decoder"}
+
+
+def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
+    """Per-primitive + grid plots of AUROC vs layer (encoder vs decoder).
+
+    Returns ``False`` (no-op) when ``auroc`` contains no sweep methods.
+    """
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+
+    df = _sweep_long(auroc)
+    if df.empty:
         return False
 
-    df = pd.DataFrame(rows)
+    primitives, ckpts, n_layers, layer_seq = _sweep_axes(df)
     agg = (
         df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"]
-        .agg(["mean", "std", "count"])
-        .reset_index()
+        .agg(["mean", "std", "count"]).reset_index()
     )
-    n_layers = max((l for l in agg["layer"] if l != -1), default=0)
+    xpos = {l: (n_layers + 1 if l == -1 else l) for l in layer_seq}
+    agg["xpos"] = agg["layer"].map(xpos)
+    x_pos = [xpos[l] for l in layer_seq]
+    x_labels = [_layer_tag(l) for l in layer_seq]
 
-    def _xpos(layer: int) -> int:
-        return n_layers + 1 if layer == -1 else layer
-
-    def _xlabel(layer: int) -> str:
-        return "post-norm" if layer == -1 else f"L{layer}"
-
-    agg["xpos"] = agg["layer"].map(_xpos)
-    primitives = sorted(agg["primitive"].unique())
-    ckpts = sorted(agg["ckpt"].unique())
-    x_layers = sorted({(l, _xpos(l)) for l in agg["layer"]}, key=lambda t: t[1])
-    x_pos = [p for _, p in x_layers]
-    x_labels = [_xlabel(l) for l, _ in x_layers]
-
-    src_colour = {"enc": "#1f77b4", "dec": "#d62728"}
-    src_label = {"enc": "encoder", "dec": "decoder"}
-
-    outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    # 1) Per-primitive figure: one panel per checkpoint.
+    # Per-primitive: one panel per checkpoint.
     for prim in primitives:
         sub = agg[agg["primitive"] == prim]
         if sub.empty:
             continue
-        fig, axes = plt.subplots(1, len(ckpts), figsize=(3.4 * len(ckpts), 3.2), sharey=True)
-        if len(ckpts) == 1:
-            axes = [axes]
-        for ax, ck in zip(axes, ckpts):
+        fig, axes = plt.subplots(1, len(ckpts), figsize=(3.4 * len(ckpts), 3.2),
+                                 sharey=True, squeeze=False)
+        for ax, ck in zip(axes[0], ckpts):
             for src in ("enc", "dec"):
                 s = sub[(sub["ckpt"] == ck) & (sub["src"] == src)].sort_values("xpos")
                 if s.empty:
                     continue
-                yerr = (
-                    s["std"].fillna(0).values
-                    / np.sqrt(np.maximum(s["count"].fillna(1).values, 1))
-                )
-                ax.errorbar(
-                    s["xpos"], s["mean"], yerr=yerr, marker="o",
-                    color=src_colour[src], label=src_label[src], capsize=2,
-                )
+                yerr = (s["std"].fillna(0).values
+                        / np.sqrt(np.maximum(s["count"].fillna(1).values, 1)))
+                ax.errorbar(s["xpos"], s["mean"], yerr=yerr, marker="o",
+                            color=_SRC_COLOUR[src], label=_SRC_LABEL[src], capsize=2)
             ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
             ax.set_xticks(x_pos)
             ax.set_xticklabels(x_labels, rotation=30, ha="right")
-            ax.set_title(ck, fontsize=10)
+            ax.set_xlabel(ck)
             ax.set_ylim(0.4, 1.02)
-        axes[0].set_ylabel(f"AUROC ({prim})")
-        axes[-1].legend(fontsize=8, frameon=False, loc="lower right")
+        axes[0][0].set_ylabel(f"AUROC ({prim})")
+        axes[0][-1].legend(fontsize=8, frameon=False, loc="lower right")
         fig.tight_layout()
-        fig.savefig(outdir / f"robustness_{prim}.pdf")
-        plt.close(fig)
+        save_fig(fig, outdir, f"robustness_{prim}")
 
-    # 2) Grid: rows = primitives, cols = checkpoints.
+    # Grid: rows = primitives, cols = checkpoints.
     fig, axes = plt.subplots(
         len(primitives), len(ckpts),
         figsize=(2.8 * len(ckpts), 1.9 * len(primitives)),
@@ -154,101 +177,66 @@ def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
                 s = sub[sub["src"] == src].sort_values("xpos")
                 if s.empty:
                     continue
-                ax.plot(
-                    s["xpos"], s["mean"], marker="o", color=src_colour[src],
-                    label=src_label[src] if (i == 0 and j == 0) else None,
-                )
+                ax.plot(s["xpos"], s["mean"], marker="o", color=_SRC_COLOUR[src],
+                        label=_SRC_LABEL[src] if (i == 0 and j == 0) else None)
             ax.axhline(0.5, color="gray", lw=0.5, alpha=0.5)
             ax.set_ylim(0.4, 1.02)
-            if i == 0:
-                ax.set_title(ck, fontsize=9)
             if j == 0:
                 ax.set_ylabel(prim, fontsize=9)
             ax.set_xticks(x_pos)
             if i == len(primitives) - 1:
                 ax.set_xticklabels(x_labels, rotation=30, ha="right", fontsize=8)
+                ax.set_xlabel(ck, fontsize=9)
             else:
                 ax.set_xticklabels([])
     handles, labels = axes[0][0].get_legend_handles_labels()
     if handles:
-        fig.legend(handles, labels, loc="upper center", ncols=2, frameon=False, bbox_to_anchor=(0.5, 1.02))
+        fig.legend(handles, labels, loc="upper center", ncols=2, frameon=False,
+                   bbox_to_anchor=(0.5, 1.02))
     fig.tight_layout()
-    fig.savefig(outdir / "robustness_grid.pdf", bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, outdir, "robustness_grid")
     return True
 
 
 def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
-    """Per-checkpoint heatmaps of AUROC across layers (enc→dec) × primitives.
+    """Per-checkpoint heatmaps + auto-arranged grid (shared colour scale).
 
-    Emits ``heatmap_layers_<ckpt>.pdf`` for each checkpoint plus
-    ``heatmap_layers_grid.pdf`` arranging all checkpoints in an auto-shaped
-    grid. Colour scale is shared across all figures so values are directly
-    comparable. Returns ``False`` (no-op) if the AUROC table contains no
-    sweep-style methods.
+    X axis spans encoder layers then decoder layers; Y axis is metaprimitives.
+    Returns ``False`` (no-op) outside the sweep.
     """
     import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 
-    rows: list[dict] = []
-    for _, r in auroc.iterrows():
-        parsed = _parse_sweep_method(r["method"])
-        if parsed is None:
-            continue
-        ckpt, src, layer = parsed
-        rows.append({
-            "ckpt": ckpt, "src": src, "layer": layer,
-            "primitive": r["primitive"], "auroc": float(r["auroc"]),
-        })
-    if not rows:
+    df = _sweep_long(auroc)
+    if df.empty:
         return False
 
-    df = pd.DataFrame(rows)
+    primitives, ckpts, n_layers, layer_seq = _sweep_axes(df)
     agg = df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"].mean().reset_index()
-    n_layers = max((l for l in agg["layer"] if l != -1), default=0)
 
-    # X-axis layout: enc·L0 .. enc·L<N> .. enc·post-norm | dec·L0 .. dec·post-norm.
-    per_side = n_layers + 2  # L0..LN plus post-norm
-    layer_seq: list[int] = list(range(n_layers + 1)) + [-1]
+    per_side = n_layers + 2  # L0..LN + post-norm
 
-    def _xpos(src: str, layer: int) -> int:
+    def xpos(src: str, layer: int) -> int:
         within = (n_layers + 1) if layer == -1 else layer
         return (0 if src == "enc" else per_side) + within
 
-    def _xlabel(src: str, layer: int) -> str:
-        tag = "post-norm" if layer == -1 else f"L{layer}"
-        return f"{src}·{tag}"
-
-    agg["xpos"] = agg.apply(lambda r: _xpos(r["src"], r["layer"]), axis=1)
-
-    # Primitive ordering: META_PRIMITIVE_VOCAB insertion order if known, else
-    # whatever the data has, alpha-sorted as a fallback. Keeps figures stable.
-    seen = set(agg["primitive"].unique())
-    primitives = [p for p in META_PRIMITIVE_VOCAB.keys() if p in seen]
-    primitives += sorted(seen - set(primitives))
-
-    ckpts = sorted(agg["ckpt"].unique())
+    agg["xpos"] = agg.apply(lambda r: xpos(r["src"], r["layer"]), axis=1)
     all_x = list(range(2 * per_side))
-    all_xlabels = [_xlabel(src, layer) for src in ("enc", "dec") for layer in layer_seq]
+    all_xlabels = [f"{src}·{_layer_tag(l)}" for src in ("enc", "dec") for l in layer_seq]
 
-    # Shared colour scale across all figures so headlines vs panels stay
-    # visually comparable. Uses the observed AUROC range as-is.
+    # Shared colour scale across every emitted figure for cross-model comparison.
     vmin = float(agg["auroc"].min())
     vmax = float(agg["auroc"].max())
     if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
         vmin, vmax = 0.0, 1.0
-
-    def _matrix_for(ck: str) -> pd.DataFrame:
-        sub = agg[agg["ckpt"] == ck]
-        m = sub.pivot_table(index="primitive", columns="xpos", values="auroc")
-        return m.reindex(index=primitives, columns=all_x)
-
-    outdir = Path(outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
     midpoint = 0.5 * (vmin + vmax)
 
-    # ---- Per-checkpoint heatmaps ----
+    def matrix_for(ck: str) -> pd.DataFrame:
+        m = agg[agg["ckpt"] == ck].pivot_table(index="primitive", columns="xpos", values="auroc")
+        return m.reindex(index=primitives, columns=all_x)
+
+    # Per-checkpoint heatmap (filename carries identity, no title).
     for ck in ckpts:
-        wide = _matrix_for(ck)
+        wide = matrix_for(ck)
         fig, ax = plt.subplots(figsize=(0.55 * len(all_x) + 2.5, 0.55 * len(primitives) + 1.8))
         im = ax.imshow(wide.values, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
         ax.set_xticks(all_x)
@@ -256,7 +244,6 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
         ax.set_yticks(range(len(primitives)))
         ax.set_yticklabels(primitives)
         ax.axvline(per_side - 0.5, color="white", lw=1.2)  # encoder | decoder split
-        ax.set_title(ck)
         for i in range(wide.shape[0]):
             for j in range(wide.shape[1]):
                 v = wide.values[i, j]
@@ -266,10 +253,9 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
                         color="white" if v < midpoint else "black")
         fig.colorbar(im, ax=ax, label="AUROC", shrink=0.85)
         fig.tight_layout()
-        fig.savefig(outdir / f"heatmap_layers_{ck}.pdf", bbox_inches="tight")
-        plt.close(fig)
+        save_fig(fig, outdir, f"heatmap_layers_{ck}")
 
-    # ---- Auto-arranged grid (all checkpoints, same colour scale) ----
+    # Auto-arranged grid (per-axes xlabel carries ckpt identity in place of titles).
     n = len(ckpts)
     ncols = max(1, math.ceil(math.sqrt(n)))
     nrows = max(1, math.ceil(n / ncols))
@@ -282,10 +268,10 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
     for k, ck in enumerate(ckpts):
         r, c = divmod(k, ncols)
         ax = axes[r][c]
-        wide = _matrix_for(ck)
+        wide = matrix_for(ck)
         last_im = ax.imshow(wide.values, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
         ax.axvline(per_side - 0.5, color="white", lw=1.0)
-        ax.set_title(ck, fontsize=10)
+        ax.set_xlabel(ck, fontsize=10)
         if c == 0:
             ax.set_yticks(range(len(primitives)))
             ax.set_yticklabels(primitives, fontsize=8)
@@ -297,67 +283,47 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
         axes[r][c].axis("off")
     if last_im is not None:
         fig.colorbar(last_im, ax=axes.ravel().tolist(), shrink=0.7, label="AUROC")
-    fig.savefig(outdir / "heatmap_layers_grid.pdf", bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, outdir, "heatmap_layers_grid")
     return True
 
 
 def plot_max_per_primitive(auroc: pd.DataFrame, outdir: Path) -> bool:
-    """Per (checkpoint, primitive), bar the best (source, layer) AUROC.
+    """Bars: best (source, layer) AUROC per (checkpoint, primitive).
 
-    Mirrors ``bars_per_primitive.pdf`` but condenses each checkpoint to one
-    bar per primitive — the layer that probes best — with the winning
-    ``src·layer`` printed above the bar. No-op outside the sweep.
+    Bar colours follow the project palette via ``colour_for`` (mapped from
+    sweep ckpt id → canonical headline-method name), so the same checkpoint
+    reads as the same colour across all plots. No-op outside the sweep.
     """
     import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 
-    rows: list[dict] = []
-    for _, r in auroc.iterrows():
-        parsed = _parse_sweep_method(r["method"])
-        if parsed is None:
-            continue
-        ckpt, src, layer = parsed
-        rows.append({
-            "ckpt": ckpt, "src": src, "layer": layer,
-            "primitive": r["primitive"], "auroc": float(r["auroc"]),
-        })
-    if not rows:
+    df = _sweep_long(auroc)
+    if df.empty:
         return False
 
-    df = pd.DataFrame(rows)
+    primitives, ckpts, _, _ = _sweep_axes(df)
     agg = df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"].mean().reset_index()
-    # Top (src, layer) per (ckpt, primitive). idxmax over the grouped subframe
-    # picks the row index of the maximum AUROC in each group.
-    idx = agg.groupby(["ckpt", "primitive"])["auroc"].idxmax()
-    top = agg.loc[idx].reset_index(drop=True)
+    # idxmax over the grouped subframe picks the winning (src, layer) per pair.
+    top = agg.loc[agg.groupby(["ckpt", "primitive"])["auroc"].idxmax()].reset_index(drop=True)
 
-    seen = set(top["primitive"].unique())
-    primitives = [p for p in META_PRIMITIVE_VOCAB.keys() if p in seen]
-    primitives += sorted(seen - set(primitives))
-    ckpts = sorted(top["ckpt"].unique())
     n_p, n_m = len(primitives), len(ckpts)
     if n_p == 0 or n_m == 0:
         return False
 
-    cmap = plt.get_cmap("tab10")
     fig, ax = plt.subplots(figsize=(max(6.0, 1.4 * n_p), 4.5))
     x = np.arange(n_p)
     width = 0.8 / max(n_m, 1)
     for i, ck in enumerate(ckpts):
         sub = top[top["ckpt"] == ck].set_index("primitive").reindex(primitives)
-        heights = sub["auroc"].values.astype(float)
         offset = (i - (n_m - 1) / 2) * width
-        ax.bar(x + offset, heights, width=width, label=ck, color=cmap(i % 10))
-        # Tag each bar with the winning (src, layer).
+        ax.bar(x + offset, sub["auroc"].values.astype(float),
+               width=width, label=ck, color=_ckpt_colour(ck))
         for j, prim in enumerate(primitives):
             row = sub.loc[prim] if prim in sub.index else None
             if row is None or pd.isna(row["auroc"]):
                 continue
-            tag = "post" if int(row["layer"]) == -1 else f"L{int(row['layer'])}"
             ax.text(
-                x[j] + offset,
-                float(row["auroc"]) + 0.01,
-                f"{row['src']}·{tag}",
+                x[j] + offset, float(row["auroc"]) + 0.01,
+                f"{row['src']}·{_layer_tag(int(row['layer']))}",
                 ha="center", va="bottom", fontsize=6, rotation=90,
             )
 
@@ -366,13 +332,10 @@ def plot_max_per_primitive(auroc: pd.DataFrame, outdir: Path) -> bool:
     ax.set_ylim(0.0, 1.10)
     ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
     ax.set_ylabel("Best AUROC across layers (enc ∪ dec)")
-    ax.legend(
-        fontsize=8, ncols=min(n_m, 4), loc="upper center",
-        bbox_to_anchor=(0.5, -0.10), frameon=False,
-    )
+    ax.legend(fontsize=8, ncols=min(n_m, 4), loc="upper center",
+              bbox_to_anchor=(0.5, -0.10), frameon=False)
     fig.tight_layout()
-    fig.savefig(outdir / "bars_max_per_primitive.pdf", bbox_inches="tight")
-    plt.close(fig)
+    save_fig(fig, outdir, "bars_max_per_primitive")
     return True
 
 
