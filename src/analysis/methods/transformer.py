@@ -140,6 +140,21 @@ class TransformerMethod(Method):
         model = model.to(self._device).eval()
         self._model = model
 
+        # One-line load summary for every transformer method. ``val_acc`` is
+        # whichever validation accuracy was stamped on the loaded checkpoint
+        # (so ``best_acc`` shows its best epoch's val accuracy; ``best_loss``
+        # shows the val_acc at the best-val_loss epoch, etc.). Missing values
+        # — typically from pre-accuracy-tracking checkpoints — show as ``n/a``.
+        epoch = int(ckpt.get("epoch", 0))
+        va = ckpt.get("val_accuracy")
+        vl = ckpt.get("val_loss")
+        va_s = f"{va:.4f}" if isinstance(va, (int, float)) else "n/a"
+        vl_s = f"{vl:.4f}" if isinstance(vl, (int, float)) else "n/a"
+        logger.info(
+            "[%s] loaded %s ckpt_select=%s epoch=%d val_acc=%s val_loss=%s",
+            self.name, ckpt_path.name, self.ckpt_select, epoch, va_s, vl_s,
+        )
+
         if self.mode == "easy-symbol-shuffling":
             class _NS:
                 pass
