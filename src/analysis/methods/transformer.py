@@ -44,6 +44,15 @@ class TransformerMethod(Method):
     device: str = "cuda"
     max_program_tokens: int = 80
     embedding_pool: Literal["mean", "last"] = "mean"
+    # Where to read the per-task embedding from. ``encoder`` pools the encoder
+    # output (original behavior); ``decoder`` greedy-decodes the program and
+    # teacher-forces the decoder on ``<start> + gen`` to get a decoder-side
+    # representation. Both honour ``embed_layer``.
+    embed_source: Literal["encoder", "decoder"] = "encoder"
+    # Layer to pool from. ``-1`` = final post-norm (original behavior). ``0`` =
+    # post-token-embedding (before any block). ``1..n_layers`` = output of
+    # block i (pre-final-norm). See ``Seq2SeqTransformer.encode_hidden``.
+    embed_layer: int = -1
     checkpoint_dir: str | Path = "checkpoints"
     exec_timeout: float = 1.0
     embed_n_io_shown: int = 11
@@ -150,7 +159,15 @@ class TransformerMethod(Method):
             mtime = ckpt.stat().st_mtime if ckpt.exists() else 0.0
         except Exception:
             mtime = 0.0
-        return f"transformer::{self.run_name}::{self.mode}::{self.ckpt_select}::mtime={mtime}::pool={self.embedding_pool}"
+        base = (
+            f"transformer::{self.run_name}::{self.mode}::{self.ckpt_select}"
+            f"::mtime={mtime}::pool={self.embedding_pool}"
+        )
+        # Keep the original fingerprint when (source, layer) are at defaults so
+        # pre-existing probe caches aren't invalidated.
+        if self.embed_source == "encoder" and self.embed_layer == -1:
+            return base
+        return f"{base}::src={self.embed_source}::layer={self.embed_layer}"
 
     # ---- Per-trial deterministic RNG for symbol shuffling ----
     def _episode_rng(self, trial: Trial) -> random.Random:
@@ -256,5 +273,21 @@ class TransformerMethod(Method):
 
         name_map = self._name_map_for(trial)
         src_tokens = torch.tensor(io.tokenise_input(all_pairs, name_map), dtype=torch.long)
-        vec = io.encode_pool(self._model, src_tokens, self._device, pool=self.embedding_pool)
+        if self.embed_source == "decoder":
+            vec = io.decode_pool(
+                self._model,
+                src_tokens,
+                self._device,
+                pool=self.embedding_pool,
+                layer=self.embed_layer,
+                max_program_tokens=self.max_program_tokens,
+            )
+        else:
+            vec = io.encode_pool(
+                self._model,
+                src_tokens,
+                self._device,
+                pool=self.embedding_pool,
+                layer=self.embed_layer,
+            )
         return vec.numpy().astype(np.float32)

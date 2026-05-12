@@ -320,11 +320,18 @@ class ProgramIO:
         src_tokens,
         device,
         pool: str = "mean",
+        layer: int = -1,
     ):
-        """Run the encoder on ``src_tokens`` and pool the final-layer
-        post-norm output to a ``(d_model,)`` vector. ``pool`` is ``"mean"`` or
-        ``"last"``. Returns a torch tensor on CPU. Empty src returns a zero
-        ``d_model`` vector instead of raising — keeps embedding loops uniform.
+        """Run the encoder on ``src_tokens`` and pool a chosen layer's hidden
+        state to a ``(d_model,)`` vector. ``pool`` is ``"mean"`` or ``"last"``.
+        Returns a torch tensor on CPU. Empty src returns a zero ``d_model``
+        vector instead of raising — keeps embedding loops uniform.
+
+        ``layer`` selects which hidden state to pool (see
+        :meth:`Seq2SeqTransformer.encode_hidden`):
+          * ``-1`` (default): final ``encoder_norm`` output — original behavior.
+          * ``0``: post-embedding, before any encoder block.
+          * ``1..n_layers``: output of encoder block ``layer`` (pre-final-norm).
         """
         import torch  # local: program_io stays importable without torch
 
@@ -332,14 +339,64 @@ class ProgramIO:
             return torch.zeros(model.d_model)
         with torch.no_grad():
             src = src_tokens.to(device).unsqueeze(0)
-            mem = model.encode(src)  # (1, L, d)
-            if pool == "mean":
-                vec = mem.mean(dim=1)
-            elif pool == "last":
-                vec = mem[:, -1, :]
-            else:
-                raise ValueError(f"Unknown pool={pool!r}")
+            states = model.encode_hidden(src)  # [embed, blk_1, ..., blk_N, post_norm]
+            h = self._pick_layer(states, layer)
+            vec = self._pool(h, pool)
         return vec.squeeze(0).cpu()
+
+    def decode_pool(
+        self,
+        model,
+        src_tokens,
+        device,
+        pool: str = "mean",
+        layer: int = -1,
+        max_program_tokens: int = 80,
+    ):
+        """Encode the source, greedy-decode a program, teacher-force the
+        decoder on ``<start> + gen_tokens``, and pool a chosen decoder-layer
+        hidden state. Returns a ``(d_model,)`` tensor on CPU.
+
+        ``layer`` matches :meth:`encode_pool` semantics, but indexes
+        :meth:`Seq2SeqTransformer.decode_hidden`. Empty src — or a decode that
+        produces no tokens — returns a zero ``d_model`` vector.
+        """
+        import torch
+
+        if src_tokens.numel() == 0:
+            return torch.zeros(model.d_model)
+        with torch.no_grad():
+            src = src_tokens.to(device).unsqueeze(0)
+            memory = model.encode(src)
+            gen = self.greedy_decode(model, src_tokens, max_program_tokens, device)
+            if not gen:
+                return torch.zeros(model.d_model)
+            tgt = torch.tensor([self.start] + gen, dtype=torch.long, device=device).unsqueeze(0)
+            states = model.decode_hidden(tgt, memory)
+            h = self._pick_layer(states, layer)
+            vec = self._pool(h, pool)
+        return vec.squeeze(0).cpu()
+
+    @staticmethod
+    def _pick_layer(states, layer: int):
+        # ``states`` is the [embed, blk_1, ..., blk_N, post_norm] list. We expose
+        # -1 = post_norm (states[-1]), 0..N = states[0..N] (pre-norm).
+        if layer == -1:
+            return states[-1]
+        n_pre = len(states) - 1  # post-embed + N block outputs
+        if layer < 0 or layer >= n_pre:
+            raise ValueError(
+                f"layer={layer} out of range; expected -1 (post-norm) or 0..{n_pre - 1}"
+            )
+        return states[layer]
+
+    @staticmethod
+    def _pool(h, pool: str):
+        if pool == "mean":
+            return h.mean(dim=1)
+        if pool == "last":
+            return h[:, -1, :]
+        raise ValueError(f"Unknown pool={pool!r}")
 
     # ------------------------------------------------------------------
     # Execute / check
