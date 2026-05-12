@@ -118,5 +118,6 @@ analyses:
     embedding_pool: mean
     n_io_shown: 11
     order: 1
+    acquired_dir: outputs/analysis/study_v1/rule_acquisition
     surface_baseline: true
     conditional: false   # off — speeds up wide sweep; flip on for the headline run

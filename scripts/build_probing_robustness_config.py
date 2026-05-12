@@ -74,6 +74,10 @@ def main() -> None:
         {method_list}
             mpl_method: mpl_best
             acquired_method: mpl
+            # Point at the headline study_v1 rule_acquisition output instead of
+            # this sweep's run dir (which has no rule_acquisition of its own).
+            # Change this if your rule_acquisition was run under a different name.
+            acquired_dir: outputs/analysis/study_v1/rule_acquisition
             primitives: [MemorizeAll, Memorize, AntiUnify, Recurse, Variable, Delete]
             n_folds: 5
             n_perm: 50           # smaller null on a wide sweep; bump to 200 for the headline run

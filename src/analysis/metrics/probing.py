@@ -373,6 +373,12 @@ class ProbingAnalysis(Analysis):
     needs_embeddings: bool = True
     mpl_method: str = "mpl_best"
     acquired_method: str = "mpl"
+    # Optional override for where to read ``acquired.parquet`` from. Defaults
+    # to ``<output_dir>/<run_name>/rule_acquisition`` (same run). Set this when
+    # running probing under a different ``run_name`` than the rule_acquisition
+    # output you want to reuse (e.g. probe-robustness sweep reading the
+    # headline ``study_v1`` parquet).
+    acquired_dir: str | None = None
     primitives: list[str] | None = None
     n_folds: int = 5
     n_perm: int = 200
@@ -412,7 +418,12 @@ class ProbingAnalysis(Analysis):
             )
 
         # 2. Resolve the acquired-tasks set from rule_acquisition's parquet.
-        acq_dir = Path(cache.root).parent / "rule_acquisition"
+        # Honour an explicit override so a sweep run under a fresh run_name can
+        # still point at the headline rule_acquisition output.
+        if self.acquired_dir:
+            acq_dir = Path(self.acquired_dir).expanduser()
+        else:
+            acq_dir = Path(cache.root).parent / "rule_acquisition"
         acquired = mpl.acquired_tasks(acq_dir, method_name=self.acquired_method)
         # Restrict to tasks present in the bundle (intersect for safety).
         bundle_ids = set(bundle.task_ids)
