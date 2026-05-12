@@ -155,6 +155,7 @@ def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
     agg["xpos"] = agg["layer"].map(xpos)
     x_pos = [xpos[l] for l in layer_seq]
     x_labels = [_layer_tag(l) for l in layer_seq]
+    method_names = auroc["method"].unique()
 
     # Per-primitive: one panel per checkpoint.
     for prim in primitives:
@@ -175,7 +176,7 @@ def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
             ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
             ax.set_xticks(x_pos)
             ax.set_xticklabels(x_labels, rotation=30, ha="right")
-            ax.set_xlabel(ck)
+            ax.set_xlabel(_ckpt_label(ck, method_names))
             ax.set_ylim(0.4, 1.02)
         axes[0][0].set_ylabel(f"AUROC ({prim})")
         axes[0][-1].legend(fontsize=8, frameon=False, loc="lower right")
@@ -205,7 +206,7 @@ def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
             ax.set_xticks(x_pos)
             if i == len(primitives) - 1:
                 ax.set_xticklabels(x_labels, rotation=30, ha="right", fontsize=8)
-                ax.set_xlabel(ck, fontsize=9)
+                ax.set_xlabel(_ckpt_label(ck, method_names), fontsize=9)
             else:
                 ax.set_xticklabels([])
     handles, labels = axes[0][0].get_legend_handles_labels()
@@ -341,6 +342,7 @@ def plot_max_per_primitive(
     if n_p == 0 or n_m == 0:
         return False
 
+    method_names = auroc["method"].unique()
     fig, ax = plt.subplots(figsize=(max(6.0, 1.4 * n_p), 4.5))
     x = np.arange(n_p)
     width = 0.8 / max(n_m, 1)
@@ -350,7 +352,7 @@ def plot_max_per_primitive(
         yerr = (sub["std"].fillna(0).values
                 / np.sqrt(np.maximum(sub["count"].fillna(1).values, 1)))
         offset = (i - (n_m - 1) / 2) * width
-        ax.bar(x + offset, heights, width=width, label=ck,
+        ax.bar(x + offset, heights, width=width, label=_ckpt_label(ck, method_names),
                color=_ckpt_colour(ck), yerr=yerr, capsize=2)
         for j, prim in enumerate(primitives):
             row = sub.loc[prim] if prim in sub.index else None
