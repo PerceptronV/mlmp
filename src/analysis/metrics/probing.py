@@ -16,6 +16,7 @@ for functionally-meta-primitive structure in meta-learned representations.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -40,6 +41,140 @@ logger = logging.getLogger(__name__)
 
 
 _SURFACE_NAME = "surface_features"
+
+# Sweep method names emitted by ``scripts/build_probing_robustness_config.py``,
+# e.g. ``tx_enum_iw_enc_L2`` / ``tx_enrl_es_dec_post``. We use this to detect
+# whether the AUROC table came from a layer × source sweep and, if so, emit the
+# extra robustness plot alongside the headline figures.
+_SWEEP_NAME = re.compile(r"^tx_(?P<ckpt>[a-z0-9_]+?)_(?P<src>enc|dec)_(?P<tag>L\d+|post)$")
+
+
+def _parse_sweep_method(name: str) -> tuple[str, str, int] | None:
+    m = _SWEEP_NAME.match(name)
+    if not m:
+        return None
+    tag = m.group("tag")
+    layer = -1 if tag == "post" else int(tag[1:])
+    return m.group("ckpt"), m.group("src"), layer
+
+
+def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
+    """Emit per-primitive + grid plots of AUROC vs layer (encoder vs decoder).
+
+    Returns ``True`` if a robustness plot was written, ``False`` if no sweep
+    method names were detected (so callers can no-op silently). Used by
+    :meth:`ProbingResult.plot` and by ``scripts/plot_probing_robustness.py``.
+    """
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+
+    rows: list[dict] = []
+    for _, r in auroc.iterrows():
+        parsed = _parse_sweep_method(r["method"])
+        if parsed is None:
+            continue
+        ckpt, src, layer = parsed
+        rows.append({
+            "ckpt": ckpt, "src": src, "layer": layer,
+            "primitive": r["primitive"], "auroc": float(r["auroc"]),
+        })
+    if not rows:
+        return False
+
+    df = pd.DataFrame(rows)
+    agg = (
+        df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"]
+        .agg(["mean", "std", "count"])
+        .reset_index()
+    )
+    n_layers = max((l for l in agg["layer"] if l != -1), default=0)
+
+    def _xpos(layer: int) -> int:
+        return n_layers + 1 if layer == -1 else layer
+
+    def _xlabel(layer: int) -> str:
+        return "post-norm" if layer == -1 else f"L{layer}"
+
+    agg["xpos"] = agg["layer"].map(_xpos)
+    primitives = sorted(agg["primitive"].unique())
+    ckpts = sorted(agg["ckpt"].unique())
+    x_layers = sorted({(l, _xpos(l)) for l in agg["layer"]}, key=lambda t: t[1])
+    x_pos = [p for _, p in x_layers]
+    x_labels = [_xlabel(l) for l, _ in x_layers]
+
+    src_colour = {"enc": "#1f77b4", "dec": "#d62728"}
+    src_label = {"enc": "encoder", "dec": "decoder"}
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    # 1) Per-primitive figure: one panel per checkpoint.
+    for prim in primitives:
+        sub = agg[agg["primitive"] == prim]
+        if sub.empty:
+            continue
+        fig, axes = plt.subplots(1, len(ckpts), figsize=(3.4 * len(ckpts), 3.2), sharey=True)
+        if len(ckpts) == 1:
+            axes = [axes]
+        for ax, ck in zip(axes, ckpts):
+            for src in ("enc", "dec"):
+                s = sub[(sub["ckpt"] == ck) & (sub["src"] == src)].sort_values("xpos")
+                if s.empty:
+                    continue
+                yerr = (
+                    s["std"].fillna(0).values
+                    / np.sqrt(np.maximum(s["count"].fillna(1).values, 1))
+                )
+                ax.errorbar(
+                    s["xpos"], s["mean"], yerr=yerr, marker="o",
+                    color=src_colour[src], label=src_label[src], capsize=2,
+                )
+            ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(x_labels, rotation=30, ha="right")
+            ax.set_title(ck, fontsize=10)
+            ax.set_ylim(0.4, 1.02)
+        axes[0].set_ylabel(f"AUROC ({prim})")
+        axes[-1].legend(fontsize=8, frameon=False, loc="lower right")
+        fig.tight_layout()
+        fig.savefig(outdir / f"robustness_{prim}.pdf")
+        plt.close(fig)
+
+    # 2) Grid: rows = primitives, cols = checkpoints.
+    fig, axes = plt.subplots(
+        len(primitives), len(ckpts),
+        figsize=(2.8 * len(ckpts), 1.9 * len(primitives)),
+        sharey=True, sharex=True, squeeze=False,
+    )
+    for i, prim in enumerate(primitives):
+        for j, ck in enumerate(ckpts):
+            ax = axes[i][j]
+            sub = agg[(agg["primitive"] == prim) & (agg["ckpt"] == ck)]
+            for src in ("enc", "dec"):
+                s = sub[sub["src"] == src].sort_values("xpos")
+                if s.empty:
+                    continue
+                ax.plot(
+                    s["xpos"], s["mean"], marker="o", color=src_colour[src],
+                    label=src_label[src] if (i == 0 and j == 0) else None,
+                )
+            ax.axhline(0.5, color="gray", lw=0.5, alpha=0.5)
+            ax.set_ylim(0.4, 1.02)
+            if i == 0:
+                ax.set_title(ck, fontsize=9)
+            if j == 0:
+                ax.set_ylabel(prim, fontsize=9)
+            ax.set_xticks(x_pos)
+            if i == len(primitives) - 1:
+                ax.set_xticklabels(x_labels, rotation=30, ha="right", fontsize=8)
+            else:
+                ax.set_xticklabels([])
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", ncols=2, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout()
+    fig.savefig(outdir / "robustness_grid.pdf", bbox_inches="tight")
+    plt.close(fig)
+    return True
 
 
 @dataclass
@@ -225,6 +360,12 @@ class ProbingResult(AnalysisResult):
                 )
                 save_fig(fig, outdir, "bars_conditional.pdf")
 
+        # 4) Robustness sweep (additive): if methods follow the sweep naming
+        # convention ``tx_<ckpt>_<enc|dec>_<L\d+|post>``, emit per-primitive +
+        # grid plots of AUROC vs layer. No-op for non-sweep runs.
+        if plot_layer_robustness(self.auroc, outdir):
+            logger.info("ProbingResult: robustness plots written (sweep detected)")
+
 
 @dataclass
 class ProbingAnalysis(Analysis):
@@ -315,7 +456,7 @@ class ProbingAnalysis(Analysis):
             )
         Y_soft = np.stack(soft_labels, axis=0)                          # (N, P) in [0, 1]
         Y_bin = (Y_soft >= self.majority_threshold).astype(np.int8)     # b = (y ≥ τ)
-        N, P = Y_bin.shape
+        N, _P = Y_bin.shape
 
         # 4. Per-primitive base rates (under ``majority_threshold``). Drop
         # primitives with positive base rate below 10% — too few positives to
