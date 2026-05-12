@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pandas as pd  # type: ignore[import-untyped]
 
-from src.analysis.metrics.probing import plot_layer_robustness
+from src.analysis.metrics.probing import (
+    plot_layer_heatmaps,
+    plot_layer_robustness,
+    plot_max_per_primitive,
+)
 
 
 def main() -> None:
@@ -22,9 +26,11 @@ def main() -> None:
     args = ap.parse_args()
 
     auroc = pd.read_parquet(args.run_dir / "auroc.parquet")
-    wrote = plot_layer_robustness(auroc, args.run_dir)
-    if wrote:
-        print(f"Wrote robustness_*.pdf and robustness_grid.pdf to {args.run_dir}")
+    wrote_lines = plot_layer_robustness(auroc, args.run_dir)
+    wrote_heat = plot_layer_heatmaps(auroc, args.run_dir)
+    wrote_max = plot_max_per_primitive(auroc, args.run_dir)
+    if wrote_lines or wrote_heat or wrote_max:
+        print(f"Wrote robustness + heatmap + max-bars PDFs to {args.run_dir}")
     else:
         print(f"No sweep methods in {args.run_dir / 'auroc.parquet'} — nothing to plot.")
 
