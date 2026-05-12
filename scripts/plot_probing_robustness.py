@@ -28,9 +28,11 @@ def main() -> None:
 
     apply_rc()
     auroc = pd.read_parquet(args.run_dir / "auroc.parquet")
+    null_path = args.run_dir / "null.parquet"
+    null = pd.read_parquet(null_path) if null_path.exists() else None
     wrote_lines = plot_layer_robustness(auroc, args.run_dir)
     wrote_heat = plot_layer_heatmaps(auroc, args.run_dir)
-    wrote_max = plot_max_per_primitive(auroc, args.run_dir)
+    wrote_max = plot_max_per_primitive(auroc, args.run_dir, null=null)
     if wrote_lines or wrote_heat or wrote_max:
         print(f"Wrote robustness + heatmap + max-bars PDFs to {args.run_dir}")
     else:

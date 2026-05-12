@@ -75,6 +75,25 @@ def _ckpt_colour(ck: str) -> str:
     return colour_for(_CKPT_TO_METHOD.get(ck, ck))
 
 
+def _ckpt_label(ck: str, method_names) -> str:
+    """Friendly name for a sweep checkpoint, derived from the registered
+    ``Method.label`` of any sweep entry belonging to ``ck``.
+
+    Generator-produced labels look like ``"InWeight·Enum / enc·L0"``; we strip
+    the ``" / …"`` per-layer suffix. Falls back to the bare ``ck`` short id
+    when no label is registered (e.g. when re-plotting from disk without the
+    CLI to populate the label registry).
+    """
+    for name in method_names:
+        parsed = _parse_sweep_method(name)
+        if parsed is None or parsed[0] != ck:
+            continue
+        lbl = label_for(name)
+        if lbl != name and " / " in lbl:
+            return lbl.split(" / ", 1)[0]
+    return ck
+
+
 def _layer_tag(layer: int) -> str:
     return "post-norm" if layer == -1 else f"L{layer}"
 
@@ -264,6 +283,8 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
         figsize=(0.5 * len(all_x) * ncols + 2.5, 0.5 * len(primitives) * nrows + 1.8),
         squeeze=False, sharex=True, sharey=True,
     )
+    # Friendly labels from the registered Method.label, falling back to ck id.
+    method_names = auroc["method"].unique()
     last_im = None
     for k, ck in enumerate(ckpts):
         r, c = divmod(k, ncols)
@@ -271,7 +292,7 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
         wide = matrix_for(ck)
         last_im = ax.imshow(wide.values, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
         ax.axvline(per_side - 0.5, color="white", lw=1.0)
-        ax.set_xlabel(ck, fontsize=10)
+        ax.set_xlabel(_ckpt_label(ck, method_names), fontsize=10)
         if c == 0:
             ax.set_yticks(range(len(primitives)))
             ax.set_yticklabels(primitives, fontsize=8)
@@ -287,12 +308,19 @@ def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
     return True
 
 
-def plot_max_per_primitive(auroc: pd.DataFrame, outdir: Path) -> bool:
+def plot_max_per_primitive(
+    auroc: pd.DataFrame,
+    outdir: Path,
+    null: pd.DataFrame | None = None,
+) -> bool:
     """Bars: best (source, layer) AUROC per (checkpoint, primitive).
 
     Bar colours follow the project palette via ``colour_for`` (mapped from
-    sweep ckpt id → canonical headline-method name), so the same checkpoint
-    reads as the same colour across all plots. No-op outside the sweep.
+    sweep ckpt id → canonical headline-method name). Error bars are SEMs over
+    folds for the winning (src, layer). When ``null`` is provided (the
+    permutation-null parquet), dashed lines mark the per-primitive 95th
+    percentile across pooled sweep-method null AUROCs — same convention as
+    ``bars_per_primitive``. No-op outside the sweep.
     """
     import matplotlib.pyplot as plt  # type: ignore[import-untyped]
 
@@ -301,9 +329,13 @@ def plot_max_per_primitive(auroc: pd.DataFrame, outdir: Path) -> bool:
         return False
 
     primitives, ckpts, _, _ = _sweep_axes(df)
-    agg = df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"].mean().reset_index()
-    # idxmax over the grouped subframe picks the winning (src, layer) per pair.
-    top = agg.loc[agg.groupby(["ckpt", "primitive"])["auroc"].idxmax()].reset_index(drop=True)
+    # Aggregate with mean/std/count so we can both pick the winning (src, layer)
+    # *and* report its fold-level error bar in one pass.
+    agg = (
+        df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"]
+        .agg(["mean", "std", "count"]).reset_index()
+    )
+    top = agg.loc[agg.groupby(["ckpt", "primitive"])["mean"].idxmax()].reset_index(drop=True)
 
     n_p, n_m = len(primitives), len(ckpts)
     if n_p == 0 or n_m == 0:
@@ -314,18 +346,35 @@ def plot_max_per_primitive(auroc: pd.DataFrame, outdir: Path) -> bool:
     width = 0.8 / max(n_m, 1)
     for i, ck in enumerate(ckpts):
         sub = top[top["ckpt"] == ck].set_index("primitive").reindex(primitives)
+        heights = sub["mean"].values.astype(float)
+        yerr = (sub["std"].fillna(0).values
+                / np.sqrt(np.maximum(sub["count"].fillna(1).values, 1)))
         offset = (i - (n_m - 1) / 2) * width
-        ax.bar(x + offset, sub["auroc"].values.astype(float),
-               width=width, label=ck, color=_ckpt_colour(ck))
+        ax.bar(x + offset, heights, width=width, label=ck,
+               color=_ckpt_colour(ck), yerr=yerr, capsize=2)
         for j, prim in enumerate(primitives):
             row = sub.loc[prim] if prim in sub.index else None
-            if row is None or pd.isna(row["auroc"]):
+            if row is None or pd.isna(row["mean"]):
                 continue
             ax.text(
-                x[j] + offset, float(row["auroc"]) + 0.01,
+                x[j] + offset, float(row["mean"]) + float(yerr[j]) + 0.01,
                 f"{row['src']}·{_layer_tag(int(row['layer']))}",
                 ha="center", va="bottom", fontsize=6, rotation=90,
             )
+
+    # Per-primitive 95th-percentile null line, restricted to sweep methods so
+    # the threshold matches what produced the bars (and is comparable to
+    # bars_per_primitive's dashed line for the headline run).
+    if null is not None and not null.empty:
+        sweep_null = null[null["method"].map(lambda m: _parse_sweep_method(m) is not None)]
+        if not sweep_null.empty:
+            null_q = sweep_null.groupby("primitive")["auroc"].quantile(0.95).reindex(primitives)
+            for j, prim in enumerate(primitives):
+                v = float(null_q.loc[prim]) if prim in null_q.index and not np.isnan(null_q.loc[prim]) else np.nan
+                if np.isnan(v):
+                    continue
+                ax.hlines(v, x[j] - 0.4, x[j] + 0.4, colors="black",
+                          linestyles="dashed", lw=1.0)
 
     ax.set_xticks(x)
     ax.set_xticklabels(primitives, rotation=0, fontsize=8)
@@ -528,7 +577,7 @@ class ProbingResult(AnalysisResult):
         if plot_layer_robustness(self.auroc, outdir):
             logger.info("ProbingResult: robustness plots written (sweep detected)")
             plot_layer_heatmaps(self.auroc, outdir)
-            plot_max_per_primitive(self.auroc, outdir)
+            plot_max_per_primitive(self.auroc, outdir, null=self.null)
 
 
 @dataclass
