@@ -16,6 +16,8 @@ for functionally-meta-primitive structure in meta-learned representations.
 from __future__ import annotations
 
 import logging
+import math
+import re
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -27,7 +29,7 @@ from tqdm import tqdm
 
 from ..capability import Capability
 from ..methods.mpl import META_PRIMITIVE_VOCAB
-from ..plotting import apply_rc, colour_for, save_fig
+from ..plotting import apply_rc, colour_for, label_for, save_fig
 from ..stats import delong_auroc_test, paired_wilcoxon
 from .base import Analysis, AnalysisResult
 
@@ -41,6 +43,352 @@ logger = logging.getLogger(__name__)
 
 _SURFACE_NAME = "surface_features"
 
+# Sweep method names emitted by ``scripts/build_probing_robustness_config.py``,
+# e.g. ``tx_enum_iw_enc_L2`` / ``tx_enrl_es_dec_post``. We use this to detect
+# whether the AUROC table came from a layer × source sweep and, if so, emit the
+# extra robustness plot alongside the headline figures.
+_SWEEP_NAME = re.compile(r"^tx_(?P<ckpt>[a-z0-9_]+?)_(?P<src>enc|dec)_(?P<tag>L\d+|post)$")
+
+
+def _parse_sweep_method(name: str) -> tuple[str, str, int] | None:
+    m = _SWEEP_NAME.match(name)
+    if not m:
+        return None
+    tag = m.group("tag")
+    layer = -1 if tag == "post" else int(tag[1:])
+    return m.group("ckpt"), m.group("src"), layer
+
+
+# Map the sweep-config's short ckpt ids back to the canonical method names
+# used in the headline plotting palette. This lets the sweep plots reuse
+# ``colour_for`` (defined in ..plotting) so the same checkpoint reads as the
+# same colour everywhere.
+_CKPT_TO_METHOD = {
+    "enum_iw": "tx_enum_in_weight",
+    "enum_es": "tx_enum_easy_shuf",
+    "enrl_iw": "tx_enrl_in_weight",
+    "enrl_es": "tx_enrl_easy_shuf",
+}
+
+
+def _ckpt_colour(ck: str) -> str:
+    return colour_for(_CKPT_TO_METHOD.get(ck, ck))
+
+
+def _ckpt_label(ck: str, method_names) -> str:
+    """Friendly name for a sweep checkpoint, derived from the registered
+    ``Method.label`` of any sweep entry belonging to ``ck``.
+
+    Generator-produced labels look like ``"InWeight·Enum / enc·L0"``; we strip
+    the ``" / …"`` per-layer suffix. Falls back to the bare ``ck`` short id
+    when no label is registered (e.g. when re-plotting from disk without the
+    CLI to populate the label registry).
+    """
+    for name in method_names:
+        parsed = _parse_sweep_method(name)
+        if parsed is None or parsed[0] != ck:
+            continue
+        lbl = label_for(name)
+        if lbl != name and " / " in lbl:
+            return lbl.split(" / ", 1)[0]
+    return ck
+
+
+def _layer_tag(layer: int) -> str:
+    return "post-norm" if layer == -1 else f"L{layer}"
+
+
+def _sweep_long(auroc: pd.DataFrame) -> pd.DataFrame:
+    """Parse rows whose ``method`` follows the sweep convention into a
+    long-form ``(ckpt, src, layer, primitive, auroc)`` dataframe. Empty
+    return signals "not a sweep — caller should no-op".
+    """
+    rows: list[dict] = []
+    for _, r in auroc.iterrows():
+        parsed = _parse_sweep_method(r["method"])
+        if parsed is None:
+            continue
+        ckpt, src, layer = parsed
+        rows.append({
+            "ckpt": ckpt, "src": src, "layer": layer,
+            "primitive": r["primitive"], "auroc": float(r["auroc"]),
+        })
+    return pd.DataFrame(rows)
+
+
+def _sweep_axes(df: pd.DataFrame) -> tuple[list[str], list[str], int, list[int]]:
+    """Stable orderings derived from a long-form sweep frame.
+
+    Returns ``(primitives, ckpts, n_layers, layer_seq)`` where ``primitives``
+    follow ``META_PRIMITIVE_VOCAB`` insertion order (extras alpha-sorted) and
+    ``layer_seq`` is ``[0, 1, ..., n_layers, -1]`` (post-norm placed last).
+    """
+    seen = set(df["primitive"].unique())
+    primitives = [p for p in META_PRIMITIVE_VOCAB.keys() if p in seen]
+    primitives += sorted(seen - set(primitives))
+    ckpts = sorted(df["ckpt"].unique())
+    n_layers = max((l for l in df["layer"] if l != -1), default=0)
+    return primitives, ckpts, n_layers, list(range(n_layers + 1)) + [-1]
+
+
+_SRC_COLOUR = {"enc": "#1f77b4", "dec": "#d62728"}
+_SRC_LABEL = {"enc": "encoder", "dec": "decoder"}
+
+
+def plot_layer_robustness(auroc: pd.DataFrame, outdir: Path) -> bool:
+    """Per-primitive + grid plots of AUROC vs layer (encoder vs decoder).
+
+    Returns ``False`` (no-op) when ``auroc`` contains no sweep methods.
+    """
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+
+    df = _sweep_long(auroc)
+    if df.empty:
+        return False
+
+    primitives, ckpts, n_layers, layer_seq = _sweep_axes(df)
+    agg = (
+        df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"]
+        .agg(["mean", "std", "count"]).reset_index()
+    )
+    xpos = {l: (n_layers + 1 if l == -1 else l) for l in layer_seq}
+    agg["xpos"] = agg["layer"].map(xpos)
+    x_pos = [xpos[l] for l in layer_seq]
+    x_labels = [_layer_tag(l) for l in layer_seq]
+    method_names = auroc["method"].unique()
+
+    # Per-primitive: one panel per checkpoint.
+    for prim in primitives:
+        sub = agg[agg["primitive"] == prim]
+        if sub.empty:
+            continue
+        fig, axes = plt.subplots(1, len(ckpts), figsize=(3.4 * len(ckpts), 3.2),
+                                 sharey=True, squeeze=False)
+        for ax, ck in zip(axes[0], ckpts):
+            for src in ("enc", "dec"):
+                s = sub[(sub["ckpt"] == ck) & (sub["src"] == src)].sort_values("xpos")
+                if s.empty:
+                    continue
+                yerr = (s["std"].fillna(0).values
+                        / np.sqrt(np.maximum(s["count"].fillna(1).values, 1)))
+                ax.errorbar(s["xpos"], s["mean"], yerr=yerr, marker="o",
+                            color=_SRC_COLOUR[src], label=_SRC_LABEL[src], capsize=2)
+            ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(x_labels, rotation=30, ha="right")
+            ax.set_xlabel(_ckpt_label(ck, method_names))
+            ax.set_ylim(0.4, 1.02)
+        axes[0][0].set_ylabel(f"AUROC ({prim})")
+        axes[0][-1].legend(fontsize=8, frameon=False, loc="lower right")
+        fig.tight_layout()
+        save_fig(fig, outdir, f"robustness_{prim}")
+
+    # Grid: rows = primitives, cols = checkpoints.
+    fig, axes = plt.subplots(
+        len(primitives), len(ckpts),
+        figsize=(2.8 * len(ckpts), 1.9 * len(primitives)),
+        sharey=True, sharex=True, squeeze=False,
+    )
+    for i, prim in enumerate(primitives):
+        for j, ck in enumerate(ckpts):
+            ax = axes[i][j]
+            sub = agg[(agg["primitive"] == prim) & (agg["ckpt"] == ck)]
+            for src in ("enc", "dec"):
+                s = sub[sub["src"] == src].sort_values("xpos")
+                if s.empty:
+                    continue
+                ax.plot(s["xpos"], s["mean"], marker="o", color=_SRC_COLOUR[src],
+                        label=_SRC_LABEL[src] if (i == 0 and j == 0) else None)
+            ax.axhline(0.5, color="gray", lw=0.5, alpha=0.5)
+            ax.set_ylim(0.4, 1.02)
+            if j == 0:
+                ax.set_ylabel(prim, fontsize=9)
+            ax.set_xticks(x_pos)
+            if i == len(primitives) - 1:
+                ax.set_xticklabels(x_labels, rotation=30, ha="right", fontsize=8)
+                ax.set_xlabel(_ckpt_label(ck, method_names), fontsize=9)
+            else:
+                ax.set_xticklabels([])
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc="upper center", ncols=2, frameon=False,
+                   bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout()
+    save_fig(fig, outdir, "robustness_grid")
+    return True
+
+
+def plot_layer_heatmaps(auroc: pd.DataFrame, outdir: Path) -> bool:
+    """Per-checkpoint heatmaps + auto-arranged grid (shared colour scale).
+
+    X axis spans encoder layers then decoder layers; Y axis is metaprimitives.
+    Returns ``False`` (no-op) outside the sweep.
+    """
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+
+    df = _sweep_long(auroc)
+    if df.empty:
+        return False
+
+    primitives, ckpts, n_layers, layer_seq = _sweep_axes(df)
+    agg = df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"].mean().reset_index()
+
+    per_side = n_layers + 2  # L0..LN + post-norm
+
+    def xpos(src: str, layer: int) -> int:
+        within = (n_layers + 1) if layer == -1 else layer
+        return (0 if src == "enc" else per_side) + within
+
+    agg["xpos"] = agg.apply(lambda r: xpos(r["src"], r["layer"]), axis=1)
+    all_x = list(range(2 * per_side))
+    all_xlabels = [f"{src}·{_layer_tag(l)}" for src in ("enc", "dec") for l in layer_seq]
+
+    # Shared colour scale across every emitted figure for cross-model comparison.
+    vmin = float(agg["auroc"].min())
+    vmax = float(agg["auroc"].max())
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
+        vmin, vmax = 0.0, 1.0
+    midpoint = 0.5 * (vmin + vmax)
+
+    def matrix_for(ck: str) -> pd.DataFrame:
+        m = agg[agg["ckpt"] == ck].pivot_table(index="primitive", columns="xpos", values="auroc")
+        return m.reindex(index=primitives, columns=all_x)
+
+    # Per-checkpoint heatmap (filename carries identity, no title).
+    for ck in ckpts:
+        wide = matrix_for(ck)
+        fig, ax = plt.subplots(figsize=(0.55 * len(all_x) + 2.5, 0.55 * len(primitives) + 1.8))
+        im = ax.imshow(wide.values, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
+        ax.set_xticks(all_x)
+        ax.set_xticklabels(all_xlabels, rotation=30, ha="right", fontsize=8)
+        ax.set_yticks(range(len(primitives)))
+        ax.set_yticklabels(primitives)
+        ax.axvline(per_side - 0.5, color="white", lw=1.2)  # encoder | decoder split
+        for i in range(wide.shape[0]):
+            for j in range(wide.shape[1]):
+                v = wide.values[i, j]
+                if np.isnan(v):
+                    continue
+                ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=7,
+                        color="white" if v < midpoint else "black")
+        fig.colorbar(im, ax=ax, label="AUROC", shrink=0.85)
+        fig.tight_layout()
+        save_fig(fig, outdir, f"heatmap_layers_{ck}")
+
+    # Auto-arranged grid (per-axes xlabel carries ckpt identity in place of titles).
+    n = len(ckpts)
+    ncols = max(1, math.ceil(math.sqrt(n)))
+    nrows = max(1, math.ceil(n / ncols))
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(0.5 * len(all_x) * ncols + 2.5, 0.5 * len(primitives) * nrows + 1.8),
+        squeeze=False, sharex=True, sharey=True,
+    )
+    # Friendly labels from the registered Method.label, falling back to ck id.
+    method_names = auroc["method"].unique()
+    last_im = None
+    for k, ck in enumerate(ckpts):
+        r, c = divmod(k, ncols)
+        ax = axes[r][c]
+        wide = matrix_for(ck)
+        last_im = ax.imshow(wide.values, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
+        ax.axvline(per_side - 0.5, color="white", lw=1.0)
+        ax.set_xlabel(_ckpt_label(ck, method_names), fontsize=10)
+        if c == 0:
+            ax.set_yticks(range(len(primitives)))
+            ax.set_yticklabels(primitives, fontsize=8)
+        if r == nrows - 1:
+            ax.set_xticks(all_x)
+            ax.set_xticklabels(all_xlabels, rotation=30, ha="right", fontsize=7)
+    for k in range(n, nrows * ncols):
+        r, c = divmod(k, ncols)
+        axes[r][c].axis("off")
+    if last_im is not None:
+        fig.colorbar(last_im, ax=axes.ravel().tolist(), shrink=0.7, label="AUROC")
+    save_fig(fig, outdir, "heatmap_layers_grid")
+    return True
+
+
+def plot_max_per_primitive(
+    auroc: pd.DataFrame,
+    outdir: Path,
+    null: pd.DataFrame | None = None,
+) -> bool:
+    """Bars: best (source, layer) AUROC per (checkpoint, primitive).
+
+    Bar colours follow the project palette via ``colour_for`` (mapped from
+    sweep ckpt id → canonical headline-method name). Error bars are SEMs over
+    folds for the winning (src, layer). When ``null`` is provided (the
+    permutation-null parquet), dashed lines mark the per-primitive 95th
+    percentile across pooled sweep-method null AUROCs — same convention as
+    ``bars_per_primitive``. No-op outside the sweep.
+    """
+    import matplotlib.pyplot as plt  # type: ignore[import-untyped]
+
+    df = _sweep_long(auroc)
+    if df.empty:
+        return False
+
+    primitives, ckpts, _, _ = _sweep_axes(df)
+    # Aggregate with mean/std/count so we can both pick the winning (src, layer)
+    # *and* report its fold-level error bar in one pass.
+    agg = (
+        df.groupby(["ckpt", "src", "layer", "primitive"])["auroc"]
+        .agg(["mean", "std", "count"]).reset_index()
+    )
+    top = agg.loc[agg.groupby(["ckpt", "primitive"])["mean"].idxmax()].reset_index(drop=True)
+
+    n_p, n_m = len(primitives), len(ckpts)
+    if n_p == 0 or n_m == 0:
+        return False
+
+    method_names = auroc["method"].unique()
+    fig, ax = plt.subplots(figsize=(max(6.0, 1.4 * n_p), 4.5))
+    x = np.arange(n_p)
+    width = 0.8 / max(n_m, 1)
+    for i, ck in enumerate(ckpts):
+        sub = top[top["ckpt"] == ck].set_index("primitive").reindex(primitives)
+        heights = sub["mean"].values.astype(float)
+        yerr = (sub["std"].fillna(0).values
+                / np.sqrt(np.maximum(sub["count"].fillna(1).values, 1)))
+        offset = (i - (n_m - 1) / 2) * width
+        ax.bar(x + offset, heights, width=width, label=_ckpt_label(ck, method_names),
+               color=_ckpt_colour(ck), yerr=yerr, capsize=2)
+        for j, prim in enumerate(primitives):
+            row = sub.loc[prim] if prim in sub.index else None
+            if row is None or pd.isna(row["mean"]):
+                continue
+            ax.text(
+                x[j] + offset, float(row["mean"]) + float(yerr[j]) + 0.01,
+                f"{row['src']}·{_layer_tag(int(row['layer']))}",
+                ha="center", va="bottom", fontsize=6, rotation=90,
+            )
+
+    # Per-primitive 95th-percentile null line, restricted to sweep methods so
+    # the threshold matches what produced the bars (and is comparable to
+    # bars_per_primitive's dashed line for the headline run).
+    if null is not None and not null.empty:
+        sweep_null = null[null["method"].map(lambda m: _parse_sweep_method(m) is not None)]
+        if not sweep_null.empty:
+            null_q = sweep_null.groupby("primitive")["auroc"].quantile(0.95).reindex(primitives)
+            for j, prim in enumerate(primitives):
+                v = float(null_q.loc[prim]) if prim in null_q.index and not np.isnan(null_q.loc[prim]) else np.nan
+                if np.isnan(v):
+                    continue
+                ax.hlines(v, x[j] - 0.4, x[j] + 0.4, colors="black",
+                          linestyles="dashed", lw=1.0)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(primitives, rotation=0, fontsize=8)
+    ax.set_ylim(0.0, 1.10)
+    ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
+    ax.set_ylabel("Best AUROC across layers (enc ∪ dec)")
+    ax.legend(fontsize=8, ncols=min(n_m, 4), loc="upper center",
+              bbox_to_anchor=(0.5, -0.10), frameon=False)
+    fig.tight_layout()
+    save_fig(fig, outdir, "bars_max_per_primitive")
+    return True
+
 
 @dataclass
 class ProbingResult(AnalysisResult):
@@ -48,6 +396,7 @@ class ProbingResult(AnalysisResult):
     null: pd.DataFrame               # (method, primitive, perm_idx, auroc)
     base: pd.DataFrame               # (primitive, base_rate, n_acquired_tasks)
     cross_method: pd.DataFrame       # (method_a, method_b, primitive, auroc_a, auroc_b, p_delong, p_wilcoxon)
+    auroc_conditional: pd.DataFrame = field(default_factory=pd.DataFrame)  # (method, primitive, auroc, n_eligible, n_total)
     config: dict = field(default_factory=dict)
 
     def save(self, outdir: Path) -> None:
@@ -59,6 +408,8 @@ class ProbingResult(AnalysisResult):
         self.base.to_parquet(outdir / "base.parquet", index=False)
         if not self.cross_method.empty:
             self.cross_method.to_csv(outdir / "cross_method.csv", index=False)
+        if not self.auroc_conditional.empty:
+            self.auroc_conditional.to_parquet(outdir / "auroc_conditional.parquet", index=False)
         # Stash the config so re-plotting from disk can reconstruct labels etc.
         import json
 
@@ -106,7 +457,7 @@ class ProbingResult(AnalysisResult):
         ax.set_xticks(range(wide.shape[1]))
         ax.set_xticklabels(wide.columns, rotation=30, ha="right")
         ax.set_yticks(range(wide.shape[0]))
-        ax.set_yticklabels(wide.index)
+        ax.set_yticklabels([label_for(m) for m in wide.index])
         for i in range(wide.shape[0]):
             for j in range(wide.shape[1]):
                 v = wide.values[i, j]
@@ -144,7 +495,7 @@ class ProbingResult(AnalysisResult):
                 x + (i - (n_m - 1) / 2) * width,
                 heights,
                 width=width,
-                label=m,
+                label=label_for(m),
                 color=colour_for(m),
                 yerr=yerr,
                 capsize=2,
@@ -167,11 +518,68 @@ class ProbingResult(AnalysisResult):
         labels = [f"{p}\n(rate={rate_by.get(p, float('nan')):.2f})" for p in primitives]
         ax.set_xticks(x)
         ax.set_xticklabels(labels, rotation=0, fontsize=8)
-        ax.set_ylim(0.4, 1.02)
+        ax.set_ylim(0.0, 1.02)
         ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
         ax.set_ylabel("AUROC (5-fold CV)")
-        ax.legend(fontsize=8, ncols=min(n_m, 4))
+        ax.legend(
+            fontsize=8,
+            ncols=min(n_m, 3),
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.12),
+            frameon=False,
+        )
         save_fig(fig, outdir, "bars_per_primitive.pdf")
+
+        # 3) Conditional bars: AUROC restricted to tasks where MPL AND the
+        # method were both correct at label_trial. Mirrors error_similarity's
+        # bars_conditional. surface_features is excluded (no model correctness).
+        if not self.auroc_conditional.empty:
+            cond = self.auroc_conditional.copy()
+            cond_primitives = [p for p in primitives if p in set(cond["primitive"])]
+            cond_methods = [m for m in methods if m in set(cond["method"]) and m != _SURFACE_NAME]
+            n_pc = len(cond_primitives)
+            n_mc = len(cond_methods)
+            if n_pc and n_mc:
+                fig, ax = plt.subplots(figsize=(max(6.0, 1.4 * n_pc), 4.5))
+                xc = np.arange(n_pc)
+                wc = 0.8 / max(n_mc, 1)
+                cond_wide = cond.pivot(index="method", columns="primitive", values="auroc")
+                for i, m in enumerate(cond_methods):
+                    heights = [
+                        float(cond_wide.loc[m, p]) if (m in cond_wide.index and p in cond_wide.columns) else np.nan
+                        for p in cond_primitives
+                    ]
+                    ax.bar(
+                        xc + (i - (n_mc - 1) / 2) * wc,
+                        heights,
+                        width=wc,
+                        label=label_for(m),
+                        color=colour_for(m),
+                    )
+                # n_eligible (min across methods per primitive) annotation.
+                n_elig = cond.groupby("primitive")["n_eligible"].min().reindex(cond_primitives)
+                cond_labels = [f"{p}\n(n={int(n_elig.loc[p])})" for p in cond_primitives]
+                ax.set_xticks(xc)
+                ax.set_xticklabels(cond_labels, rotation=0, fontsize=8)
+                ax.set_ylim(0.0, 1.02)
+                ax.axhline(0.5, color="gray", lw=0.6, alpha=0.6)
+                ax.set_ylabel("AUROC (MPL-correct ∩ method-correct)")
+                ax.legend(
+                    fontsize=8,
+                    ncols=min(n_mc, 3),
+                    loc="upper center",
+                    bbox_to_anchor=(0.5, -0.12),
+                    frameon=False,
+                )
+                save_fig(fig, outdir, "bars_conditional.pdf")
+
+        # 4) Robustness sweep (additive): if methods follow the sweep naming
+        # convention ``tx_<ckpt>_<enc|dec>_<L\d+|post>``, emit per-primitive +
+        # grid plots of AUROC vs layer. No-op for non-sweep runs.
+        if plot_layer_robustness(self.auroc, outdir):
+            logger.info("ProbingResult: robustness plots written (sweep detected)")
+            plot_layer_heatmaps(self.auroc, outdir)
+            plot_max_per_primitive(self.auroc, outdir, null=self.null)
 
 
 @dataclass
@@ -180,6 +588,12 @@ class ProbingAnalysis(Analysis):
     needs_embeddings: bool = True
     mpl_method: str = "mpl_best"
     acquired_method: str = "mpl"
+    # Optional override for where to read ``acquired.parquet`` from. Defaults
+    # to ``<output_dir>/<run_name>/rule_acquisition`` (same run). Set this when
+    # running probing under a different ``run_name`` than the rule_acquisition
+    # output you want to reuse (e.g. probe-robustness sweep reading the
+    # headline ``study_v1`` parquet).
+    acquired_dir: str | None = None
     primitives: list[str] | None = None
     n_folds: int = 5
     n_perm: int = 200
@@ -191,6 +605,12 @@ class ProbingAnalysis(Analysis):
     surface_baseline: bool = True
     random_state: int = 0
     label_trial: int = 11
+    # Additive: when True, also compute per-(method, primitive) AUROC on the
+    # subset of tasks where the probe method itself was correct at label_trial.
+    # The full task set is already MPL-correct (acquired_on ≤ label_trial), so
+    # this conditions on the model also getting the task right. Triggers a
+    # prediction pass for each embed method (cached).
+    conditional: bool = False
 
     def run(
         self,
@@ -213,7 +633,12 @@ class ProbingAnalysis(Analysis):
             )
 
         # 2. Resolve the acquired-tasks set from rule_acquisition's parquet.
-        acq_dir = Path(cache.root).parent / "rule_acquisition"
+        # Honour an explicit override so a sweep run under a fresh run_name can
+        # still point at the headline rule_acquisition output.
+        if self.acquired_dir:
+            acq_dir = Path(self.acquired_dir).expanduser()
+        else:
+            acq_dir = Path(cache.root).parent / "rule_acquisition"
         acquired = mpl.acquired_tasks(acq_dir, method_name=self.acquired_method)
         # Restrict to tasks present in the bundle (intersect for safety).
         bundle_ids = set(bundle.task_ids)
@@ -257,13 +682,13 @@ class ProbingAnalysis(Analysis):
             )
         Y_soft = np.stack(soft_labels, axis=0)                          # (N, P) in [0, 1]
         Y_bin = (Y_soft >= self.majority_threshold).astype(np.int8)     # b = (y ≥ τ)
-        N, P = Y_bin.shape
+        N, _P = Y_bin.shape
 
         # 4. Per-primitive base rates (under ``majority_threshold``). Drop
-        # primitives whose positive base rate is < 5% or > 95% — too few
-        # examples on one side to fit a probe meaningfully (and the same 5%
-        # rule used to drop ``Compose`` in §3). Also drop primitives where
-        # min(pos, neg) < n_folds, which would make stratified CV impossible.
+        # primitives with positive base rate below 10% — too few positives to
+        # fit a probe meaningfully. No upper-bound filter: high-rate primitives
+        # (eg. MemorizeAll at 0.82) are kept; they have few negatives but the
+        # AUROC is still interpretable.
         base_rate = Y_bin.mean(axis=0)
         base_rows = [
             {"primitive": p, "base_rate": float(base_rate[i]), "n_acquired_tasks": N}
@@ -275,19 +700,19 @@ class ProbingAnalysis(Analysis):
             n_pos = int(Y_bin[:, i].sum())
             n_neg = N - n_pos
             rate = float(base_rate[i])
-            if rate < 0.05 or rate > 0.95:
+            if rate < 0.10:
                 logger.warning(
-                    "ProbingAnalysis: primitive %s base rate %.3f outside [0.05, 0.95] "
+                    "ProbingAnalysis: primitive %s base rate %.3f < 0.10 "
                     "(under majority_threshold=%.2f) — skipping.",
                     p, rate, self.majority_threshold,
                 )
                 continue
             if min(n_pos, n_neg) < self.n_folds:
                 logger.warning(
-                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — < n_folds; skipping.",
-                    p, n_pos, n_neg,
+                    "ProbingAnalysis: primitive %s has %d/%d pos/neg — < n_folds=%d; "
+                    "some folds will be skipped, AUROC will be noisy.",
+                    p, n_pos, n_neg, self.n_folds,
                 )
-                continue
             valid_primitives.append(p)
             valid_idx.append(i)
 
@@ -364,7 +789,10 @@ class ProbingAnalysis(Analysis):
         null_rows: list[dict] = []
 
         def _fit_probe(Xs: np.ndarray, b: np.ndarray, ys: np.ndarray, tr_idx: np.ndarray):
-            clf = LogisticRegression(C=1.0, solver="liblinear", max_iter=1000)
+            clf = LogisticRegression(
+                C=1.0, solver="liblinear", max_iter=1000,
+                random_state=self.random_state,
+            )
             if self.label_aggregation == "soft":
                 X_tr = Xs[tr_idx]
                 ys_tr = ys[tr_idx]
@@ -382,10 +810,21 @@ class ProbingAnalysis(Analysis):
             clf.fit(Xs[tr_idx], b[tr_idx])
             return clf
 
+        # Total LR fits per (method, primitive): n_folds (CV) + n_perm * n_folds
+        # (null). With 48 methods × ~6 valid primitives × (5 + 50 × 5), this is
+        # the slow phase after embeddings are cached — surface a pbar with
+        # per-pair ETA so the wait time is visible.
+        fit_pbar = tqdm(
+            total=len(embeddings) * len(valid_primitives),
+            desc="probe fits (CV + perm null)",
+            leave=True,
+            unit="pair",
+        )
         for method_name, X in embeddings.items():
             scaler = StandardScaler()
             Xs = scaler.fit_transform(X)
             for i, p in zip(valid_idx, valid_primitives):
+                fit_pbar.set_postfix_str(f"{method_name}:{p}")
                 b = Y_bin[:, i]
                 ys = Y_soft[:, i].astype(np.float64)
                 # 5-fold stratified CV. Stratification key is ``b`` regardless
@@ -434,6 +873,8 @@ class ProbingAnalysis(Analysis):
                             "perm_idx": int(perm),
                             "auroc": float(np.mean(fold_aucs)),
                         })
+                fit_pbar.update(1)
+        fit_pbar.close()
 
         auroc_df = pd.DataFrame(auroc_rows)
         null_df = pd.DataFrame(null_rows)
@@ -447,9 +888,16 @@ class ProbingAnalysis(Analysis):
         # Pre-build CV scores per (method, primitive) for DeLong. Uses the
         # same _fit_probe (so soft-mode probes power the DeLong test too).
         cv_scores: dict[tuple[str, str], np.ndarray] = {}
+        cv_pbar = tqdm(
+            total=len(embeddings) * len(valid_primitives),
+            desc="cv scores (DeLong)",
+            leave=True,
+            unit="pair",
+        )
         for method_name, X in embeddings.items():
             Xs = StandardScaler().fit_transform(X)
             for i, p in zip(valid_idx, valid_primitives):
+                cv_pbar.set_postfix_str(f"{method_name}:{p}")
                 b = Y_bin[:, i]
                 ys = Y_soft[:, i].astype(np.float64)
                 skf = StratifiedKFold(n_splits=self.n_folds, shuffle=True, random_state=self.random_state)
@@ -460,6 +908,8 @@ class ProbingAnalysis(Analysis):
                     clf = _fit_probe(Xs, b, ys, tr_idx)
                     scores_full[te_idx] = clf.predict_proba(Xs[te_idx])[:, 1]
                 cv_scores[(method_name, p)] = scores_full
+                cv_pbar.update(1)
+        cv_pbar.close()
 
         for a, b in combinations(method_names, 2):
             for p in valid_primitives:
@@ -492,11 +942,61 @@ class ProbingAnalysis(Analysis):
                 })
         cross_df = pd.DataFrame(cross_rows)
 
+        # 9. Conditional AUROC (additive — does not touch any prior output).
+        # Per (probe method, primitive), restrict eval to tasks where the
+        # probe method itself was correct at label_trial. The probing set is
+        # already MPL-correct (acquired_on ≤ label_trial via acquired.parquet),
+        # so this conditions on "MPL-correct ∩ method-correct". surface_features
+        # is excluded since it has no model-level correctness.
+        auroc_cond_rows: list[dict] = []
+        if self.conditional and embed_methods:
+            method_correct: dict[str, dict[str, bool]] = {}
+            for method in embed_methods:
+                per: dict[str, bool] = {}
+                for tid in kept_tasks:
+                    tr = trial_for[tid]
+                    pred = cache.get_or_compute(
+                        method, tr, lambda t, m=method: m.predict(t)
+                    )
+                    per[tid] = bool(pred.correct)
+                method_correct[method.name] = per
+            cache.flush()
+
+            for method_name, mc in method_correct.items():
+                for p in valid_primitives:
+                    pi = primitive_names.index(p)
+                    y = Y_bin[:, pi]
+                    scores = cv_scores.get((method_name, p))
+                    if scores is None:
+                        continue
+                    mask = np.array([
+                        (not np.isnan(scores[i])) and mc.get(kept_tasks[i], False)
+                        for i in range(N)
+                    ])
+                    n_eligible = int(mask.sum())
+                    n_total = int((~np.isnan(scores)).sum())
+                    if n_eligible < 5 or len(set(y[mask].tolist())) < 2:
+                        auc = float("nan")
+                    else:
+                        try:
+                            auc = float(roc_auc_score(y[mask], scores[mask]))
+                        except ValueError:
+                            auc = float("nan")
+                    auroc_cond_rows.append({
+                        "method": method_name,
+                        "primitive": p,
+                        "auroc": auc,
+                        "n_eligible": n_eligible,
+                        "n_total": n_total,
+                    })
+        auroc_cond_df = pd.DataFrame(auroc_cond_rows)
+
         return ProbingResult(
             auroc=auroc_df,
             null=null_df,
             base=base_df,
             cross_method=cross_df,
+            auroc_conditional=auroc_cond_df,
             config={
                 "n_folds": self.n_folds,
                 "n_perm": self.n_perm,
@@ -512,5 +1012,6 @@ class ProbingAnalysis(Analysis):
                 "mpl_method": self.mpl_method,
                 "acquired_method": self.acquired_method,
                 "surface_baseline": bool(self.surface_baseline),
+                "conditional": bool(self.conditional),
             },
         )

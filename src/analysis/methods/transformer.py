@@ -37,12 +37,22 @@ class TransformerMethod(Method):
     capabilities: ClassVar[Capability] = Capability.PREDICTIONS | Capability.EMBEDDINGS
 
     name: str = ""
+    label: str = ""
     run_name: str = ""
     mode: Literal["in-weight", "symbol-shuffling", "easy-symbol-shuffling"] = "in-weight"
     ckpt_select: str = "best_acc"     # "latest" | "best_loss" | "best_acc" | "epoch_<N>"
     device: str = "cuda"
     max_program_tokens: int = 80
     embedding_pool: Literal["mean", "last"] = "mean"
+    # Where to read the per-task embedding from. ``encoder`` pools the encoder
+    # output (original behavior); ``decoder`` greedy-decodes the program and
+    # teacher-forces the decoder on ``<start> + gen`` to get a decoder-side
+    # representation. Both honour ``embed_layer``.
+    embed_source: Literal["encoder", "decoder"] = "encoder"
+    # Layer to pool from. ``-1`` = final post-norm (original behavior). ``0`` =
+    # post-token-embedding (before any block). ``1..n_layers`` = output of
+    # block i (pre-final-norm). See ``Seq2SeqTransformer.encode_hidden``.
+    embed_layer: int = -1
     checkpoint_dir: str | Path = "checkpoints"
     exec_timeout: float = 1.0
     embed_n_io_shown: int = 11
@@ -130,6 +140,21 @@ class TransformerMethod(Method):
         model = model.to(self._device).eval()
         self._model = model
 
+        # One-line load summary for every transformer method. ``val_acc`` is
+        # whichever validation accuracy was stamped on the loaded checkpoint
+        # (so ``best_acc`` shows its best epoch's val accuracy; ``best_loss``
+        # shows the val_acc at the best-val_loss epoch, etc.). Missing values
+        # — typically from pre-accuracy-tracking checkpoints — show as ``n/a``.
+        epoch = int(ckpt.get("epoch", 0))
+        va = ckpt.get("val_accuracy")
+        vl = ckpt.get("val_loss")
+        va_s = f"{va:.4f}" if isinstance(va, (int, float)) else "n/a"
+        vl_s = f"{vl:.4f}" if isinstance(vl, (int, float)) else "n/a"
+        logger.info(
+            "[%s] loaded %s ckpt_select=%s epoch=%d val_acc=%s val_loss=%s",
+            self.name, ckpt_path.name, self.ckpt_select, epoch, va_s, vl_s,
+        )
+
         if self.mode == "easy-symbol-shuffling":
             class _NS:
                 pass
@@ -149,7 +174,15 @@ class TransformerMethod(Method):
             mtime = ckpt.stat().st_mtime if ckpt.exists() else 0.0
         except Exception:
             mtime = 0.0
-        return f"transformer::{self.run_name}::{self.mode}::{self.ckpt_select}::mtime={mtime}::pool={self.embedding_pool}"
+        base = (
+            f"transformer::{self.run_name}::{self.mode}::{self.ckpt_select}"
+            f"::mtime={mtime}::pool={self.embedding_pool}"
+        )
+        # Keep the original fingerprint when (source, layer) are at defaults so
+        # pre-existing probe caches aren't invalidated.
+        if self.embed_source == "encoder" and self.embed_layer == -1:
+            return base
+        return f"{base}::src={self.embed_source}::layer={self.embed_layer}"
 
     # ---- Per-trial deterministic RNG for symbol shuffling ----
     def _episode_rng(self, trial: Trial) -> random.Random:
@@ -255,5 +288,21 @@ class TransformerMethod(Method):
 
         name_map = self._name_map_for(trial)
         src_tokens = torch.tensor(io.tokenise_input(all_pairs, name_map), dtype=torch.long)
-        vec = io.encode_pool(self._model, src_tokens, self._device, pool=self.embedding_pool)
+        if self.embed_source == "decoder":
+            vec = io.decode_pool(
+                self._model,
+                src_tokens,
+                self._device,
+                pool=self.embedding_pool,
+                layer=self.embed_layer,
+                max_program_tokens=self.max_program_tokens,
+            )
+        else:
+            vec = io.encode_pool(
+                self._model,
+                src_tokens,
+                self._device,
+                pool=self.embedding_pool,
+                layer=self.embed_layer,
+            )
         return vec.numpy().astype(np.float32)

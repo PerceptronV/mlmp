@@ -46,6 +46,7 @@ _PALETTE_BASE = {
     "enumeration": "#7f7f7f",
     "metagol": "#e377c2",
     "robustfill": "#bcbd22",
+    "surface_features": "#e377c2",
 }
 
 
@@ -54,6 +55,32 @@ def colour_for(name: str) -> str:
         return _PALETTE_BASE[name]
     cycle = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
     return cycle[hash(name) % len(cycle)]
+
+
+# Display-label registry. Cache/data files are keyed on ``method.name`` (stable
+# identifier), but plots should show ``method.label`` (human-facing). The CLI
+# populates this once after building methods; ``label_for`` falls back to the
+# name if the registry is empty or the key isn't registered.
+_LABELS: dict[str, str] = {}
+
+
+def register_labels(methods) -> None:
+    """Register ``name -> label`` for plotting. Idempotent."""
+    for m in methods:
+        nm = getattr(m, "name", None)
+        if not nm:
+            continue
+        lab = getattr(m, "label", "") or nm
+        _LABELS[nm] = lab
+
+
+def label_for(name: str) -> str:
+    """Resolve a method ``name`` to its display label. Falls back to ``name``."""
+    return _LABELS.get(name, name)
+
+
+def labels_for(names) -> list[str]:
+    return [label_for(n) for n in names]
 
 
 def save_fig(fig, outdir: Path, name: str) -> Path:

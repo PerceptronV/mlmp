@@ -277,11 +277,40 @@ class Seq2SeqTransformer(nn.Module):
             h = layer(h)
         return self.encoder_norm(h)
 
+    def encode_hidden(self, src: torch.Tensor) -> list[torch.Tensor]:
+        """Return per-layer encoder hidden states.
+
+        Entries: ``[post-embed, blk_1, blk_2, ..., blk_N, post_norm]`` — length
+        ``n_layers + 2``. Pre-norm residuals mean ``blk_i`` is the layer-i
+        output before the final ``encoder_norm`` is applied (only ``post_norm``
+        has it). Used by analysis-time probing to pool any layer.
+        """
+        h = self._embed(src)
+        states = [h]
+        for layer in self.encoder_layers:
+            h = layer(h)
+            states.append(h)
+        states.append(self.encoder_norm(h))
+        return states
+
     def decode(self, tgt: torch.Tensor, memory: torch.Tensor) -> torch.Tensor:
         h = self._embed(tgt)
         for layer in self.decoder_layers:
             h = layer(h, memory)
         return self.decoder_norm(h)
+
+    def decode_hidden(self, tgt: torch.Tensor, memory: torch.Tensor) -> list[torch.Tensor]:
+        """Return per-layer decoder hidden states.
+
+        Same layout as :meth:`encode_hidden`: ``[post-embed, blk_1, ..., blk_N, post_norm]``.
+        """
+        h = self._embed(tgt)
+        states = [h]
+        for layer in self.decoder_layers:
+            h = layer(h, memory)
+            states.append(h)
+        states.append(self.decoder_norm(h))
+        return states
 
     def forward(self, src: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
         return self.project(self.decode(tgt, self.encode(src)))

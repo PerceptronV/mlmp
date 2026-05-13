@@ -137,6 +137,7 @@ class CSVMethod(Method):
     correct_col: ClassVar[str | None] = "accuracy"
 
     name: str = ""
+    label: str = ""
     root: str | Path = ""
     filters: dict[str, Any] = field(default_factory=dict)
     aggregate: str = "mean"  # how to fold multiple matching rows per trial — "mean" or "first"

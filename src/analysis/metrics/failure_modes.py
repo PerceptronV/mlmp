@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
 
 from ..capability import Capability
-from ..plotting import apply_rc, save_fig
+from ..plotting import apply_rc, label_for, save_fig
 from ..stats import bootstrap_ci, chi2_p, fdr_bh
 from .base import Analysis, AnalysisResult
 
@@ -94,7 +94,7 @@ class FailureModesResult(AnalysisResult):
                 rotation=30, ha="right", fontsize=9,
             )
             ax.set_yticks(range(gap.shape[0]))
-            ax.set_yticklabels(gap.index)
+            ax.set_yticklabels([label_for(m) for m in gap.index])
             for i, m in enumerate(gap.index):
                 for j, f in enumerate(gap.columns):
                     v = gap.values[i, j]
@@ -114,7 +114,7 @@ class FailureModesResult(AnalysisResult):
             ax.barh(both["function"], both["delta"], color=np.where(both["delta"] > 0, "#1f77b4", "#d62728"))
             ax.invert_yaxis()
             ax.axvline(0, color="black", lw=0.6)
-            ax.set_xlabel(f"acc({a}) − acc({b})")
+            ax.set_xlabel(f"acc({label_for(a)}) − acc({label_for(b)})")
             save_fig(fig, outdir, f"difference_profile_{a}__vs__{b}.pdf")
 
 

@@ -29,7 +29,13 @@ class Prediction:
 
 class Method(ABC):
     name: str
+    label: str = ""
     capabilities: ClassVar[Capability] = Capability.PREDICTIONS
+
+    @property
+    def display_label(self) -> str:
+        """Human-facing string for plots/legends. Falls back to ``name``."""
+        return self.label or self.name
 
     @abstractmethod
     def predict(self, trial: Trial) -> Prediction: ...

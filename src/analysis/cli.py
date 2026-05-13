@@ -14,6 +14,7 @@ from .metrics import build_analysis
 from .cache import Cache
 from .config import load_config
 from .methods import build_method
+from .plotting import register_labels
 from .task import TaskBundle
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             spec["device"] = cfg.device
         methods.append(build_method(spec, rule_data_root=str(cfg.rule_data_root)))
     by_name = {m.name: m for m in methods}
+    register_labels(methods)
 
     outdir_root = cfg.output_dir / cfg.run_name
     cache = Cache(outdir_root / "cache")
