@@ -8,6 +8,11 @@
 # Fixed args (corpora, val-examples, checkpoint-dir, num-workers, wandb-project)
 # are supplied by scripts/sweep_train.sh from the job environment. Only the
 # optimization hyperparameters below are searched.
+# Pin the project explicitly — without it, `wandb sweep` auto-derives the project
+# name from the program path (yielding e.g. "mlmp-scripts"). Entity is left unset
+# so wandb uses your default.
+project: mlmp
+
 program: scripts/sweep_train.sh
 command:
   - bash

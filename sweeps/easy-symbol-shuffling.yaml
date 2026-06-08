@@ -8,6 +8,11 @@
 # Same optimization search space as the in-weight sweep; only `mode` differs.
 # Curriculum knobs (--easy-shuffle-k-start/-end/-ramp-epochs) stay at their
 # defaults here — add them to `parameters` if you later want to search them too.
+# Pin the project explicitly — without it, `wandb sweep` auto-derives the project
+# name from the program path (yielding e.g. "mlmp-scripts"). Entity is left unset
+# so wandb uses your default.
+project: mlmp
+
 program: scripts/sweep_train.sh
 command:
   - bash
