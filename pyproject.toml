@@ -9,6 +9,7 @@ description = "Metalearning metaprogram search for efficient program induction"
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.11",
+    "torchao>=0.17.0",
     "torchtext>=0.6.0",
     "torchtune>=0.6.0",
     "wandb>=0.20.0",
