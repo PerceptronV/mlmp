@@ -1,0 +1,47 @@
+# wandb Bayesian sweep — in-weight model, enum+rl corpus.
+#
+# Create the sweep (from the repo root on a login node):
+#     wandb sweep sweeps/in-weight.yaml
+# That prints a SWEEP_ID like "entity/mlmp/abc123". Launch agents with:
+#     SWEEP_ID=entity/mlmp/abc123 sbatch scripts/sweep_agent.slurm.sh
+#
+# Fixed args (corpora, val-examples, checkpoint-dir, num-workers, wandb-project)
+# are supplied by scripts/sweep_train.sh from the job environment. Only the
+# optimization hyperparameters below are searched.
+program: scripts/sweep_train.sh
+command:
+  - bash
+  - ${program}
+  - ${args}
+
+method: bayes
+
+metric:
+  name: best_val_accuracy   # logged each epoch in src/train.py:724; monotonic, so
+  goal: maximize            # the sweep optimizes best-so-far, not noisy last-epoch acc
+
+# Kill laggards early so GPUs free up for promising configs. Bands evaluated on
+# the count of logged best_val_accuracy values (one per epoch): ~10, 30, 90.
+early_terminate:
+  type: hyperband
+  min_iter: 10
+  eta: 3
+
+# Optional global cap across all agents. Remove to let agents run until walltime.
+run_cap: 64
+
+parameters:
+  mode:
+    value: in-weight
+  lr:
+    distribution: log_uniform_values
+    min: 0.0003
+    max: 0.006
+  weight-decay:
+    values: [0.0, 0.01, 0.03, 0.1, 0.3]
+  grad-clip:
+    values: [0.5, 1.0, 2.0]
+  batch-size:
+    values: [64, 128, 256]
+  lr-schedule:        # translated to the --constant-lr store_true flag by the wrapper
+    values: [cosine, constant]

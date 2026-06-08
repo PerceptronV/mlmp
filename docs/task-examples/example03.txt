@@ -1,0 +1,66 @@
+Input:
+ % ≜ is_even 
+ * ≜ group 
+ + ≜ first 
+ - ≜ second 
+ / ≜ + 
+ < ≜ fold 
+ == ≜ splice 
+ > ≜ foldi 
+ and ≜ slice 
+ append ≜ - 
+ concat ≜ reverse 
+ cons ≜ % 
+ count ≜ flatten 
+ cut_idx ≜ > 
+ cut_slice ≜ max 
+ cut_val ≜ replace 
+ cut_vals ≜ map 
+ drop ≜ or 
+ droplast ≜ not 
+ filter ≜ append 
+ filteri ≜ zip 
+ find ≜ filter 
+ first ≜ / 
+ flatten ≜ nth 
+ fold ≜ and 
+ foldi ≜ length 
+ group ≜ drop 
+ insert ≜ cut_vals 
+ is_even ≜ sum 
+ is_in ≜ last 
+ is_odd ≜ cut_val 
+ last ≜ mapi 
+ length ≜ is_in 
+ map ≜ repeat 
+ mapi ≜ sort 
+ max ≜ insert 
+ min ≜ product 
+ not ≜ is_odd 
+ nth ≜ filteri 
+ or ≜ take 
+ product ≜ range 
+ range ≜ third 
+ repeat ≜ count 
+ replace ≜ min 
+ reverse ≜ == 
+ second ≜ takelast 
+ singleton ≜ < 
+ slice ≜ droplast 
+ sort ≜ cut_idx 
+ splice ≜ singleton 
+ sum ≜ concat 
+ swap ≜ cut_slice 
+ take ≜ cons 
+ takelast ≜ * 
+ third ≜ swap 
+ unique ≜ unique 
+ zip ≜ find 
+ ======================================== 
+ [ 5 ] → [ 17 ] 
+ [ 75 ] → [ 87 ] 
+ [ 0 ] → [ 12 ] 
+ <start>
+
+Output:
+( λ ( _p0 ) ( take ( is_even ( second 8 ( filter ( filter ( concat _p0 ) ( takelast 10 ( foldi _p0 ) ) ) 2 ) ) ) ( concat ( unique ( slice 10 ( sum ( concat ( max 1 ( replace ( take 9 _p0 ) ) _p0 ) ) ( product 64 ( min _p0 ) 9 ) ) ) ) ) ) ) <end>

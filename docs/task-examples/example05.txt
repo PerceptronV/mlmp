@@ -1,0 +1,73 @@
+Input:
+ % ≜ + 
+ * ≜ - 
+ + ≜ insert 
+ - ≜ cut_val 
+ / ≜ slice 
+ < ≜ mapi 
+ == ≜ first 
+ > ≜ > 
+ and ≜ foldi 
+ append ≜ fold 
+ concat ≜ zip 
+ cons ≜ is_odd 
+ count ≜ map 
+ cut_idx ≜ cut_idx 
+ cut_slice ≜ filteri 
+ cut_val ≜ group 
+ cut_vals ≜ singleton 
+ drop ≜ and 
+ droplast ≜ takelast 
+ filter ≜ drop 
+ filteri ≜ flatten 
+ find ≜ < 
+ first ≜ last 
+ flatten ≜ unique 
+ fold ≜ repeat 
+ foldi ≜ reverse 
+ group ≜ sum 
+ insert ≜ take 
+ is_even ≜ replace 
+ is_in ≜ splice 
+ is_odd ≜ third 
+ last ≜ append 
+ length ≜ sort 
+ map ≜ nth 
+ mapi ≜ concat 
+ max ≜ / 
+ min ≜ is_even 
+ not ≜ range 
+ nth ≜ max 
+ or ≜ second 
+ product ≜ cut_slice 
+ range ≜ min 
+ repeat ≜ count 
+ replace ≜ product 
+ reverse ≜ length 
+ second ≜ droplast 
+ singleton ≜ == 
+ slice ≜ filter 
+ sort ≜ is_in 
+ splice ≜ find 
+ sum ≜ cons 
+ swap ≜ cut_vals 
+ take ≜ * 
+ takelast ≜ or 
+ third ≜ % 
+ unique ≜ swap 
+ zip ≜ not 
+ ======================================== 
+ [ 13 10 26 ] → [ 1 ] 
+ [ 4 34 60 ] → [ 1 ] 
+ [ 0 10 37 ] → [ 1 ] 
+ [ 81 52 95 51 58 5 61 ] → [ 1 ] 
+ [ 39 0 7 19 55 ] → [ 1 ] 
+ [ 42 0 92 48 0 ] → [ 1 ] 
+ [ 25 18 2 74 89 48 55 0 81 54 27 ] → [ 89 2 0 10 74 48 1 ] 
+ [ 8 81 5 71 62 73 20 81 15 9 39 ] → [ 5 71 1 ] 
+ [ 64 33 80 8 51 8 26 80 5 98 ] → [ 1 ] 
+ [ 69 87 6 6 41 58 57 17 19 22 77 15 71 28 ] → [ 69 6 71 41 1 ] 
+ <start>
+
+Output:
+( λ ( _p0 ) ( last ( second ( is_odd _p0 ) ( last ( last ( second 6 ( flatten ( sum 10 _p0 ) ) ) ( nth ( droplast 8 ( product ( replace _p0 ) 2 _p0 ) ) ) ) 4 ) ) ( * 2 1 ) ) ) <end>

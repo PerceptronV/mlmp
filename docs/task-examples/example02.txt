@@ -1,0 +1,70 @@
+Input:
+ % ≜ flatten 
+ * ≜ find 
+ + ≜ cut_idx 
+ - ≜ third 
+ / ≜ second 
+ < ≜ sum 
+ == ≜ or 
+ > ≜ * 
+ and ≜ is_even 
+ append ≜ range 
+ concat ≜ cut_slice 
+ cons ≜ min 
+ count ≜ fold 
+ cut_idx ≜ cut_val 
+ cut_slice ≜ group 
+ cut_val ≜ splice 
+ cut_vals ≜ == 
+ drop ≜ swap 
+ droplast ≜ length 
+ filter ≜ append 
+ filteri ≜ repeat 
+ find ≜ filter 
+ first ≜ max 
+ flatten ≜ < 
+ fold ≜ filteri 
+ foldi ≜ droplast 
+ group ≜ sort 
+ insert ≜ cut_vals 
+ is_even ≜ takelast 
+ is_in ≜ is_odd 
+ is_odd ≜ / 
+ last ≜ product 
+ length ≜ is_in 
+ map ≜ unique 
+ mapi ≜ insert 
+ max ≜ singleton 
+ min ≜ count 
+ not ≜ map 
+ nth ≜ - 
+ or ≜ not 
+ product ≜ reverse 
+ range ≜ nth 
+ repeat ≜ last 
+ replace ≜ zip 
+ reverse ≜ take 
+ second ≜ drop 
+ singleton ≜ % 
+ slice ≜ and 
+ sort ≜ > 
+ splice ≜ first 
+ sum ≜ foldi 
+ swap ≜ mapi 
+ take ≜ replace 
+ takelast ≜ + 
+ third ≜ concat 
+ unique ≜ cons 
+ zip ≜ slice 
+ ======================================== 
+ [ 30 13 ] → [ 30 13 53 ] 
+ [ 16 31 77 ] → [ 31 34 77 16 ] 
+ [ 57 ] → [ 67 57 ] 
+ [ 89 75 27 32 71 70 7 ] → [ 81 27 89 75 7 ] 
+ [ 1 57 28 47 ] → [ 28 57 47 43 1 ] 
+ [ 93 37 16 66 ] → [ 22 93 16 37 66 ] 
+ [ 98 15 25 31 67 70 36 22 ] → [ 31 25 74 22 15 ] 
+ <start>
+
+Output:
+( λ ( _p0 ) ( concat 5 ( < _p0 ) ( product ( map ( filter _p0 ( < ( map ( mapi 10 2 ( map _p0 ) ) ) ) ) ) ) ) ) <end>

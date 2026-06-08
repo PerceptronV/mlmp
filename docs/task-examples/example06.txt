@@ -1,0 +1,67 @@
+Input:
+ % ≜ + 
+ * ≜ % 
+ + ≜ third 
+ - ≜ fold 
+ / ≜ map 
+ < ≜ * 
+ == ≜ or 
+ > ≜ nth 
+ and ≜ max 
+ append ≜ foldi 
+ concat ≜ first 
+ cons ≜ is_even 
+ count ≜ filter 
+ cut_idx ≜ replace 
+ cut_slice ≜ cut_idx 
+ cut_val ≜ range 
+ cut_vals ≜ filteri 
+ drop ≜ droplast 
+ droplast ≜ singleton 
+ filter ≜ == 
+ filteri ≜ > 
+ find ≜ zip 
+ first ≜ / 
+ flatten ≜ not 
+ fold ≜ mapi 
+ foldi ≜ is_in 
+ group ≜ is_odd 
+ insert ≜ cut_vals 
+ is_even ≜ < 
+ is_in ≜ concat 
+ is_odd ≜ - 
+ last ≜ swap 
+ length ≜ insert 
+ map ≜ find 
+ mapi ≜ cut_slice 
+ max ≜ splice 
+ min ≜ and 
+ not ≜ count 
+ nth ≜ sum 
+ or ≜ min 
+ product ≜ reverse 
+ range ≜ repeat 
+ repeat ≜ takelast 
+ replace ≜ group 
+ reverse ≜ append 
+ second ≜ take 
+ singleton ≜ drop 
+ slice ≜ second 
+ sort ≜ product 
+ splice ≜ cut_val 
+ sum ≜ last 
+ swap ≜ slice 
+ take ≜ sort 
+ takelast ≜ flatten 
+ third ≜ unique 
+ unique ≜ length 
+ zip ≜ cons 
+ ======================================== 
+ [ 37 ] → [ 37 7 ] 
+ [ 95 60 67 ] → [ 95 60 67 7 ] 
+ [ 20 89 67 ] → [ 20 89 67 7 ] 
+ [ 29 19 70 25 19 99 21 ] → [ 29 19 70 25 19 99 21 7 ] 
+ <start>
+
+Output:
+( λ ( _p0 ) ( length 7 ( sort ( range ( concat ( cut_val ( or ( repeat 3 _p0 ) ) ( nth _p0 ) ( is_odd ( < 3 ( sum _p0 ) ) ( or ( repeat 5 _p0 ) ) ) ) ) 1 ) ) _p0 ) ) <end>
