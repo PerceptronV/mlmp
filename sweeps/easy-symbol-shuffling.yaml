@@ -30,7 +30,8 @@ early_terminate:
   min_iter: 10
   eta: 3
 
-run_cap: 64
+# 32 trials = 8 agents x COUNT=4 (see scripts/sweep_agent.slurm.sh).
+run_cap: 32
 
 parameters:
   mode:

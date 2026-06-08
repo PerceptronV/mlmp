@@ -33,7 +33,8 @@ early_terminate:
   eta: 3
 
 # Optional global cap across all agents. Remove to let agents run until walltime.
-run_cap: 64
+# 32 trials = 8 agents x COUNT=4 (see scripts/sweep_agent.slurm.sh).
+run_cap: 32
 
 parameters:
   mode:
