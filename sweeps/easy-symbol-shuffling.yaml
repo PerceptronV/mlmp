@@ -25,10 +25,8 @@ metric:
   name: best_val_accuracy
   goal: maximize
 
-early_terminate:
-  type: hyperband
-  min_iter: 10
-  eta: 3
+# No early termination: every trial trains to full length so all runs are
+# directly comparable for marginal hyperparameter analysis.
 
 # 32 trials = 8 agents x COUNT=4 (see scripts/sweep_agent.slurm.sh).
 run_cap: 32
@@ -36,6 +34,8 @@ run_cap: 32
 parameters:
   mode:
     value: easy-symbol-shuffling
+  epochs:           # fixed budget so every (non-terminated) run is comparable
+    value: 80
   lr:
     distribution: log_uniform_values
     min: 0.0003

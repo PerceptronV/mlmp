@@ -25,12 +25,9 @@ metric:
   name: best_val_accuracy   # logged each epoch in src/train.py:724; monotonic, so
   goal: maximize            # the sweep optimizes best-so-far, not noisy last-epoch acc
 
-# Kill laggards early so GPUs free up for promising configs. Bands evaluated on
-# the count of logged best_val_accuracy values (one per epoch): ~10, 30, 90.
-early_terminate:
-  type: hyperband
-  min_iter: 10
-  eta: 3
+# No early termination: every trial trains to full length so all runs are
+# directly comparable for marginal hyperparameter analysis (see
+# scripts/sweep_analyze.py). Costs more compute than hyperband.
 
 # Optional global cap across all agents. Remove to let agents run until walltime.
 # 32 trials = 8 agents x COUNT=4 (see scripts/sweep_agent.slurm.sh).
@@ -39,6 +36,8 @@ run_cap: 32
 parameters:
   mode:
     value: in-weight
+  epochs:           # fixed budget so every (non-terminated) run is comparable
+    value: 80
   lr:
     distribution: log_uniform_values
     min: 0.0003
