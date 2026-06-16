@@ -609,6 +609,63 @@ def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
     return list(groups.values())
 
 
+# ============================================================================
+# SmallGrammar: a leaner, meaningful subset of DefaultGrammar
+# ============================================================================
+# Keeps the core arithmetic / comparison / boolean operators, the most common
+# list construction, access, query and transformation functions, plus only the
+# three workhorse higher-order functions (map, filter, fold). The barely-used
+# higher-order functions (mapi, filteri, foldi, count, find, sort, group) and a
+# number of redundant list helpers are dropped. ~half of the original functions.
+
+SMALL_GRAMMAR_FUNCTIONS = {
+    # arithmetic operators
+    '+', '-', '*', '/', '%',
+    # comparison operators
+    '<', '>', '==',
+    # boolean operators
+    'and', 'or', 'not',
+    # number predicates
+    'is_even', 'is_odd',
+    # list construction
+    'singleton', 'range', 'cons',
+    # list combination
+    'concat',
+    # list access
+    'first', 'last', 'nth',
+    # list removal / slicing
+    'drop', 'take', 'slice',
+    # list queries
+    'length', 'max', 'min', 'sum',
+    # list transformation
+    'reverse',
+    # higher-order functions
+    'map', 'filter', 'fold',
+}
+
+SmallGrammar = DefaultGrammar.subset(SMALL_GRAMMAR_FUNCTIONS)
+
+
+# ============================================================================
+# Grammar registry: resolve a Grammar by name (for CLI --grammar flags)
+# ============================================================================
+
+GRAMMARS: dict[str, Grammar] = {
+    'default': DefaultGrammar,
+    'small': SmallGrammar,
+}
+
+
+def get_grammar(name: str) -> Grammar:
+    """Resolve a registered grammar by name (see GRAMMARS)."""
+    try:
+        return GRAMMARS[name]
+    except KeyError:
+        raise ValueError(
+            f"Unknown grammar {name!r}; choices: {sorted(GRAMMARS)}"
+        ) from None
+
+
 if __name__ == "__main__":
     print(DefaultGrammar)
     print('# functions:', len(DefaultGrammar))

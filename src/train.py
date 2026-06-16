@@ -15,6 +15,7 @@ from .models.seq2seq import Seq2SeqTransformer, from_token_ids
 from .data.dataloader import ProgramDataset, TRAINING_MODES
 from .data.inverse_mlc_dataloader import InverseMLCDataset, INVERSE_MLC_EPISODE_TYPES
 from .data.program_io import ProgramIO
+from .lang.grammar import GRAMMARS, get_grammar
 
 
 DATASETS = ("program", "inverse-mlc")
@@ -360,6 +361,11 @@ def train():
                         help='Comma-separated corpus JSON file(s) for training')
     parser.add_argument('--val-corpus', type=str, default=None,
                         help='Comma-separated corpus JSON file(s) for validation')
+    parser.add_argument('--grammar', type=str, default='default', choices=sorted(GRAMMARS),
+                        help='Grammar used to build the tokeniser vocab and (for the '
+                             '*-symbol-shuffling modes) the fn-name permutation pool. Must '
+                             'match the grammar the corpus was synthesised from. Only applies '
+                             'to --dataset=program.')
     parser.add_argument('--n-io-per-program', type=int, default=11,
                         help='Number of I/O pairs sampled per program (also = max_n_io_shown)')
     parser.add_argument('--min-n-io-shown', type=int, default=1,
@@ -493,8 +499,9 @@ def train():
         )
         print(f"Validation dataset: {len(val_dataset.programs):,} episodes -> {len(val_dataset):,} items")
     else:
+        grammar = get_grammar(args.grammar)
         train_files = _parse_corpus_arg(args.train_corpus)
-        print(f"Loading training corpus from {train_files}")
+        print(f"Loading training corpus from {train_files} (grammar={args.grammar})")
         train_dataset = ProgramDataset(
             corpus_files=train_files,
             seed=args.data_seed,
@@ -503,6 +510,7 @@ def train():
             mode=args.mode,
             filter_empty_io=args.filter_empty_io,
             max_programs=args.max_train_programs,
+            grammar=grammar,
         )
         print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
@@ -517,6 +525,7 @@ def train():
                 min_n_io_shown=args.min_n_io_shown,
                 mode=args.mode,
                 filter_empty_io=args.filter_empty_io,
+                grammar=grammar,
             )
             print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 

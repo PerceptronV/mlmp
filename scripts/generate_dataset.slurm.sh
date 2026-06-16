@@ -23,11 +23,19 @@ conda init bash
 conda deactivate
 conda activate ml13
 
-OUTPUT_DIR="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a"
-VAL_OUT="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json"
-SEED=42
+# Parametrised so non-default grammars (see src/lang/grammar.py:GRAMMARS) can be
+# synthesised into their own corpus dir without touching the default path. With
+# no overrides this reproduces the original corpus-a / rule_val.json run exactly.
+#   GRAMMAR=small \
+#   OUTPUT_DIR=/n/netscratch/.../mlmp_datasets/corpus-small \
+#   VAL_OUT=/n/netscratch/.../mlmp_datasets/corpus-small/val.json \
+#   sbatch scripts/generate_dataset.slurm.sh
+GRAMMAR="${GRAMMAR:-default}"
+OUTPUT_DIR="${OUTPUT_DIR:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a}"
+VAL_OUT="${VAL_OUT:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json}"
+SEED="${SEED:-42}"
 
-# ── Phase 1-3: synthesise corpus-a (~5.7M programs) ──────────────────────────
+# ── Phase 1-3: synthesise the corpus (~5.7M programs for the default grammar) ─
 #   Phase 1: bottom-up enumeration (s_max=8, ν_min=0.3, ℓ_max=2)
 #   Phase 2: sketch expansion (~1.79M concrete after dedup)
 #   Phase 3: warm-start + RL (100K novel sketches, δ_max=12)
@@ -36,19 +44,26 @@ SEED=42
 # match docs/enumeration-rl.tex. Resumable via enum_corpus.pkl /
 # policy_warmstart.pt checkpoints in OUTPUT_DIR.
 python -m src.data.generate \
+    --grammar "${GRAMMAR}" \
     --output-dir "${OUTPUT_DIR}" \
     --seed ${SEED}
 
 # ── Phase 4: Rule et al. split + fingerprint filter ──────────────────────────
-# Writes:
+# Fingerprints under ${GRAMMAR}, so a subset grammar's val set is automatically
+# restricted to the Rule behaviours it can express (e.g. SmallGrammar keeps ~84
+# of the 220 Rule programs). Writes:
 #   ${OUTPUT_DIR}/{enum,rl}_corpus_no_rule.json   (train; Rule fingerprints removed)
-#   ${VAL_OUT}                                    (validation; ~217 Rule programs)
+#   ${VAL_OUT}                                    (validation; Rule programs)
 python -m scripts.build_rule_split \
+    --grammar "${GRAMMAR}" \
     --val-out "${VAL_OUT}" \
     --train-corpus "${OUTPUT_DIR}/enum_corpus.json" \
     --train-corpus "${OUTPUT_DIR}/rl_corpus.json"
 
 # ── Phase 5: equality-saturation simplification of the RL corpus ─────────────
-# Writes ${OUTPUT_DIR}/rl_corpus_no_rule.simplified.json — train.slurm.sh reads this.
+# Rules that mention out-of-grammar functions are inert (their LHS can't match a
+# subset-grammar program) and no rule introduces one on its RHS, so the default
+# rule set is sound for every grammar. Writes
+# ${OUTPUT_DIR}/rl_corpus_no_rule.simplified.json — train.slurm.sh reads this.
 python -m scripts.simplify_corpus \
     --input "${OUTPUT_DIR}/rl_corpus_no_rule.json"

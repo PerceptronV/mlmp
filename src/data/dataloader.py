@@ -7,6 +7,7 @@ from tqdm import tqdm
 
 from .program_io import ProgramIO
 from .sampler import RuleIOSampler
+from ..lang.grammar import DefaultGrammar, Grammar
 
 TrainingMode = Literal["in-weight", "symbol-shuffling", "easy-symbol-shuffling"]
 TRAINING_MODES: tuple[TrainingMode, ...] = (
@@ -69,6 +70,7 @@ class ProgramDataset(Dataset):
         mode: TrainingMode = "in-weight",
         filter_empty_io: bool = False,
         max_programs: int | None = None,
+        grammar: Grammar = DefaultGrammar,
     ):
         assert 1 <= min_n_io_shown <= n_io_per_program, (
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
@@ -78,7 +80,10 @@ class ProgramDataset(Dataset):
         # sampling, decode, and program execution. ``ProgramDataset`` is a thin
         # wrapper around an instance of it (plus corpus iteration / IO-sampler
         # plumbing). See ``src/data/program_io.py`` for the canonical home.
-        self.io: ProgramIO = ProgramIO()
+        # ``grammar`` flows into the tokeniser vocab AND the symbol-shuffling
+        # name permutation, so the shuffled fn names stay confined to this
+        # grammar's functions (matters for the *-symbol-shuffling modes).
+        self.io: ProgramIO = ProgramIO(grammar=grammar)
         self.tokeniser = self.io.tokeniser
         self.seed = seed
         self.n_io_per_program = n_io_per_program

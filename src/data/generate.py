@@ -38,6 +38,7 @@ def main() -> None:
         sys.path.insert(0, project_root)
 
     from src.lang.synthesis.pipeline import synthesise_corpus
+    from src.lang.grammar import GRAMMARS, get_grammar
 
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -48,6 +49,12 @@ def main() -> None:
         help="Directory for output files and checkpoints",
     )
     parser.add_argument(
+        "--grammar",
+        default="default",
+        choices=sorted(GRAMMARS),
+        help="Which grammar to synthesise the corpus from (default: %(default)s)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -56,6 +63,7 @@ def main() -> None:
     args = parser.parse_args()
 
     synthesise_corpus(
+        grammar=get_grammar(args.grammar),
         enum_max_size=8,
         output_dir=args.output_dir,
         seed=args.seed,

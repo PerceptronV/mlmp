@@ -30,7 +30,7 @@ from src.lang.ast_nodes import LambdaNode
 from src.lang.compiler import JITCompiler
 from src.lang.enumeration.fingerprint import FAIL, Fingerprint, compute_fingerprint
 from src.lang.enumeration.test_suite import DEFAULT_TEST_SUITE
-from src.lang.grammar import DefaultGrammar
+from src.lang.grammar import GRAMMARS, get_grammar
 from src.lang.parser import parse
 from src.lang.utils import program_size
 
@@ -53,9 +53,11 @@ def _is_list_int_fingerprint(fp: Fingerprint) -> bool:
 _JIT: JITCompiler | None = None
 
 
-def _init_worker():
+def _init_worker(grammar_name: str = "default"):
+    # Grammar objects aren't trivially picklable across the Pool boundary, so we
+    # pass the registered name and re-resolve it in each worker.
     global _JIT
-    _JIT = JITCompiler(DefaultGrammar)
+    _JIT = JITCompiler(get_grammar(grammar_name))
 
 
 def _fingerprint_program(program_str: str) -> Fingerprint | None:
@@ -66,7 +68,7 @@ def _fingerprint_program(program_str: str) -> Fingerprint | None:
     return compute_fingerprint(ast, DEFAULT_TEST_SUITE, _JIT)
 
 
-def fingerprint_rule_programs(rule_path: Path) -> tuple[set[Fingerprint], list[dict]]:
+def fingerprint_rule_programs(rule_path: Path, grammar) -> tuple[set[Fingerprint], list[dict]]:
     seen: set[str] = set()
     programs: list[str] = []
     with open(rule_path) as f:
@@ -77,7 +79,11 @@ def fingerprint_rule_programs(rule_path: Path) -> tuple[set[Fingerprint], list[d
                 programs.append(s)
     print(f"Rule canonical programs: {len(programs)} unique")
 
-    jit = JITCompiler(DefaultGrammar)
+    # Fingerprinting under ``grammar``: Rule programs that reference functions
+    # outside it fail to compile (or FAIL on every input) and are dropped here,
+    # so a subset grammar's val set is automatically restricted to the Rule
+    # behaviours it can actually express (the "bad_compile"/"all_fail" tallies).
+    jit = JITCompiler(grammar)
     rule_fps: set[Fingerprint] = set()
     val_entries: list[dict] = []
     bad_compile = bad_type = all_fail = 0
@@ -118,6 +124,7 @@ def filter_corpus(
     rule_fps: set[Fingerprint],
     output_path: Path,
     workers: int,
+    grammar_name: str,
 ) -> None:
     print(f"\nFiltering {corpus_path}")
     with open(corpus_path) as f:
@@ -127,10 +134,10 @@ def filter_corpus(
     programs = [e["program"] for e in entries]
 
     if workers <= 1:
-        _init_worker()
+        _init_worker(grammar_name)
         fps = [_fingerprint_program(p) for p in tqdm(programs, desc="fingerprint")]
     else:
-        with Pool(workers, initializer=_init_worker) as pool:
+        with Pool(workers, initializer=_init_worker, initargs=(grammar_name,)) as pool:
             fps = list(tqdm(
                 pool.imap(_fingerprint_program, programs, chunksize=512),
                 total=len(programs),
@@ -159,6 +166,12 @@ def main() -> None:
              "Default: rl_corpus.json + enum_corpus.json under datasets/corpus-a/",
     )
     parser.add_argument("--workers", type=int, default=max(1, cpu_count() - 1))
+    parser.add_argument(
+        "--grammar", default="default", choices=sorted(GRAMMARS),
+        help="Grammar to fingerprint under. Rule programs (and corpus programs) "
+             "referencing functions outside it are dropped, restricting the val "
+             "set to behaviours the grammar can express (default: %(default)s).",
+    )
     args = parser.parse_args()
 
     if args.train_corpus is None:
@@ -167,7 +180,8 @@ def main() -> None:
             Path("datasets/corpus-a/enum_corpus.json"),
         ]
 
-    rule_fps, val_entries = fingerprint_rule_programs(args.rule_file)
+    grammar = get_grammar(args.grammar)
+    rule_fps, val_entries = fingerprint_rule_programs(args.rule_file, grammar)
 
     args.val_out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.val_out, "w") as f:
@@ -176,7 +190,7 @@ def main() -> None:
 
     for corpus_path in args.train_corpus:
         out_path = corpus_path.with_name(corpus_path.stem + "_no_rule.json")
-        filter_corpus(corpus_path, rule_fps, out_path, args.workers)
+        filter_corpus(corpus_path, rule_fps, out_path, args.workers, args.grammar)
 
 
 if __name__ == "__main__":

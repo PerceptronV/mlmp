@@ -14,7 +14,9 @@
 #
 # Required env (exported by scripts/sweep_agent.slurm.sh):
 #   ENUM_CORPUS, RL_CORPUS, VAL_CORPUS, CKPT_ROOT
-# Optional env: NUM_WORKERS (8), WANDB_PROJECT (mlmp)
+# Optional env: NUM_WORKERS (8), WANDB_PROJECT (mlmp), GRAMMAR (default)
+#   GRAMMAR must match the grammar the corpora were synthesised from; it drives
+#   the tokeniser vocab and (for *-symbol-shuffling modes) the fn-name permutation.
 #
 # src/train.py sets args.run_name = wandb.run.name when --run-name is unset, and
 # nests checkpoints under checkpoint_dir/run_name, so concurrent trials never
@@ -45,6 +47,7 @@ python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_ROOT}/${MODE}" \
+    --grammar "${GRAMMAR:-default}" \
     --val-examples 256 \
     --num-workers "${NUM_WORKERS:-8}" \
     --wandb-project "${WANDB_PROJECT:-mlmp}" \

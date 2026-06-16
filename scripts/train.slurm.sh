@@ -30,13 +30,23 @@ conda activate ml13
 
 nvidia-smi
 
-ENUM_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/enum_corpus_no_rule.json"
-RL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/rl_corpus_no_rule.simplified.json"
-VAL_CORPUS="/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json"
-CKPT_ROOT="/n/netscratch/gershman_lab/Lab/yiding/mlmp_checkpoints"
-NUM_WORKERS=8
-SEED=42
+# Corpora/grammar overridable from the submit environment so a non-default
+# grammar can train against its own corpus. Defaults reproduce the original
+# corpus-a / rule_val.json run. GRAMMAR must match the grammar the corpora were
+# synthesised from; every grammar produces the same Rule-filtered/simplified
+# filenames (see scripts/generate_dataset.slurm.sh), just under its own dir:
+#   sbatch --export=ALL,GRAMMAR=small,\
+#ENUM_CORPUS=/n/netscratch/.../corpus-small/enum_corpus_no_rule.json,\
+#RL_CORPUS=/n/netscratch/.../corpus-small/rl_corpus_no_rule.simplified.json,\
+#VAL_CORPUS=/n/netscratch/.../corpus-small/rule_val.json scripts/train.slurm.sh
+ENUM_CORPUS="${ENUM_CORPUS:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/enum_corpus_no_rule.json}"
+RL_CORPUS="${RL_CORPUS:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/corpus-a/rl_corpus_no_rule.simplified.json}"
+VAL_CORPUS="${VAL_CORPUS:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_datasets/rule_val.json}"
+CKPT_ROOT="${CKPT_ROOT:-/n/netscratch/gershman_lab/Lab/yiding/mlmp_checkpoints}"
+NUM_WORKERS="${NUM_WORKERS:-8}"
+SEED="${SEED:-42}"
 MODE="${MODE:-in-weight}"
+GRAMMAR="${GRAMMAR:-default}"
 
 # Keep checkpoints from different training modes in separate subdirectories so
 # in-weight and symbol-shuffling runs don't overwrite each other's best/latest.
@@ -62,6 +72,7 @@ python -m src.train \
     --train-corpus "${ENUM_CORPUS},${RL_CORPUS}" \
     --val-corpus "${VAL_CORPUS}" \
     --checkpoint-dir "${CKPT_DIR}" \
+    --grammar "${GRAMMAR}" \
     --val-examples 256 \
     --mode "${MODE}" \
     --seed $SEED \
