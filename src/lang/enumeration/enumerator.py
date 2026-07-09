@@ -200,7 +200,7 @@ class BottomUpEnumerator:
         self.max_nesting = max_nesting
 
         self.bank = ProgramBank()
-        self.attempts = 0  # candidate programs fingerprinted (incl. duplicates)
+        self.attempts = 0  # fingerprint computations: top-level + lambda-body candidates, incl. duplicates
         self.jit = JITCompiler(grammar)
         self._child_bank_cache: dict = {}
         self._valid_instantiations = compute_valid_instantiations(grammar)
@@ -233,6 +233,7 @@ class BottomUpEnumerator:
 
         # Input variable x : list[int]
         var_node = VariableNode(self.input_var_name)
+        self.attempts += 1
         fp = self._compute_var_fingerprint()
         prog = TypedProgram(ast=var_node, type=self.input_type, fingerprint=fp, size=1)
         self.bank.add(prog)
@@ -249,6 +250,7 @@ class BottomUpEnumerator:
         Wraps the term in (λ x <term>) and evaluates on the test suite.
         Returns None if compilation fails.
         """
+        self.attempts += 1
         closed = LambdaNode([self.input_var_name], node)
         return compute_fingerprint(closed, self.test_suite, self.jit)
 
@@ -269,6 +271,8 @@ class BottomUpEnumerator:
 
         if not inner_params:
             return self._fingerprint(node)
+
+        self.attempts += 1
 
         # Build closed term: (λ x (λ _p0 (λ _p1 ... node)))
         closed = node
@@ -300,7 +304,6 @@ class BottomUpEnumerator:
 
     def _try_add(self, node: ASTNode, resolved_type: TypeType, size: int) -> bool:
         """Compute fingerprint and add to bank if novel."""
-        self.attempts += 1
         fp = self._fingerprint(node, resolved_type)
         if fp is None:
             return False

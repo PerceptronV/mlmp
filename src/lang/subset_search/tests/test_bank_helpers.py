@@ -33,3 +33,28 @@ def test_attempts_counts_at_least_stored_programs():
     enum, bank = _tiny_enum()
     assert enum.attempts >= bank.count()
     assert enum.attempts > 0
+
+
+def test_attempts_counts_child_context_fingerprints():
+    from src.lang.ast_nodes import NumberNode
+    g = pool_grammar(('map', '+'))
+    enum = BottomUpEnumerator(grammar=g, max_size=2)
+    before = enum.attempts
+    enum._fingerprint_in_context(NumberNode(1), {'x': list[int], 'p': int})
+    assert enum.attempts == before + 1
+
+
+def test_attempts_no_double_count_on_delegation():
+    from src.lang.ast_nodes import NumberNode
+    g = pool_grammar(('+', 'length'))
+    enum = BottomUpEnumerator(grammar=g, max_size=2)
+    before = enum.attempts
+    enum._fingerprint_in_context(NumberNode(1), {'x': list[int]})
+    assert enum.attempts == before + 1
+
+
+def test_hof_grammar_attempts_exceed_stored():
+    g = pool_grammar(('map', '+'))
+    enum = BottomUpEnumerator(grammar=g, max_size=4)
+    bank = enum.enumerate()
+    assert enum.attempts > bank.count()
