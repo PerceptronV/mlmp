@@ -77,6 +77,17 @@ class ProgramBank:
             for progs in by_size.values()
         )
 
+    def all_programs(self) -> Iterator[TypedProgram]:
+        """Yield every stored program, sizes ascending within each type.
+
+        Each distinct (type, fingerprint) appears exactly once; a program's
+        ``size`` is the minimal size for its behavior because bottom-up
+        enumeration inserts the first (smallest) witness and dedups the rest.
+        """
+        for by_size in self._bank.values():
+            for size in sorted(by_size):
+                yield from by_size[size]
+
 
 class ContextualBank:
     """
@@ -189,6 +200,7 @@ class BottomUpEnumerator:
         self.max_nesting = max_nesting
 
         self.bank = ProgramBank()
+        self.attempts = 0  # candidate programs fingerprinted (incl. duplicates)
         self.jit = JITCompiler(grammar)
         self._child_bank_cache: dict = {}
         self._valid_instantiations = compute_valid_instantiations(grammar)
@@ -288,6 +300,7 @@ class BottomUpEnumerator:
 
     def _try_add(self, node: ASTNode, resolved_type: TypeType, size: int) -> bool:
         """Compute fingerprint and add to bank if novel."""
+        self.attempts += 1
         fp = self._fingerprint(node, resolved_type)
         if fp is None:
             return False
