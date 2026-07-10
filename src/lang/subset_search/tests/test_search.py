@@ -93,3 +93,18 @@ def test_stage1_worker_records_timeout(monkeypatch):
     monkeypatch.setattr(search_mod, 'score_vector', slow)
     key, res = search_mod._stage1_worker(('+ length', 2, 1))
     assert res['status'] == 'timeout'
+
+
+def test_cli_stage0_smoke(tmp_path, monkeypatch):
+    from src.lang.subset_search.__main__ import main
+    import src.lang.subset_search.search as search_mod
+
+    calls = {}
+
+    def fake_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None):
+        calls['args'] = (out_dir, max_size, sizes)
+        return []
+
+    monkeypatch.setattr(search_mod, 'run_stage0', fake_stage0)
+    main(['--stage', '0', '--out', str(tmp_path), '--max-size', '5'])
+    assert calls['args'] == (str(tmp_path), 5, (5, 6))
