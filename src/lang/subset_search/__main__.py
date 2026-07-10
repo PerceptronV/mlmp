@@ -24,7 +24,7 @@ def main(argv=None):
 
     if args.stage == 0:
         scores = search.run_stage0(
-            args.out, max_size=args.max_size if args.max_size else 7,
+            args.out, max_size=args.max_size if args.max_size is not None else 7,
         )
         print(f"Stage 0 done: {len(scores)} subsets scored; "
               f"top: {scores[0] if scores else 'n/a'}")
@@ -32,7 +32,7 @@ def main(argv=None):
         results = search.run_stage1(
             args.out,
             top_n=args.top_n,
-            max_size=args.max_size if args.max_size else 10,
+            max_size=args.max_size if args.max_size is not None else 10,
             timeout_s=args.timeout,
             workers=args.workers,
         )
