@@ -8,7 +8,7 @@ a per-subset wall-clock timeout (SIGALRM), results persisted incrementally.
 import json
 import os
 import signal
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from ..enumeration.enumerator import BottomUpEnumerator
 from .pool import POOL_NAMES, pool_grammar, iter_subsets, subset_key
@@ -16,8 +16,14 @@ from .support import support_buckets, proxy_score
 from .scoring import score_vector
 
 
-class SubsetTimeout(Exception):
-    """Raised inside a worker when the per-subset wall clock expires."""
+class SubsetTimeout(BaseException):
+    """Raised inside a worker when the per-subset wall clock expires.
+
+    Subclasses BaseException (like KeyboardInterrupt) so it escapes the
+    broad ``except Exception`` handlers in the enumeration/fingerprint
+    evaluation loops — otherwise a hung evaluation would swallow the
+    alarm and the timeout would never fire.
+    """
 
 
 def _on_alarm(signum, frame):
@@ -84,7 +90,15 @@ def run_stage1(out_dir, top_n=200, max_size=10, timeout_s=600, workers=None):
     ]
     if todo:
         with ProcessPoolExecutor(max_workers=workers) as ex:
-            for key, res in ex.map(_stage1_worker, todo):
+            futures = {
+                ex.submit(_stage1_worker, task): task[0] for task in todo
+            }
+            for fut in as_completed(futures):
+                key = futures[fut]
+                try:
+                    key, res = fut.result()
+                except Exception as e:  # worker died (e.g. BrokenProcessPool)
+                    res = {'status': 'error', 'error': repr(e), 'max_size': max_size}
                 results[key] = res
                 with open(results_path, 'w') as f:
                     json.dump(results, f)

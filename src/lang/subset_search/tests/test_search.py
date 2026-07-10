@@ -2,7 +2,6 @@
 
 import json
 from math import comb
-from pathlib import Path
 
 import pytest
 
@@ -61,3 +60,36 @@ def test_stage1_runs_and_is_resumable(stage0_dir):
         str(stage0_dir), top_n=2, max_size=TINY_MAX_SIZE, timeout_s=120, workers=2,
     )
     assert again == results
+
+
+def test_subset_timeout_escapes_broad_exception_handlers():
+    from src.lang.subset_search.search import SubsetTimeout
+    with pytest.raises(SubsetTimeout):
+        try:
+            raise SubsetTimeout()
+        except Exception:
+            pytest.fail("SubsetTimeout must not be caught by 'except Exception'")
+
+
+def test_stage1_worker_records_error(monkeypatch):
+    import src.lang.subset_search.search as search_mod
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(search_mod, 'score_vector', boom)
+    key, res = search_mod._stage1_worker(('+ length', 2, 60))
+    assert res['status'] == 'error'
+    assert 'boom' in res['error']
+
+
+def test_stage1_worker_records_timeout(monkeypatch):
+    import time
+    import src.lang.subset_search.search as search_mod
+
+    def slow(*args, **kwargs):
+        time.sleep(10)  # SIGALRM interrupts the sleep
+
+    monkeypatch.setattr(search_mod, 'score_vector', slow)
+    key, res = search_mod._stage1_worker(('+ length', 2, 1))
+    assert res['status'] == 'timeout'
