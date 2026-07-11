@@ -97,11 +97,16 @@ def run_stage1(out_dir, top_n=200, max_size=10, timeout_s=600, workers=None):
                 key = futures[fut]
                 try:
                     key, res = fut.result()
-                except Exception as e:  # worker died (e.g. BrokenProcessPool)
-                    res = {'status': 'error', 'error': repr(e), 'max_size': max_size}
+                except (Exception, SubsetTimeout) as e:
+                    # Parent-side failure (e.g. BrokenProcessPool, escaped
+                    # alarm): an infrastructure problem, not a per-subset
+                    # verdict. Leave the key unwritten so a resume retries it.
+                    print(f"stage1: {key} failed in parent, will retry on resume: {e!r}")
+                    continue
                 results[key] = res
-                with open(results_path, 'w') as f:
+                with open(results_path + '.tmp', 'w') as f:
                     json.dump(results, f)
+                os.replace(results_path + '.tmp', results_path)
 
     return {
         key: results[key]

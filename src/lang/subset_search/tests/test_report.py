@@ -1,8 +1,5 @@
 """Tests for Pareto selection and Stage 2 report generation."""
 
-import json
-from pathlib import Path
-
 from src.lang.subset_search.search import run_stage0, run_stage1
 from src.lang.subset_search.report import pareto_front, write_reports
 
