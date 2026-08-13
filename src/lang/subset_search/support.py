@@ -25,13 +25,22 @@ def support_buckets(
     pool_names: frozenset[str],
     min_successes: int = 3,
     min_variability: float = 0.3,
+    target_type: str | None = None,
 ) -> dict[frozenset[str], int]:
-    """Count quality-passing distinct behaviors per witness support set."""
+    """Count quality-passing distinct behaviors per witness support set.
+
+    With ``target_type``, only behaviors of that output type are counted, so
+    the proxy ranks subsets by their type-restricted yield — filtering here
+    (not just at Stage 1 scoring) is what keeps subsets that excel only at
+    the target type from being cut before exact evaluation.
+    """
     buckets: dict[frozenset[str], int] = defaultdict(int)
     for prog in bank.all_programs():
         if prog.fingerprint is None:
             continue
         if not passes_quality_filter(prog.fingerprint, min_successes, min_variability):
+            continue
+        if target_type is not None and str(prog.type) != target_type:
             continue
         buckets[support_set(prog.ast, pool_names)] += 1
     return dict(buckets)

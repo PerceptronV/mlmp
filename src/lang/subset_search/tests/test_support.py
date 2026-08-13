@@ -54,3 +54,27 @@ def test_support_buckets_counts_only_quality_fingerprints():
     assert all(n > 0 for n in buckets.values())
     total_quality = sum(buckets.values())
     assert 0 < total_quality <= bank.count()
+
+
+def test_support_buckets_target_type_restricts_counts():
+    g = pool_grammar(('+', 'length', 'take'))
+    enum = BottomUpEnumerator(grammar=g, max_size=3)
+    bank = enum.enumerate()
+    pool = frozenset({'+', 'length', 'take'})
+    unrestricted = support_buckets(bank, pool)
+    restricted = support_buckets(bank, pool, target_type='list[int]')
+
+    # A strict subset of the unrestricted counts: this grammar has quality
+    # int-typed behaviors (length, +) that the restriction must drop.
+    assert 0 < sum(restricted.values()) < sum(unrestricted.values())
+    assert all(restricted[s] <= unrestricted[s] for s in restricted)
+
+    # Restricted totals equal the number of quality list[int] behaviors.
+    from src.lang.enumeration.filters import passes_quality_filter
+    n_ll = sum(
+        1 for p in bank.all_programs()
+        if p.fingerprint is not None
+        and passes_quality_filter(p.fingerprint)
+        and str(p.type) == 'list[int]'
+    )
+    assert sum(restricted.values()) == n_ll

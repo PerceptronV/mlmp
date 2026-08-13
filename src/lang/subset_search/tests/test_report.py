@@ -45,3 +45,35 @@ def test_write_reports_end_to_end(tmp_path):
         assert "Yield curve" in report
         assert "Sample programs" in report
         assert "Hardest behaviors" in report
+
+
+def test_pareto_front_with_targeted_dims_ignores_other_dims():
+    vectors = {
+        'a': _vec(n_distinct=10, density=0.1, spread=0.1),
+        # Dominated on (n_distinct, density) but best on spread — must be
+        # dropped when spread is not a Pareto dimension.
+        'b': _vec(n_distinct=5, density=0.05, spread=0.9),
+    }
+    assert pareto_front(vectors, dims=('n_distinct', 'density')) == ['a']
+
+
+def test_targeted_pipeline_end_to_end(tmp_path):
+    pool = ('+', '*', 'length', 'take', 'concat', 'map')
+    run_stage0(str(tmp_path), max_size=4, sizes=(5,), pool_names=pool,
+               target_type='list[int]')
+    results = run_stage1(str(tmp_path), top_n=3, max_size=4, timeout_s=120,
+                         workers=2)
+    # Stage 1 inherits the restriction from stage0.json: every scored
+    # behavior is list[int]-typed, so type_coverage collapses to 1.
+    for res in results.values():
+        assert res['status'] == 'ok'
+        assert res['score']['type_coverage'] == 1
+
+    finalists = write_reports(str(tmp_path), max_finalists=2)
+    assert finalists
+    summary = (tmp_path / "reports" / "summary.md").read_text()
+    assert "list[int]" in summary
+    assert "spread" not in summary  # 2D front: n_distinct and density only
+    for key in finalists:
+        report = (tmp_path / "reports" / f"{key.replace(' ', '_')}.md").read_text()
+        assert "Restricted to output type `list[int]`" in report

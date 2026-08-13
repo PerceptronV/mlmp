@@ -78,7 +78,7 @@ def test_stage1_worker_records_error(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(search_mod, 'score_vector', boom)
-    key, res = search_mod._stage1_worker(('+ length', 2, 60))
+    key, res = search_mod._stage1_worker(('+ length', 2, 60, None))
     assert res['status'] == 'error'
     assert 'boom' in res['error']
 
@@ -91,7 +91,7 @@ def test_stage1_worker_records_timeout(monkeypatch):
         time.sleep(10)  # SIGALRM interrupts the sleep
 
     monkeypatch.setattr(search_mod, 'score_vector', slow)
-    key, res = search_mod._stage1_worker(('+ length', 2, 1))
+    key, res = search_mod._stage1_worker(('+ length', 2, 1, None))
     assert res['status'] == 'timeout'
 
 
@@ -101,10 +101,12 @@ def test_cli_stage0_smoke(tmp_path, monkeypatch):
 
     calls = {}
 
-    def fake_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None):
-        calls['args'] = (out_dir, max_size, sizes)
+    def fake_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None,
+                    target_type=None):
+        calls['args'] = (out_dir, max_size, sizes, target_type)
         return []
 
     monkeypatch.setattr(search_mod, 'run_stage0', fake_stage0)
-    main(['--stage', '0', '--out', str(tmp_path), '--max-size', '5'])
-    assert calls['args'] == (str(tmp_path), 5, (5, 6))
+    main(['--stage', '0', '--out', str(tmp_path), '--max-size', '5',
+          '--target-type', 'list[int]'])
+    assert calls['args'] == (str(tmp_path), 5, (5, 6), 'list[int]')

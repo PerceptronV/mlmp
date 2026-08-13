@@ -9,15 +9,18 @@ from ..enumeration.filters import passes_quality_filter
 from ..enumeration.fingerprint import FAIL
 from ..enumeration.test_suite import DEFAULT_TEST_SUITE
 from .pool import pool_grammar
-from .scoring import PARETO_DIMS
+from .scoring import PARETO_DIMS, PARETO_DIMS_TARGETED
 
 
-def pareto_front(vectors: dict[str, dict]) -> list[str]:
-    """Keys not strictly dominated on PARETO_DIMS, by descending n_distinct."""
+def pareto_front(
+    vectors: dict[str, dict],
+    dims: tuple[str, ...] = PARETO_DIMS,
+) -> list[str]:
+    """Keys not strictly dominated on ``dims``, by descending n_distinct."""
     def dominates(a: dict, b: dict) -> bool:
         return (
-            all(a[d] >= b[d] for d in PARETO_DIMS)
-            and any(a[d] > b[d] for d in PARETO_DIMS)
+            all(a[d] >= b[d] for d in dims)
+            and any(a[d] > b[d] for d in dims)
         )
 
     front = [
@@ -38,6 +41,8 @@ def _format_value(v) -> str:
 def _finalist_report(
     key: str, vec: dict, max_size: int,
     samples_per_size: int, n_hardest: int,
+    dims: tuple[str, ...] = PARETO_DIMS,
+    target_type: str | None = None,
 ) -> str:
     enum = BottomUpEnumerator(grammar=pool_grammar(tuple(key.split(' '))),
                               max_size=max_size)
@@ -45,12 +50,15 @@ def _finalist_report(
     quality = [
         p for p in bank.all_programs()
         if p.fingerprint is not None and passes_quality_filter(p.fingerprint)
+        and (target_type is None or str(p.type) == target_type)
     ]
 
     lines = [f"# Subset: `{key}`", ""]
+    if target_type is not None:
+        lines += [f"Restricted to output type `{target_type}`.", ""]
 
     lines += ["## Score vector", ""]
-    for dim in PARETO_DIMS:
+    for dim in dims:
         lines.append(f"- **{dim}**: {vec[dim]}")
     lines.append("")
 
@@ -92,26 +100,33 @@ def write_reports(
 ) -> list[str]:
     with open(os.path.join(out_dir, 'stage1.json')) as f:
         stage1 = json.load(f)
+    with open(os.path.join(out_dir, 'stage0.json')) as f:
+        target_type = json.load(f).get('target_type')
+    dims = PARETO_DIMS if target_type is None else PARETO_DIMS_TARGETED
 
     ok = {k: v for k, v in stage1.items() if v['status'] == 'ok'}
     vectors = {k: v['score'] for k, v in ok.items()}
-    finalists = pareto_front(vectors)[:max_finalists]
+    finalists = pareto_front(vectors, dims)[:max_finalists]
 
     reports_dir = os.path.join(out_dir, 'reports')
     os.makedirs(reports_dir, exist_ok=True)
 
-    summary = ["# Subset search — Pareto front", "",
-               "| subset | " + " | ".join(PARETO_DIMS) + " |",
-               "|" + "---|" * (len(PARETO_DIMS) + 1)]
+    title = "# Subset search — Pareto front"
+    if target_type is not None:
+        title += f" (output type `{target_type}`)"
+    summary = [title, "",
+               "| subset | " + " | ".join(dims) + " |",
+               "|" + "---|" * (len(dims) + 1)]
     for key in finalists:
         vec = vectors[key]
         row = " | ".join(
             f"{vec[d]:.4g}" if isinstance(vec[d], float) else str(vec[d])
-            for d in PARETO_DIMS
+            for d in dims
         )
         summary.append(f"| `{key}` | {row} |")
         report = _finalist_report(
             key, vec, ok[key]['max_size'], samples_per_size, n_hardest,
+            dims=dims, target_type=target_type,
         )
         path = os.path.join(reports_dir, f"{key.replace(' ', '_')}.md")
         with open(path, 'w') as f:

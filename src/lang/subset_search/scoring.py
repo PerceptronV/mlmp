@@ -19,14 +19,23 @@ PARETO_DIMS: tuple[str, ...] = (
     'n_distinct', 'slope', 'density', 'type_coverage', 'spread', 'tail'
 )
 
+# When the search is restricted to a single output type, type_coverage is
+# constant and spread/tail reward variety the restriction deliberately gave
+# up, so the front is taken over count and efficiency only.
+PARETO_DIMS_TARGETED: tuple[str, ...] = ('n_distinct', 'density')
+
 
 def _quality_programs(
-    bank: ProgramBank, min_successes: int, min_variability: float
+    bank: ProgramBank,
+    min_successes: int,
+    min_variability: float,
+    target_type: str | None = None,
 ) -> list[TypedProgram]:
     return [
         p for p in bank.all_programs()
         if p.fingerprint is not None
         and passes_quality_filter(p.fingerprint, min_successes, min_variability)
+        and (target_type is None or str(p.type) == target_type)
     ]
 
 
@@ -77,8 +86,12 @@ def score_vector(
     min_variability: float = 0.3,
     tail_offset: int = 2,
     seed: int = 0,
+    target_type: str | None = None,
 ) -> dict:
-    programs = _quality_programs(bank, min_successes, min_variability)
+    """With ``target_type`` (e.g. 'list[int]'), only behaviors of that output
+    type count toward every dimension; ``attempts`` stays the full enumeration
+    effort, so density charges the subset for work spent on other types."""
+    programs = _quality_programs(bank, min_successes, min_variability, target_type)
     curve = yield_curve(programs, max_size)
     n_k = curve[-1] if curve else 0
 

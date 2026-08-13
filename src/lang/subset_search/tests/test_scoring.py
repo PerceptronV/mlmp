@@ -49,6 +49,19 @@ def test_score_vector_is_deterministic(scored_bank):
     assert vec == vec2
 
 
+def test_target_type_restricts_every_dimension(scored_bank):
+    bank, enum, vec = scored_bank
+    vec_ll = score_vector(bank, enum.attempts, max_size=4,
+                          target_type='list[int]')
+    # This grammar (+, length, take, map) has quality int-typed behaviors,
+    # so the restriction strictly shrinks the count — and density with it,
+    # since attempts stays the full enumeration effort.
+    assert 0 < vec_ll['n_distinct'] < vec['n_distinct']
+    assert vec_ll['density'] < vec['density']
+    assert vec_ll['type_coverage'] == 1
+    assert vec_ll['curve'][-1] == vec_ll['n_distinct']
+
+
 def test_empty_bank_gives_zero_vector():
     # Note: any *enumerated* bank contains the input variable x, whose
     # identity fingerprint passes the quality filter — so a truly empty

@@ -3,6 +3,11 @@
     python -m src.lang.subset_search --stage 0            # proxy sweep
     python -m src.lang.subset_search --stage 1 --top-n 200
     python -m src.lang.subset_search --stage 2
+
+Type-restricted search (separate --out; stages 1-2 inherit the restriction):
+
+    python -m src.lang.subset_search --stage 0 --out outputs/subset_search_ll \
+        --target-type 'list[int]'
 """
 
 import argparse
@@ -20,11 +25,17 @@ def main(argv=None):
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--workers', type=int, default=None)
     parser.add_argument('--max-finalists', type=int, default=10)
+    parser.add_argument('--target-type', default=None, metavar='TYPE',
+                        help="restrict the search to behaviors of this output "
+                             "type, e.g. 'list[int]' for list[int]->list[int] "
+                             "(stage 0 records it; stages 1-2 inherit it from "
+                             "stage0.json)")
     args = parser.parse_args(argv)
 
     if args.stage == 0:
         scores = search.run_stage0(
             args.out, max_size=args.max_size if args.max_size is not None else 7,
+            target_type=args.target_type,
         )
         print(f"Stage 0 done: {len(scores)} subsets scored; "
               f"top: {scores[0] if scores else 'n/a'}")

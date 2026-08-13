@@ -30,14 +30,20 @@ def _on_alarm(signum, frame):
     raise SubsetTimeout()
 
 
-def run_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None):
-    """One full-pool enumeration; proxy-score every candidate subset."""
+def run_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None,
+               target_type=None):
+    """One full-pool enumeration; proxy-score every candidate subset.
+
+    ``target_type`` (e.g. 'list[int]') restricts the search to behaviors of
+    that output type. It is recorded in stage0.json and inherited by the
+    later stages, so one output directory is always internally consistent.
+    """
     os.makedirs(out_dir, exist_ok=True)
     names = tuple(pool_names) if pool_names is not None else POOL_NAMES
 
     enum = BottomUpEnumerator(grammar=pool_grammar(names), max_size=max_size)
     bank = enum.enumerate()
-    buckets = support_buckets(bank, frozenset(names))
+    buckets = support_buckets(bank, frozenset(names), target_type=target_type)
     # A support larger than the biggest subset can never be contained in one.
     buckets = {s: n for s, n in buckets.items() if len(s) <= max(sizes)}
 
@@ -49,20 +55,22 @@ def run_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None):
         key=lambda kv: (-kv[1], kv[0]),
     )
     with open(os.path.join(out_dir, 'stage0.json'), 'w') as f:
-        json.dump({'max_size': max_size, 'pool': list(names), 'scores': scores}, f)
+        json.dump({'max_size': max_size, 'pool': list(names),
+                   'target_type': target_type, 'scores': scores}, f)
     return scores
 
 
 def _stage1_worker(task):
     """Deep-enumerate one subset under a SIGALRM wall-clock guard."""
-    key, max_size, timeout_s = task
+    key, max_size, timeout_s, target_type = task
     signal.signal(signal.SIGALRM, _on_alarm)
     signal.alarm(timeout_s)
     try:
         grammar = pool_grammar(tuple(key.split(' ')))
         enum = BottomUpEnumerator(grammar=grammar, max_size=max_size)
         bank = enum.enumerate()
-        vec = score_vector(bank, enum.attempts, max_size)
+        vec = score_vector(bank, enum.attempts, max_size,
+                           target_type=target_type)
         return key, {'status': 'ok', 'score': vec, 'max_size': max_size}
     except SubsetTimeout:
         return key, {'status': 'timeout', 'max_size': max_size}
@@ -83,8 +91,9 @@ def run_stage1(out_dir, top_n=200, max_size=10, timeout_s=600, workers=None):
         with open(results_path) as f:
             results = json.load(f)
 
+    target_type = stage0.get('target_type')
     todo = [
-        (key, max_size, timeout_s)
+        (key, max_size, timeout_s, target_type)
         for key, _score in stage0['scores'][:top_n]
         if key not in results
     ]
