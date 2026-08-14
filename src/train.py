@@ -433,7 +433,8 @@ def train():
     parser.add_argument('--no-wandb', action='store_true', help='Disable wandb logging')
 
     # Other arguments
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu', help='Device to use')
+    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
+                        help="Device to use: 'cpu', 'cuda', or 'cuda:N' to pin the run to GPU N")
     parser.add_argument('--num-workers', type=int, default=0, help='Number of dataloader workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
@@ -592,6 +593,11 @@ def train():
         wandb.config.update({'n_params': n_params})
 
     device = torch.device(args.device)
+    if device.type == 'cuda' and device.index is not None:
+        # Pin the process-wide current CUDA device so library code that
+        # allocates on the default device (flex-attention masks, compile
+        # internals) follows --device cuda:N instead of landing on cuda:0.
+        torch.cuda.set_device(device)
     model = model.to(device)
 
     optimiser = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
