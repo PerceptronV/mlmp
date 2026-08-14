@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchtune.modules.position_embeddings import RotaryPositionalEmbeddings
+from .seq2seq import RotaryEmbedding
 
 
 
@@ -20,7 +20,7 @@ class AttentionBlock(nn.Module):
         self.v = nn.Linear(d_embed, d_model)
         self.o = nn.Linear(d_model, d_embed)
 
-        self.pos_emb = RotaryPositionalEmbeddings(self.d_head, max_seq_len=max_seq_len)
+        self.pos_emb = RotaryEmbedding(self.d_head, max_seq_len=max_seq_len)
 
         self.norm = nn.LayerNorm(d_embed)
         self.dropout = nn.Dropout(dropout)
@@ -38,8 +38,8 @@ class AttentionBlock(nn.Module):
         v = v.view(B, L, self.n_heads, self.d_head)                     # (B, L, n_heads, d_head)
 
         # RoPE requires (B, L, n_heads, d_head)
-        q = self.pos_emb(q, input_pos=None)                             # (B, L, n_heads, d_head)
-        k = self.pos_emb(k, input_pos=None)                             # (B, L, n_heads, d_head)
+        q = self.pos_emb(q)                                             # (B, L, n_heads, d_head)
+        k = self.pos_emb(k)                                             # (B, L, n_heads, d_head)
 
         # Reshape to (B, n_heads, L, d_head) for attention computation
         # .contiguous() needed for CUDA strided batched matmul operations

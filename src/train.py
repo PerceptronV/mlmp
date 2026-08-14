@@ -13,12 +13,12 @@ import numpy as np
 
 from .models.seq2seq import Seq2SeqTransformer, from_token_ids
 from .data.dataloader import ProgramDataset, TRAINING_MODES
-from .data.inverse_mlc_dataloader import InverseMLCDataset, INVERSE_MLC_EPISODE_TYPES
 from .data.program_io import ProgramIO
 from .lang.grammar import GRAMMARS, get_grammar
 
 
 DATASETS = ("program", "inverse-mlc")
+INVERSE_MLC_EPISODE_TYPES = ("algebraic", "algebraic_noise", "algebraic+biases", "retrieve")
 
 
 class CyclingSampler(Sampler):
@@ -491,6 +491,7 @@ def train():
 
     # Datasets
     if args.dataset == 'inverse-mlc':
+        from .data.inverse_mlc_dataloader import InverseMLCDataset
         data_root = Path(args.inverse_mlc_data_root) if args.inverse_mlc_data_root else None
         print(f"Loading inverse-mlc dataset (episode_type={args.inverse_mlc_episode_type})")
         train_dataset = InverseMLCDataset(
