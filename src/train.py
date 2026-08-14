@@ -698,9 +698,12 @@ def train():
             n_fns = len(train_dataset.fn_names)
             curriculum_k = _easy_shuffle_k_for_epoch(epoch, args, n_fns)
             train_dataset.n_permuted = curriculum_k
-            if val_dataset is not None:
-                val_dataset.n_permuted = curriculum_k
-            print(f"easy-symbol-shuffling K: {curriculum_k}/{n_fns}")
+            # Validation stays at full shuffling (n_permuted=None) throughout:
+            # ramping K on val would change the task difficulty mid-run, making
+            # val curves incomparable across epochs and against
+            # symbol-shuffling baselines. Val therefore always measures the
+            # end-goal condition.
+            print(f"easy-symbol-shuffling K: {curriculum_k}/{n_fns} (val at full K)")
 
         train_loss, global_step = train_epoch(
             model, train_loader, optimiser, criterion, device, args.grad_clip,
