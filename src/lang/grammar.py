@@ -648,27 +648,19 @@ def group(f: Callable[[T1], T2], xs: list[T1]) -> list[list[T1]]:
 
 SMALL_GRAMMAR_FUNCTIONS = {
     # arithmetic operators
-    '+', '-', '*', '/', '%',
+    '+', '*',
     # comparison operators
-    '<', '>', '==',
+    '<',
     # boolean operators
-    'and', 'or', 'not',
-    # number predicates
-    'is_even', 'is_odd',
+    'and', 'not',
     # list construction
-    'singleton', 'range', 'cons',
+    'singleton',
     # list combination
     'concat',
-    # list access
-    'first', 'last', 'nth',
     # list removal / slicing
-    'drop', 'take', 'slice',
-    # list queries
-    'length', 'max', 'min', 'sum',
-    # list transformation
-    'reverse',
+    'take',
     # higher-order functions
-    'map', 'filter', 'fold',
+    'map', 'fold'
 }
 
 SmallGrammar = DefaultGrammar.subset(SMALL_GRAMMAR_FUNCTIONS)
