@@ -238,7 +238,7 @@ class Grammar:
 
         # Create new grammar with subset of functions
         new_functions = {}
-        for name in available:
+        for name in sorted(available):
             # Get the actual function name (handle name mapping)
             actual_name = self.name_map.get(name, name)
             if actual_name in self.functions:
