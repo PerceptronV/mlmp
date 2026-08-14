@@ -211,6 +211,35 @@ def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=8
     )
 
 
+def compute_validation_accuracy_by_n_io(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Functional accuracy binned by ``n_io_shown``.
+
+    Each program is evaluated once, at the view assigned round-robin by its
+    index (program i -> n_io_shown = i % n_views + min_n_io_shown), so the
+    total decode budget equals one full validation pass and every bin scores
+    the same ~1/n_views of the programs at every epoch. Correctness at low
+    n_io_shown means "consistent with the shown pairs", so bins are not
+    monotone: fewer pairs are easier to satisfy but pin the behavior down
+    less. Returns {n_io_shown: accuracy}.
+    """
+    model.eval()
+    n_views = val_dataset.n_io_views
+    n_programs = len(val_dataset.programs)
+    if max_examples is not None:
+        n_programs = min(n_programs, max_examples)
+    n_correct: dict[int, int] = {}
+    n_total: dict[int, int] = {}
+    for prog_idx in tqdm(range(n_programs), desc="Val accuracy by n_io"):
+        view = prog_idx % n_views
+        n_io_shown = view + val_dataset.min_n_io_shown
+        idx = prog_idx * n_views + view
+        ok = _check_program_match(model, val_dataset, idx, None, None, None,
+                                  device, max_program_tokens)
+        n_total[n_io_shown] = n_total.get(n_io_shown, 0) + 1
+        n_correct[n_io_shown] = n_correct.get(n_io_shown, 0) + int(ok)
+    return {n: n_correct[n] / n_total[n] for n in sorted(n_total)}
+
+
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
                     global_step=0, best_val_loss=float('inf'), val_accuracy=0.0,
                     best_val_accuracy=0.0, wandb_run_id=None):
@@ -426,6 +455,11 @@ def train():
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('--val-examples', type=int, default=None,
                         help='Max validation programs for accuracy (each evaluated once with all n_io_per_program I/O shown). None = all programs.')
+    parser.add_argument('--val-by-n-io', action='store_true',
+                        help='Additionally log val accuracy binned by n_io_shown '
+                             '(val/accuracy_by_n_io/NN). Programs are assigned to bins '
+                             'round-robin by index, so each bin scores the same ~1/n_views '
+                             'of the val programs every epoch; costs one extra val pass.')
 
     # Checkpoint arguments
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory to save checkpoints')
@@ -742,6 +776,18 @@ def train():
                 best_val_accuracy = val_accuracy
                 print(f"New best validation accuracy: {best_val_accuracy:.2%}")
 
+            val_accuracy_by_n_io = None
+            if args.val_by_n_io:
+                val_accuracy_by_n_io = compute_validation_accuracy_by_n_io(
+                    model,
+                    val_dataset,
+                    device,
+                    max_program_tokens=80,
+                    max_examples=args.val_examples,
+                )
+                print("Validation accuracy by n_io_shown: "
+                      + ", ".join(f"{n}: {a:.2%}" for n, a in val_accuracy_by_n_io.items()))
+
         if use_wandb:
             log_payload = {
                 'epoch': epoch + 1,
@@ -753,6 +799,11 @@ def train():
                 'best_val_loss': best_val_loss,
                 'best_val_accuracy': best_val_accuracy,
             }
+            if val_loader and args.val_by_n_io and val_accuracy_by_n_io:
+                log_payload.update({
+                    f'val/accuracy_by_n_io/{n:02d}': a
+                    for n, a in val_accuracy_by_n_io.items()
+                })
             if curriculum_k is not None:
                 log_payload['curriculum/n_permuted'] = curriculum_k
             wandb.log(log_payload)
