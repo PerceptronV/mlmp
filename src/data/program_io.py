@@ -429,6 +429,38 @@ class ProgramIO:
         except Exception:
             return None
 
+    def classify_program(
+        self,
+        program_str: str,
+        io_pairs: list[tuple[list[int], list[int]]],
+        timeout: float | None = None,
+    ) -> tuple[str, int]:
+        """Classify a predicted program against its I/O pairs.
+
+        Returns ``(status, n_matched)`` with disjoint statuses:
+          - ``('malformed', 0)``     — the string doesn't parse / compile
+          - ``('runtime_error', m)`` — execution raised or timed out on some
+                                       pair (``m`` = pairs matched before it)
+          - ``('executed', m)``      — ran on every pair; ``m`` of
+                                       ``len(io_pairs)`` outputs matched.
+                                       ``m == len(io_pairs)`` means correct.
+        """
+        timeout = timeout if timeout is not None else self.exec_timeout
+        try:
+            fn, _ = self._get_compiler().compile(parse(program_str))
+        except Exception:
+            return 'malformed', 0
+        n_matched = 0
+        for inp, expected in io_pairs:
+            try:
+                with alarm(timeout):
+                    output = fn(list(inp))
+            except Exception:
+                return 'runtime_error', n_matched
+            if isinstance(output, list) and [x % 100 for x in output] == list(expected):
+                n_matched += 1
+        return 'executed', n_matched
+
     def check_program(
         self,
         program_str: str,
@@ -440,14 +472,5 @@ class ProgramIO:
         ``io_pair``. Failure modes (parse, compile, runtime, timeout, mismatch)
         all collapse to ``False``.
         """
-        timeout = timeout if timeout is not None else self.exec_timeout
-        try:
-            fn, _ = self._get_compiler().compile(parse(program_str))
-            for inp, expected in io_pairs:
-                with alarm(timeout):
-                    output = fn(list(inp))
-                if not isinstance(output, list) or [x % 100 for x in output] != list(expected):
-                    return False
-            return True
-        except Exception:
-            return False
+        status, n_matched = self.classify_program(program_str, io_pairs, timeout)
+        return status == 'executed' and n_matched == len(io_pairs)

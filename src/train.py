@@ -6,6 +6,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from pathlib import Path
 import argparse
 import shutil
+from collections import Counter, defaultdict
 from tqdm import tqdm
 import wandb
 import random
@@ -138,22 +139,19 @@ def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device)
     return ProgramIO().greedy_decode(model, src_tokens, max_tokens, device)
 
 
-def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens, exec_timeout=1.0):
-    """Greedy-decode one example and check the prediction is correct.
+def _classify_program_prediction(model, dataset, idx, device, max_program_tokens=80, exec_timeout=1.0):
+    """Greedy-decode one example and classify the outcome.
 
     Delegates the decode + detokenise + reverse-map + compile + execute
     pipeline to :class:`src.data.program_io.ProgramIO` (held on the dataset as
-    ``dataset.io``). This function is now mostly the I/O-pair wiring that
-    pulls the right inputs out of the dataset item.
-
-    If ``dataset`` exposes a ``check_prediction(generated_token_ids, info)``
-    method (e.g. :class:`InverseMLCDataset`), we delegate to it after
-    greedy-decoding. That covers datasets where the target isn't an executable
-    program and "correctness" is just exact-token match against the gold tail.
-    ``compiler`` / ``start_tok`` / ``end_tok`` are accepted for backwards
-    compatibility — the ProgramIO holds equivalents — but no longer used.
+    ``dataset.io``). Returns ``(correct, status, n_matched, n_shown)`` where
+    ``status`` is ``'malformed'`` / ``'runtime_error'`` / ``'executed'`` (see
+    :meth:`ProgramIO.classify_program`), or ``None`` when execution semantics
+    don't apply — the vacuous no-I/O case, or a dataset exposing its own
+    ``check_prediction(generated_token_ids, info)`` (e.g.
+    :class:`InverseMLCDataset`, where correctness is exact-token match) — in
+    which case only ``correct`` is meaningful.
     """
-    del compiler, start_tok, end_tok  # canonical sources live on dataset.io
     seq, loss_mask, program = dataset.__getitem__(idx, include_program=True)
     len_x = loss_mask.count(0)
     src_tokens = torch.tensor(seq[:len_x], dtype=torch.long)
@@ -166,9 +164,9 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     # in the corpus has empty I/O.)
     use_dataset_checker = hasattr(dataset, 'check_prediction')
     if src_tokens.numel() == 0:
-        return True
+        return True, None, None, 0
     if not use_dataset_checker and not program.get('io_pairs'):
-        return True
+        return True, None, None, 0
 
     io = getattr(dataset, 'io', None) or ProgramIO(tokeniser=dataset.tokeniser)
     gen_tokens = io.greedy_decode(model, src_tokens, max_program_tokens, device)
@@ -176,12 +174,40 @@ def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, devi
     if use_dataset_checker:
         if io.end in gen_tokens:
             gen_tokens = gen_tokens[: gen_tokens.index(io.end)]
-        return dataset.check_prediction(gen_tokens, program)
+        return dataset.check_prediction(gen_tokens, program), None, None, 0
 
     # In symbol-shuffling mode the model emits the program with mapped fn
     # names; ``detokenise_program`` reverses the per-episode permutation.
     program_str = io.detokenise_program(gen_tokens, program.get('name_map'))
-    return io.check_program(program_str, program['io_pairs'], timeout=exec_timeout)
+    io_pairs = program['io_pairs']
+    status, n_matched = io.classify_program(program_str, io_pairs, timeout=exec_timeout)
+    correct = status == 'executed' and n_matched == len(io_pairs)
+    return correct, status, n_matched, len(io_pairs)
+
+
+FAILURE_MODES = ('correct', 'malformed', 'runtime_error', 'total_mismatch', 'partial_mismatch')
+
+
+def _failure_mode(status: str, n_matched: int, n_shown: int) -> str:
+    """Collapse a classification into the disjoint failure-mode taxonomy:
+    correct / malformed / runtime_error / total_mismatch / partial_mismatch."""
+    if status in ('malformed', 'runtime_error'):
+        return status
+    if n_matched == n_shown:
+        return 'correct'
+    return 'total_mismatch' if n_matched == 0 else 'partial_mismatch'
+
+
+def _check_program_match(model, dataset, idx, compiler, start_tok, end_tok, device, max_program_tokens, exec_timeout=1.0):
+    """Greedy-decode one example and check the prediction is correct.
+
+    ``compiler`` / ``start_tok`` / ``end_tok`` are accepted for backwards
+    compatibility — the ProgramIO holds equivalents — but no longer used.
+    """
+    del compiler, start_tok, end_tok  # canonical sources live on dataset.io
+    correct, _status, _n_matched, _n_shown = _classify_program_prediction(
+        model, dataset, idx, device, max_program_tokens, exec_timeout)
+    return correct
 
 
 def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tokens=80, desc="Accuracy"):
@@ -196,48 +222,74 @@ def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tok
     return n_correct / len(indices)
 
 
-def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
-    """Functional accuracy: generate a program from the I/O context and check it
-    reproduces every shown I/O pair. Evaluates each program once at
-    ``max_n_io_shown``."""
-    n_views = val_dataset.n_io_views
-    n_programs = len(val_dataset.programs)
-    if max_examples is not None:
-        n_programs = min(n_programs, max_examples)
-    indices = [prog_idx * n_views + (n_views - 1) for prog_idx in range(n_programs)]
-    return compute_accuracy_on_indices(
-        model, val_dataset, indices, device,
-        max_program_tokens=max_program_tokens, desc="Val accuracy",
-    )
+def compute_validation_outcomes(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Headline validation pass: each program once at ``max_n_io_shown``.
 
-
-def compute_validation_accuracy_by_n_io(model, val_dataset, device, max_program_tokens=80, max_examples=None):
-    """Functional accuracy binned by ``n_io_shown``.
-
-    Each program is evaluated once, at the view assigned round-robin by its
-    index (program i -> n_io_shown = i % n_views + min_n_io_shown), so the
-    total decode budget equals one full validation pass and every bin scores
-    the same ~1/n_views of the programs at every epoch. Correctness at low
-    n_io_shown means "consistent with the shown pairs", so bins are not
-    monotone: fewer pairs are easier to satisfy but pin the behavior down
-    less. Returns {n_io_shown: accuracy}.
+    Returns ``(accuracy, failure_modes)`` where ``failure_modes`` is a Counter
+    over the disjoint taxonomy {correct, malformed, runtime_error,
+    total_mismatch, partial_mismatch} — empty when the dataset delegates
+    correctness to its own checker (inverse-mlc). Classification is a
+    byproduct of the decodes the accuracy pass already does, so it adds no
+    extra model or execution cost.
     """
     model.eval()
     n_views = val_dataset.n_io_views
     n_programs = len(val_dataset.programs)
     if max_examples is not None:
         n_programs = min(n_programs, max_examples)
-    n_correct: dict[int, int] = {}
-    n_total: dict[int, int] = {}
-    for prog_idx in tqdm(range(n_programs), desc="Val accuracy by n_io"):
+    n_correct = 0
+    modes: Counter = Counter()
+    for prog_idx in tqdm(range(n_programs), desc="Val accuracy"):
+        idx = prog_idx * n_views + (n_views - 1)
+        correct, status, n_matched, n_shown = _classify_program_prediction(
+            model, val_dataset, idx, device, max_program_tokens)
+        n_correct += int(correct)
+        if status is not None:
+            modes[_failure_mode(status, n_matched, n_shown)] += 1
+    return (n_correct / n_programs if n_programs else 0.0), modes
+
+
+def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Functional accuracy: generate a program from the I/O context and check it
+    reproduces every shown I/O pair. Evaluates each program once at
+    ``max_n_io_shown``. Thin wrapper over :func:`compute_validation_outcomes`
+    kept for external callers (e.g. scripts/backfill_val_accuracy.py)."""
+    accuracy, _modes = compute_validation_outcomes(
+        model, val_dataset, device, max_program_tokens, max_examples)
+    return accuracy
+
+
+def compute_validation_outcomes_by_n_io(model, val_dataset, device, max_program_tokens=80, max_examples=None):
+    """Outcome distribution conditioned on the number of I/O examples shown.
+
+    Each program is evaluated once, at the view assigned round-robin by its
+    index (program i -> n_io_shown = i % n_views + min_n_io_shown), so the
+    total decode budget equals one full validation pass and every bin scores
+    the same ~1/n_views of the programs at every epoch.
+
+    Returns ``{n_io_shown: Counter}`` where each Counter's disjoint keys are
+    'malformed', 'runtime_error', and 'match_0' .. 'match_{n_io_shown}'
+    ('match_{n_io_shown}' = fully correct), summing to the bin's program
+    count. One Counter increment per decoded example (O(n) total), reading a
+    bin is O(1). Bins need not be monotone in accuracy: fewer shown pairs are
+    easier to satisfy but pin the behavior down less.
+    """
+    model.eval()
+    n_views = val_dataset.n_io_views
+    n_programs = len(val_dataset.programs)
+    if max_examples is not None:
+        n_programs = min(n_programs, max_examples)
+    bins: dict[int, Counter] = defaultdict(Counter)
+    for prog_idx in tqdm(range(n_programs), desc="Val outcomes by n_io"):
         view = prog_idx % n_views
-        n_io_shown = view + val_dataset.min_n_io_shown
         idx = prog_idx * n_views + view
-        ok = _check_program_match(model, val_dataset, idx, None, None, None,
-                                  device, max_program_tokens)
-        n_total[n_io_shown] = n_total.get(n_io_shown, 0) + 1
-        n_correct[n_io_shown] = n_correct.get(n_io_shown, 0) + int(ok)
-    return {n: n_correct[n] / n_total[n] for n in sorted(n_total)}
+        _correct, status, n_matched, n_shown = _classify_program_prediction(
+            model, val_dataset, idx, device, max_program_tokens)
+        if status is None:
+            continue  # vacuous / dataset-checker item: no execution semantics
+        key = status if status in ('malformed', 'runtime_error') else f'match_{n_matched}'
+        bins[n_shown][key] += 1
+    return dict(bins)
 
 
 def save_checkpoint(model, optimiser, scheduler, epoch, train_loss, val_loss, args, checkpoint_dir,
@@ -513,6 +565,12 @@ def train():
             wandb_kwargs['id'] = args.run_name
             wandb_kwargs['resume'] = 'allow'
         wandb.init(**wandb_kwargs)
+        # The default step axis is consumed by train/step_loss at batch
+        # granularity; epoch-level series read most naturally against the
+        # epoch axis instead.
+        wandb.define_metric('epoch')
+        wandb.define_metric('curriculum/*', step_metric='epoch')
+        wandb.define_metric('analysis/*', step_metric='epoch')
         if args.run_name is None:
             args.run_name = wandb.run.name
     elif args.run_name is None:
@@ -758,7 +816,7 @@ def train():
                 best_val_loss = val_loss
                 print(f"New best validation loss: {best_val_loss:.4f}")
 
-            val_accuracy = compute_validation_accuracy(
+            val_accuracy, val_failure_modes = compute_validation_outcomes(
                 model,
                 val_dataset,
                 device,
@@ -766,25 +824,32 @@ def train():
                 max_examples=args.val_examples,
             )
             print(f"Validation accuracy: {val_accuracy:.2%}")
+            if val_failure_modes:
+                total_classified = sum(val_failure_modes.values())
+                print("Validation failure modes: " + ", ".join(
+                    f"{m}: {val_failure_modes[m] / total_classified:.2%}"
+                    for m in FAILURE_MODES))
 
             if val_accuracy > best_val_accuracy:
                 best_val_accuracy = val_accuracy
                 print(f"New best validation accuracy: {best_val_accuracy:.2%}")
 
-            # Binned accuracy runs whenever the dataset can vary the number of
-            # examples shown (ProgramDataset; inverse-mlc's views are query
-            # indices, not example counts, so it lacks min_n_io_shown).
-            val_accuracy_by_n_io = None
+            # Binned outcome distributions run whenever the dataset can vary
+            # the number of examples shown (ProgramDataset; inverse-mlc's
+            # views are query indices, not example counts, so it lacks
+            # min_n_io_shown).
+            val_outcomes_by_n_io = None
             if hasattr(val_dataset, 'min_n_io_shown') and val_dataset.n_io_views > 1:
-                val_accuracy_by_n_io = compute_validation_accuracy_by_n_io(
+                val_outcomes_by_n_io = compute_validation_outcomes_by_n_io(
                     model,
                     val_dataset,
                     device,
                     max_program_tokens=80,
                     max_examples=args.val_examples,
                 )
-                print("Validation accuracy by n_io_shown: "
-                      + ", ".join(f"{n}: {a:.2%}" for n, a in val_accuracy_by_n_io.items()))
+                print("Validation accuracy by n_io_shown: " + ", ".join(
+                    f"{n}: {c[f'match_{n}'] / max(1, sum(c.values())):.2%}"
+                    for n, c in sorted(val_outcomes_by_n_io.items())))
 
         if use_wandb:
             log_payload = {
@@ -797,11 +862,25 @@ def train():
                 'best_val_loss': best_val_loss,
                 'best_val_accuracy': best_val_accuracy,
             }
-            if val_loader and val_accuracy_by_n_io:
+            if val_loader and val_failure_modes:
+                total_classified = sum(val_failure_modes.values())
                 log_payload.update({
-                    f'val/accuracy_by_n_io/{n:02d}': a
-                    for n, a in val_accuracy_by_n_io.items()
+                    f'analysis/failure_modes/{m}': val_failure_modes[m] / total_classified
+                    for m in FAILURE_MODES
                 })
+            if val_loader and val_outcomes_by_n_io:
+                for n, counts in sorted(val_outcomes_by_n_io.items()):
+                    bin_total = sum(counts.values())
+                    log_payload[f'val/accuracy_by_n_io/{n:02d}'] = (
+                        counts[f'match_{n}'] / bin_total if bin_total else 0.0)
+                    categories = ['malformed', 'runtime_error'] + [
+                        f'match_{m}' for m in range(n + 1)]
+                    table = wandb.Table(
+                        data=[[c, counts[c]] for c in categories],
+                        columns=['outcome', 'count'])
+                    log_payload[f'analysis/outcomes_n_io_{n:02d}'] = wandb.plot.bar(
+                        table, 'outcome', 'count',
+                        title=f'Val outcomes at n_io_shown={n}')
             if curriculum_k is not None:
                 log_payload['curriculum/n_permuted'] = curriculum_k
             wandb.log(log_payload)
