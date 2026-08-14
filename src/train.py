@@ -455,11 +455,6 @@ def train():
     parser.add_argument('--grad-clip', type=float, default=1.0, help='Gradient clipping')
     parser.add_argument('--val-examples', type=int, default=None,
                         help='Max validation programs for accuracy (each evaluated once with all n_io_per_program I/O shown). None = all programs.')
-    parser.add_argument('--val-by-n-io', action='store_true',
-                        help='Additionally log val accuracy binned by n_io_shown '
-                             '(val/accuracy_by_n_io/NN). Programs are assigned to bins '
-                             'round-robin by index, so each bin scores the same ~1/n_views '
-                             'of the val programs every epoch; costs one extra val pass.')
 
     # Checkpoint arguments
     parser.add_argument('--checkpoint-dir', type=str, default='checkpoints', help='Directory to save checkpoints')
@@ -776,8 +771,11 @@ def train():
                 best_val_accuracy = val_accuracy
                 print(f"New best validation accuracy: {best_val_accuracy:.2%}")
 
+            # Binned accuracy runs whenever the dataset can vary the number of
+            # examples shown (ProgramDataset; inverse-mlc's views are query
+            # indices, not example counts, so it lacks min_n_io_shown).
             val_accuracy_by_n_io = None
-            if args.val_by_n_io:
+            if hasattr(val_dataset, 'min_n_io_shown') and val_dataset.n_io_views > 1:
                 val_accuracy_by_n_io = compute_validation_accuracy_by_n_io(
                     model,
                     val_dataset,
@@ -799,7 +797,7 @@ def train():
                 'best_val_loss': best_val_loss,
                 'best_val_accuracy': best_val_accuracy,
             }
-            if val_loader and args.val_by_n_io and val_accuracy_by_n_io:
+            if val_loader and val_accuracy_by_n_io:
                 log_payload.update({
                     f'val/accuracy_by_n_io/{n:02d}': a
                     for n, a in val_accuracy_by_n_io.items()
