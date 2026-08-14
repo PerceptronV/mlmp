@@ -213,6 +213,9 @@ __marimo__/
 wandb/
 .gneiss.json
 
+# Custom remote compute scripts
+*.rc.sh
+
 # MLMP
 datasets
 checkpoints
