@@ -60,13 +60,37 @@ def main() -> None:
         default=None,
         help="Random seed for Python random and torch RNG (default: unseeded)",
     )
+    parser.add_argument(
+        "--seed-constants",
+        type=int,
+        nargs="+",
+        default=None,
+        metavar="N",
+        help="Integer constants substituted into sketch holes "
+        "(default: 0 1 2 ... 10). Accepts negatives, e.g. -1 0 1 2.",
+    )
+    parser.add_argument(
+        "--enum-max-size",
+        type=int,
+        default=8,
+        help="Bottom-up enumeration program-size bound s_max (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--rl-expand-target",
+        type=int,
+        default=4_000_000,
+        help="Target number of concrete programs from post-RL sketch expansion "
+        "(default: %(default)s). Lower this on memory-constrained machines.",
+    )
     args = parser.parse_args()
 
     synthesise_corpus(
         grammar=get_grammar(args.grammar),
-        enum_max_size=8,
+        enum_max_size=args.enum_max_size,
+        rl_expand_target=args.rl_expand_target,
         output_dir=args.output_dir,
         seed=args.seed,
+        seed_constants=args.seed_constants,
     )
 
 

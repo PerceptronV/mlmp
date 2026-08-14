@@ -331,6 +331,7 @@ def synthesise_corpus(
     seed_constants: list[int] | None = None,
     rl_max_depth: int = 12,
     rl_target_programs: int = 100_000,
+    rl_expand_target: int = 4_000_000,
     rl_max_iterations: int = 5_000_000,
     rl_buffer_capacity: int = 50_000,
     rl_episodes_per_iter: int = 32,
@@ -613,12 +614,17 @@ def synthesise_corpus(
         pbar.set_postfix(novel=novel_count, gen=total_generated, buf=len(buffer))
 
     # ── Post-RL Expansion ─────────────────────────────────────────────────────
-    print(f"\nExpanding {len(rl_sketches):,} RL sketches...")
+    # Persist the collected sketches before the (memory-heavy) expansion so they
+    # are never lost if expansion is interrupted -- the periodic checkpoint above
+    # only fires every rl_checkpoint_interval iterations, which may never be
+    # reached when rl_target_programs is hit first.
+    save_corpus_asts([p.ast for p in rl_sketches], rl_ckpt_path)
+    print(f"\nExpanding {len(rl_sketches):,} RL sketches (target {rl_expand_target:,})...")
     rl_concrete = expand_sketches(
         rl_sketches, seed_constants, test_suite, jit,
         min_variability=enum_min_variability,
         max_substitutions=100,  # cap per sketch; RL programs can have many holes
-        target_total=4_000_000,
+        target_total=rl_expand_target,
     )
     # Deduplicate against everything already discovered (enum + RL sampling)
     rl_unique = [p for p in rl_concrete if p.fingerprint not in corpus_fingerprints]
