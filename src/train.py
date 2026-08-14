@@ -361,6 +361,12 @@ def train():
                         help='Comma-separated corpus JSON file(s) for training')
     parser.add_argument('--val-corpus', type=str, default=None,
                         help='Comma-separated corpus JSON file(s) for validation')
+    parser.add_argument('--val-split', type=int, default=None,
+                        help='Hold out N programs from --train-corpus as the validation set '
+                             '(deterministic via --split-seed; no intermediate files). '
+                             'Ignored when --val-corpus is given.')
+    parser.add_argument('--split-seed', type=int, default=0,
+                        help='Seed for the --val-split train/val partition')
     parser.add_argument('--grammar', type=str, default='default', choices=sorted(GRAMMARS),
                         help='Grammar used to build the tokeniser vocab and (for the '
                              '*-symbol-shuffling modes) the fn-name permutation pool. Must '
@@ -502,6 +508,9 @@ def train():
     else:
         grammar = get_grammar(args.grammar)
         train_files = _parse_corpus_arg(args.train_corpus)
+        if args.val_corpus and args.val_split:
+            print("Warning: both --val-corpus and --val-split given; using --val-corpus")
+        holdout = args.val_split if not args.val_corpus else None
         print(f"Loading training corpus from {train_files} (grammar={args.grammar})")
         train_dataset = ProgramDataset(
             corpus_files=train_files,
@@ -512,12 +521,15 @@ def train():
             filter_empty_io=args.filter_empty_io,
             max_programs=args.max_train_programs,
             grammar=grammar,
+            holdout=holdout,
+            split='train',
+            split_seed=args.split_seed,
         )
         print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
         val_dataset = None
-        if args.val_corpus:
-            val_files = _parse_corpus_arg(args.val_corpus)
+        if args.val_corpus or holdout:
+            val_files = _parse_corpus_arg(args.val_corpus) if args.val_corpus else train_files
             print(f"Loading validation corpus from {val_files}")
             val_dataset = ProgramDataset(
                 corpus_files=val_files,
@@ -527,6 +539,9 @@ def train():
                 mode=args.mode,
                 filter_empty_io=args.filter_empty_io,
                 grammar=grammar,
+                holdout=holdout,
+                split='val' if holdout else 'train',
+                split_seed=args.split_seed,
             )
             print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
 

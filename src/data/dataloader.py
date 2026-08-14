@@ -71,6 +71,9 @@ class ProgramDataset(Dataset):
         filter_empty_io: bool = False,
         max_programs: int | None = None,
         grammar: Grammar = DefaultGrammar,
+        holdout: int | None = None,
+        split: str = "train",
+        split_seed: int = 0,
     ):
         assert 1 <= min_n_io_shown <= n_io_per_program, (
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
@@ -104,6 +107,23 @@ class ProgramDataset(Dataset):
                 entries = [e for e in entries if e.get("type") == type_filter]
             self.programs.extend(entries)
         assert len(self.programs) > 0, f"No programs loaded from {corpus_files}"
+
+        if holdout:
+            # Deterministic held-out split: two datasets constructed over the
+            # same corpus_files with the same (holdout, split_seed) but
+            # different ``split`` partition the programs disjointly. Applied
+            # before the max_programs cap so the cap never eats the val set.
+            assert split in ("train", "val"), f"split must be train|val, got {split!r}"
+            assert holdout < len(self.programs), (
+                f"holdout={holdout} >= corpus size {len(self.programs)}"
+            )
+            order = list(range(len(self.programs)))
+            random.Random(split_seed).shuffle(order)
+            keep = order[:holdout] if split == "val" else order[holdout:]
+            keep.sort()  # preserve enumeration order within the split
+            self.programs = [self.programs[i] for i in keep]
+            print(f"Holdout split '{split}': {len(self.programs):,} programs "
+                  f"(holdout={holdout:,}, split_seed={split_seed})")
 
         if max_programs is not None and len(self.programs) > max_programs:
             # Random subsample (not slice) since the corpus is likely stored in
