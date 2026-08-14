@@ -457,7 +457,13 @@ class ProgramIO:
                     output = fn(list(inp))
             except Exception:
                 return 'runtime_error', n_matched
-            if isinstance(output, list) and [x % 100 for x in output] == list(expected):
+            # A non-list or nested-list output (e.g. list[list[int]]) is a
+            # mismatch, not an error — guard the % 100 comparison against
+            # non-int elements (bool is an int subclass, so list[bool] keeps
+            # its historical mod-100 comparison behavior).
+            if (isinstance(output, list)
+                    and all(isinstance(x, int) for x in output)
+                    and [x % 100 for x in output] == list(expected)):
                 n_matched += 1
         return 'executed', n_matched
 

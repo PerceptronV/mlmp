@@ -62,6 +62,14 @@ def test_non_list_output_is_a_mismatch_not_an_error(io):
     assert (status, n) == ("executed", 0)
 
 
+def test_nested_list_output_is_a_mismatch_not_a_crash(io):
+    # Regression: list[list[int]] outputs used to raise TypeError on the
+    # mod-100 comparison instead of counting as a mismatch.
+    status, n = io.classify_program(
+        "(λ (_p0) (singleton _p0))", [([1, 2], [1, 2])])
+    assert (status, n) == ("executed", 0)
+
+
 def test_failure_mode_taxonomy_is_disjoint_and_complete():
     assert _failure_mode("malformed", 0, 3) == "malformed"
     assert _failure_mode("runtime_error", 2, 3) == "runtime_error"
