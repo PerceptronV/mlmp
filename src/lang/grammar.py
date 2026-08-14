@@ -27,6 +27,32 @@ def _check_list_size(n: int) -> None:
     if n > MAX_LIST_SIZE:
         raise ListSizeExceeded(f"List size {n} exceeds maximum {MAX_LIST_SIZE}")
 
+# Cap on integer magnitude produced by multiplication. Repeated squaring (e.g.
+# ``fold (λ (a b) (* a a))``, reachable at RL nesting depth) grows an int's
+# bit-length exponentially; a single multiply of two multi-megabit integers
+# spins in CPython's Karatsuba routine for minutes and hangs synthesis. The cap
+# sits far above any polynomial-size product on the small test inputs (a product
+# of a full 1000-element list of two-digit numbers is only ~6600 bits), so it
+# rejects only the pathological exponential blow-up, and any permitted multiply
+# of two <=MAX_INT_BITS operands returns in well under a millisecond.
+MAX_INT_BITS = 16384
+
+class IntSizeExceeded(ValueError):
+    """Raised when an arithmetic op would produce an int exceeding MAX_INT_BITS."""
+    pass
+
+def _check_int_size(x: int, y: int) -> None:
+    """Reject a multiply whose result would exceed MAX_INT_BITS bits.
+
+    ``bit_length()`` is cheap even for huge ints, so this is checked on the
+    operands *before* the multiply is performed (checking the result would be
+    too late — forming it is the expensive step that hangs).
+    """
+    if x.bit_length() + y.bit_length() > MAX_INT_BITS:
+        raise IntSizeExceeded(
+            f"Integer result would exceed {MAX_INT_BITS} bits"
+        )
+
 # ============================================================================
 # Base Grammar Class
 # ============================================================================
@@ -245,6 +271,7 @@ def subtract(x: int, y: int) -> int:
 @DefaultGrammar(name='*')
 def multiply(x: int, y: int) -> int:
     """Multiplication: (* x y)"""
+    _check_int_size(x, y)
     return x * y
 
 @DefaultGrammar(name='/')
@@ -504,6 +531,7 @@ def product(xs: list[int]) -> int:
     """Product of elements: (product xs)"""
     result = 1
     for x in xs:
+        _check_int_size(result, x)
         result *= x
     return result
 
