@@ -662,8 +662,13 @@ SMALL_GRAMMAR_FUNCTIONS = {
     # higher-order functions
     'map', 'fold'
 }
-
 SmallGrammar = DefaultGrammar.subset(SMALL_GRAMMAR_FUNCTIONS)
+
+# ============================================================================
+# TinyGrammar: a leaner, meaningful subset of DefaultGrammar
+# ============================================================================
+
+TinyGrammar = DefaultGrammar.subset({'-', 'concat', 'cons', 'drop', 'length', 'take'})
 
 
 # ============================================================================
@@ -673,6 +678,7 @@ SmallGrammar = DefaultGrammar.subset(SMALL_GRAMMAR_FUNCTIONS)
 GRAMMARS: dict[str, Grammar] = {
     'default': DefaultGrammar,
     'small': SmallGrammar,
+    'tiny': TinyGrammar,
 }
 
 
