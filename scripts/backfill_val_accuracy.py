@@ -18,12 +18,10 @@ from types import SimpleNamespace
 
 import torch
 
-from src.data.dataloader import ProgramDataset
-from src.data.inverse_mlc_dataloader import InverseMLCDataset
-from src.models.seq2seq import Seq2SeqTransformer
 from src.train import (
     _easy_shuffle_k_for_epoch,
-    _parse_corpus_arg,
+    build_model,
+    build_val_dataset,
     compute_validation_accuracy,
 )
 
@@ -31,26 +29,6 @@ from src.train import (
 def _epoch_of(path: Path) -> int:
     # checkpoint_epoch_<N>.pt — sort numerically, not lexically
     return int(path.stem.rsplit('_', 1)[-1])
-
-
-def _build_val_dataset(saved_args: SimpleNamespace):
-    if getattr(saved_args, 'dataset', 'program') == 'inverse-mlc':
-        data_root = Path(saved_args.inverse_mlc_data_root) if saved_args.inverse_mlc_data_root else None
-        return InverseMLCDataset(
-            mode='val',
-            episode_type=saved_args.inverse_mlc_episode_type,
-            data_root=data_root,
-        )
-
-    val_files = _parse_corpus_arg(saved_args.val_corpus)
-    return ProgramDataset(
-        corpus_files=val_files,
-        seed=saved_args.data_seed,
-        n_io_per_program=saved_args.n_io_per_program,
-        min_n_io_shown=saved_args.min_n_io_shown,
-        mode=saved_args.mode,
-        filter_empty_io=saved_args.filter_empty_io,
-    )
 
 
 def main():
@@ -85,8 +63,11 @@ def main():
     if args.val_examples is not None:
         saved_args.val_examples = args.val_examples
 
-    print(f"Building val dataset from {saved_args.val_corpus}")
-    val_dataset = _build_val_dataset(saved_args)
+    val_dataset = build_val_dataset(saved_args)
+    if val_dataset is None:
+        raise SystemExit(
+            f"{ckpt_dir} was trained without a validation set "
+            f"(no --val-corpus / --val-split); pass --val-corpus to score against one")
     print(f"Val dataset: {len(val_dataset.programs):,} programs")
 
     # Live training mutates ``val_dataset.n_permuted`` per epoch so val matches
@@ -100,17 +81,8 @@ def main():
     )
     n_fns = len(getattr(val_dataset, 'fn_names', [])) if is_easy_shuf_program else 0
 
-    n_tokens = len(val_dataset.tokeniser.vocab)
     device = torch.device(args.device)
-    model = Seq2SeqTransformer(
-        n_tokens=n_tokens,
-        d_model=saved_args.d_model,
-        n_heads=saved_args.n_heads,
-        n_layers=saved_args.n_layers,
-        d_ff=saved_args.d_ff,
-        max_seq_len=saved_args.max_seq_len,
-        compile_layers=getattr(saved_args, 'compile_layers', False),
-    ).to(device)
+    model = build_model(saved_args, len(val_dataset.tokeniser.vocab)).to(device)
 
     running_best = -1.0
     best_path = None

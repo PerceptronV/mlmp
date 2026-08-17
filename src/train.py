@@ -129,19 +129,20 @@ def validate(model, dataloader, criterion, device):
 def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device):
     """Greedy-decode a single sequence. ``src_tokens`` is a 1-D LongTensor of ids.
 
-    Thin wrapper around :meth:`src.data.program_io.ProgramIO.greedy_decode`;
+    Thin wrapper around :meth:`src.data.program_io.ProgramIO.decode_one`;
     the canonical implementation lives there. Kept here so external scripts /
     notebooks that already import ``train.greedy_decode`` keep working.
     ``start_token`` / ``end_token`` are accepted for backwards compatibility
     but the underlying ProgramIO already knows them, so they're ignored.
     """
     del start_token, end_token  # supplied by ProgramIO
-    return ProgramIO().greedy_decode(model, src_tokens, max_tokens, device)
+    return ProgramIO().decode_one(model, src_tokens, max_tokens, device)
 
 
 def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
-                         decode_batch_size=64, desc="Accuracy", exec_timeout=1.0):
-    """Batch-greedy-decode the given dataset indices and classify each outcome.
+                         decode_batch_size=64, desc="Accuracy", exec_timeout=1.0,
+                         temperature=0.0):
+    """Batch-decode the given dataset indices and classify each outcome.
 
     Returns one ``(correct, status, n_matched, n_shown)`` tuple per index.
     ``status`` is ``'malformed'`` / ``'runtime_error'`` / ``'executed'`` (see
@@ -152,9 +153,12 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
     info)`` (e.g. :class:`InverseMLCDataset`, where correctness is exact-token
     match) — in which case only ``correct`` is meaningful.
 
-    Decoding goes through :meth:`ProgramIO.greedy_decode_batch` in chunks of
+    Decoding goes through :meth:`ProgramIO.decode_batch` in chunks of
     ``decode_batch_size``, which is what makes program-level validation fast;
     classification afterwards is CPU-side compile + execute per item.
+    ``temperature`` 0 (the default) is greedy; above it each call draws an
+    independent sample per index, which is how accuracy@k gets k different
+    programs for the same task.
     """
     model.eval()
     io = getattr(dataset, 'io', None) or ProgramIO(tokeniser=dataset.tokeniser)
@@ -172,7 +176,8 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
         with torch.no_grad():
             if use_batched_decode:
                 try:
-                    gens = io.greedy_decode_batch(model, srcs, max_program_tokens, device)
+                    gens = io.decode_batch(model, srcs, max_program_tokens, device,
+                                           temperature)
                 except Exception as e:
                     # The jagged flex-attention path can fail to compile on
                     # some backends (e.g. CPU inductor); decode row-by-row on
@@ -181,7 +186,7 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
                     print(f"\nBatched decode unavailable ({type(e).__name__}); "
                           f"falling back to sequential decode")
             if not use_batched_decode:
-                gens = [io.greedy_decode(model, s, max_program_tokens, device)
+                gens = [io.decode_one(model, s, max_program_tokens, device, temperature)
                         if s.numel() else [] for s in srcs]
         for (seq, _loss_mask, program), src, gen in zip(items, srcs, gens):
             if src.numel() == 0:
@@ -241,16 +246,60 @@ def compute_accuracy_on_indices(model, dataset, indices, device, max_program_tok
     return sum(r[0] for r in results) / len(results)
 
 
+def _val_view_indices(val_dataset, max_examples=None):
+    """One dataset index per validation program, plus the view each is scored at.
+
+    When the dataset can vary the number of examples shown (has
+    ``min_n_io_shown`` and >1 view), program i is evaluated at the view
+    assigned round-robin (``i % n_views``), so every bin scores the same
+    ~1/n_views of the programs at every epoch; otherwise (inverse-mlc, whose
+    views are query indices) every program is evaluated at its last view.
+
+    Returns ``(indices, views, n_views, varies)``.
+    """
+    n_views = val_dataset.n_io_views
+    n_programs = len(val_dataset.programs)
+    if max_examples is not None:
+        n_programs = min(n_programs, max_examples)
+    varies = hasattr(val_dataset, 'min_n_io_shown') and n_views > 1
+    views = [(i % n_views) if varies else (n_views - 1) for i in range(n_programs)]
+    indices = [i * n_views + v for i, v in enumerate(views)]
+    return indices, views, n_views, varies
+
+
+def _aggregate_outcomes(results, views, n_views, varies):
+    """Roll per-program ``(correct, status, n_matched, n_shown)`` outcomes up
+    into the validation metrics dict. One Counter increment per program, O(1)
+    extraction. See :func:`compute_validation_metrics` for the keys.
+    """
+    n_correct = 0
+    full_correct, full_total = 0, 0
+    modes: Counter = Counter()
+    bins: dict[int, Counter] = defaultdict(Counter)
+    for (correct, status, n_matched, n_shown), view in zip(results, views):
+        n_correct += int(correct)
+        if view == n_views - 1:
+            full_correct += int(correct)
+            full_total += 1
+        if status is None:
+            continue  # vacuous / dataset-checker item: no execution semantics
+        modes[_failure_mode(status, n_matched, n_shown)] += 1
+        key = status if status in ('malformed', 'runtime_error') else f'match_{n_matched}'
+        bins[n_shown][key] += 1
+    return {
+        'accuracy': n_correct / len(results) if results else 0.0,
+        'accuracy_full_context': full_correct / full_total if full_total else 0.0,
+        'failure_modes': modes,
+        'outcomes_by_n_io': dict(bins) if varies else None,
+    }
+
+
 def compute_validation_metrics(model, val_dataset, device, max_program_tokens=80,
                                max_examples=None, decode_batch_size=64):
     """Every program-level validation metric from ONE batched decode pass.
 
-    Each program is decoded exactly once. When the dataset can vary the
-    number of examples shown (has ``min_n_io_shown`` and >1 view), program i
-    is evaluated at the view assigned round-robin (``i % n_views``), so every
-    bin scores the same ~1/n_views of the programs at every epoch; otherwise
-    (inverse-mlc, whose views are query indices) every program is evaluated
-    at its last view. One Counter increment per decode, O(1) extraction.
+    Each program is decoded greedily exactly once, at the view
+    :func:`_val_view_indices` assigns it.
 
     Returns a dict:
       ``accuracy``             — fraction correct over the whole pass (a
@@ -272,38 +321,90 @@ def compute_validation_metrics(model, val_dataset, device, max_program_tokens=80
                                  are easier to satisfy but pin the behavior
                                  down less.
     """
-    n_views = val_dataset.n_io_views
-    n_programs = len(val_dataset.programs)
-    if max_examples is not None:
-        n_programs = min(n_programs, max_examples)
-    varies = hasattr(val_dataset, 'min_n_io_shown') and n_views > 1
-    views = [(i % n_views) if varies else (n_views - 1) for i in range(n_programs)]
-    indices = [i * n_views + v for i, v in enumerate(views)]
-
+    indices, views, n_views, varies = _val_view_indices(val_dataset, max_examples)
     results = _decode_and_classify(model, val_dataset, indices, device,
                                    max_program_tokens, decode_batch_size,
                                    desc="Val accuracy")
+    return _aggregate_outcomes(results, views, n_views, varies)
 
-    n_correct = 0
-    full_correct, full_total = 0, 0
-    modes: Counter = Counter()
-    bins: dict[int, Counter] = defaultdict(Counter)
-    for (correct, status, n_matched, n_shown), view in zip(results, views):
-        n_correct += int(correct)
-        if view == n_views - 1:
-            full_correct += int(correct)
-            full_total += 1
+
+_STATUS_RANK = {'malformed': 0, 'runtime_error': 1, 'executed': 2}
+
+
+def _best_outcome(a, b):
+    """The better of two ``(correct, status, n_matched, n_shown)`` outcomes for
+    the same program: whichever matched more of the shown I/O pairs, ties
+    broken toward the sample that ran to completion (executed > runtime_error
+    > malformed). Outcomes without execution semantics (dataset-checker /
+    vacuous items) compare on ``correct`` alone.
+    """
+    def rank(r):
+        correct, status, n_matched, _n_shown = r
         if status is None:
-            continue  # vacuous / dataset-checker item: no execution semantics
-        modes[_failure_mode(status, n_matched, n_shown)] += 1
-        key = status if status in ('malformed', 'runtime_error') else f'match_{n_matched}'
-        bins[n_shown][key] += 1
-    return {
-        'accuracy': n_correct / n_programs if n_programs else 0.0,
-        'accuracy_full_context': full_correct / full_total if full_total else 0.0,
-        'failure_modes': modes,
-        'outcomes_by_n_io': dict(bins) if varies else None,
-    }
+            return (int(correct), 0, 0)
+        return (int(correct), n_matched, _STATUS_RANK[status])
+
+    return max(a, b, key=rank)
+
+
+def compute_pass_at_k_metrics(model, val_dataset, device, k=8, temperature=1.0,
+                              max_program_tokens=80, max_examples=None,
+                              decode_batch_size=64):
+    """Accuracy@k: sample ``k`` programs per validation item, keep the best.
+
+    Same programs, same views, and same outcome taxonomy as
+    :func:`compute_validation_metrics` — but every count describes each
+    program's *best* of k samples (:func:`_best_outcome`), so ``accuracy`` is
+    pass@k (at least one sample reproduced every shown pair) and e.g.
+    'malformed' means all k samples were malformed.
+
+    ``temperature`` must be > 0 for the k samples to differ; at 0 every sample
+    is the same greedy decode and this reduces to
+    :func:`compute_validation_metrics`. Costs k decode passes, hence offline —
+    the training loop uses the single-pass function.
+
+    Returns the :func:`compute_validation_metrics` dict plus ``accuracy_at_k``,
+    the best-of-first-j accuracy for j = 1..k (i.e. accuracy@1 .. accuracy@k).
+    """
+    assert k >= 1, f"k must be >= 1, got {k}"
+    indices, views, n_views, varies = _val_view_indices(val_dataset, max_examples)
+
+    best = None
+    accuracy_at_k = []
+    for j in range(k):
+        results = _decode_and_classify(model, val_dataset, indices, device,
+                                       max_program_tokens, decode_batch_size,
+                                       desc=f"Sample {j + 1}/{k}",
+                                       temperature=temperature)
+        best = results if best is None else list(map(_best_outcome, best, results))
+        accuracy_at_k.append(sum(r[0] for r in best) / len(best) if best else 0.0)
+
+    metrics = _aggregate_outcomes(best, views, n_views, varies)
+    metrics['accuracy_at_k'] = accuracy_at_k
+    return metrics
+
+
+def format_metrics(metrics) -> list[str]:
+    """Human-readable lines for a :func:`compute_validation_metrics` /
+    :func:`compute_pass_at_k_metrics` dict. Shared by the training loop and
+    the offline accuracy@k script so both report identically.
+    """
+    lines = [f"accuracy: {metrics['accuracy']:.2%} "
+             f"(full-context: {metrics['accuracy_full_context']:.2%})"]
+    if metrics.get('accuracy_at_k'):
+        lines.append("accuracy@k: " + ", ".join(
+            f"{j}: {a:.2%}" for j, a in enumerate(metrics['accuracy_at_k'], 1)))
+    modes = metrics['failure_modes']
+    if modes:
+        total = sum(modes.values())
+        lines.append("failure modes: " + ", ".join(
+            f"{m}: {modes[m] / total:.2%}" for m in FAILURE_MODES))
+    bins = metrics['outcomes_by_n_io']
+    if bins:
+        lines.append("accuracy by n_io_shown: " + ", ".join(
+            f"{n}: {c[f'match_{n}'] / max(1, sum(c.values())):.2%}"
+            for n, c in sorted(bins.items())))
+    return lines
 
 
 def compute_validation_accuracy(model, val_dataset, device, max_program_tokens=80, max_examples=None):
@@ -429,6 +530,60 @@ def _parse_corpus_arg(s: str) -> list[Path]:
     return [Path(p.strip()) for p in s.split(',') if p.strip()]
 
 
+def build_val_dataset(args):
+    """The validation dataset described by a run's args, or None if it has none.
+
+    ``args`` is the training argparse Namespace, or a SimpleNamespace over a
+    checkpoint's stored ``args`` dict — offline evaluation (scripts/
+    eval_pass_at_k.py, scripts/backfill_val_accuracy.py) therefore rebuilds
+    exactly the val set the run was scored against, grammar and holdout split
+    included. Missing keys fall back to the ``train()`` defaults so
+    checkpoints predating a flag still load.
+    """
+    if getattr(args, 'dataset', 'program') == 'inverse-mlc':
+        from .data.inverse_mlc_dataloader import InverseMLCDataset
+        data_root = getattr(args, 'inverse_mlc_data_root', None)
+        return InverseMLCDataset(
+            mode='val',
+            episode_type=args.inverse_mlc_episode_type,
+            data_root=Path(data_root) if data_root else None,
+        )
+
+    val_corpus = getattr(args, 'val_corpus', None)
+    holdout = getattr(args, 'val_split', None) if not val_corpus else None
+    if not (val_corpus or holdout):
+        return None
+    val_files = _parse_corpus_arg(val_corpus or args.train_corpus)
+    print(f"Loading validation corpus from {val_files}")
+    return ProgramDataset(
+        corpus_files=val_files,
+        seed=args.data_seed,
+        n_io_per_program=args.n_io_per_program,
+        min_n_io_shown=args.min_n_io_shown,
+        mode=args.mode,
+        filter_empty_io=args.filter_empty_io,
+        grammar=get_grammar(getattr(args, 'grammar', 'default')),
+        holdout=holdout,
+        split='val' if holdout else 'train',
+        split_seed=getattr(args, 'split_seed', 0),
+    )
+
+
+def build_model(args, n_tokens: int) -> Seq2SeqTransformer:
+    """The model described by a run's args (see :func:`build_val_dataset` for
+    what ``args`` may be). ``n_tokens`` comes from the dataset's tokeniser,
+    which the grammar determines."""
+    return Seq2SeqTransformer(
+        n_tokens=n_tokens,
+        d_model=args.d_model,
+        n_heads=args.n_heads,
+        n_layers=args.n_layers,
+        d_ff=getattr(args, 'd_ff', None),
+        max_seq_len=getattr(args, 'max_seq_len', 2048),
+        compile_layers=getattr(args, 'compile_layers', False),
+    )
+
+
 def _easy_shuffle_k_for_epoch(epoch: int, args, n_total_fns: int) -> int:
     """Linear ramp of the easy-symbol-shuffling table size from
     ``--easy-shuffle-k-start`` to ``--easy-shuffle-k-end`` (default = all
@@ -513,7 +668,7 @@ def train():
                         help='Eagerly pre-sample each program\'s IO pool at dataset init and drop '
                              'programs that return no valid pairs. Off by default (lazy sampling); '
                              'enabling adds a one-time pass over the corpus but prevents '
-                             'greedy_decode from crashing on a 0-length src in in-weight mode.')
+                             'decoding from crashing on a 0-length src in in-weight mode.')
     parser.set_defaults(filter_empty_io=False)
 
     # Model arguments
@@ -616,12 +771,6 @@ def train():
             data_root=data_root,
         )
         print(f"Training dataset: {len(train_dataset.programs):,} episodes -> {len(train_dataset):,} items")
-        val_dataset = InverseMLCDataset(
-            mode='val',
-            episode_type=args.inverse_mlc_episode_type,
-            data_root=data_root,
-        )
-        print(f"Validation dataset: {len(val_dataset.programs):,} episodes -> {len(val_dataset):,} items")
     else:
         grammar = get_grammar(args.grammar)
         train_files = _parse_corpus_arg(args.train_corpus)
@@ -644,23 +793,10 @@ def train():
         )
         print(f"Training dataset: {len(train_dataset.programs):,} programs -> {len(train_dataset):,} items")
 
-        val_dataset = None
-        if args.val_corpus or holdout:
-            val_files = _parse_corpus_arg(args.val_corpus) if args.val_corpus else train_files
-            print(f"Loading validation corpus from {val_files}")
-            val_dataset = ProgramDataset(
-                corpus_files=val_files,
-                seed=args.data_seed,
-                n_io_per_program=args.n_io_per_program,
-                min_n_io_shown=args.min_n_io_shown,
-                mode=args.mode,
-                filter_empty_io=args.filter_empty_io,
-                grammar=grammar,
-                holdout=holdout,
-                split='val' if holdout else 'train',
-                split_seed=args.split_seed,
-            )
-            print(f"Validation dataset: {len(val_dataset.programs):,} programs -> {len(val_dataset):,} items")
+    val_dataset = build_val_dataset(args)
+    if val_dataset is not None:
+        unit = 'episodes' if args.dataset == 'inverse-mlc' else 'programs'
+        print(f"Validation dataset: {len(val_dataset.programs):,} {unit} -> {len(val_dataset):,} items")
 
     n_tokens = len(train_dataset.tokeniser.vocab)
     print(f"Vocabulary size: {n_tokens}")
@@ -709,15 +845,7 @@ def train():
 
     # Model
     print("Creating model...")
-    model = Seq2SeqTransformer(
-        n_tokens=n_tokens,
-        d_model=args.d_model,
-        n_heads=args.n_heads,
-        n_layers=args.n_layers,
-        d_ff=args.d_ff,
-        max_seq_len=args.max_seq_len,
-        compile_layers=args.compile_layers,
-    )
+    model = build_model(args, n_tokens)
 
     n_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {n_params:,}")
@@ -855,17 +983,8 @@ def train():
             val_accuracy = val_metrics['accuracy']
             val_failure_modes = val_metrics['failure_modes']
             val_outcomes_by_n_io = val_metrics['outcomes_by_n_io']
-            print(f"Validation accuracy: {val_accuracy:.2%} "
-                  f"(full-context: {val_metrics['accuracy_full_context']:.2%})")
-            if val_failure_modes:
-                total_classified = sum(val_failure_modes.values())
-                print("Validation failure modes: " + ", ".join(
-                    f"{m}: {val_failure_modes[m] / total_classified:.2%}"
-                    for m in FAILURE_MODES))
-            if val_outcomes_by_n_io:
-                print("Validation accuracy by n_io_shown: " + ", ".join(
-                    f"{n}: {c[f'match_{n}'] / max(1, sum(c.values())):.2%}"
-                    for n, c in sorted(val_outcomes_by_n_io.items())))
+            for line in format_metrics(val_metrics):
+                print(f"Validation {line}")
 
             if val_accuracy > best_val_accuracy:
                 best_val_accuracy = val_accuracy

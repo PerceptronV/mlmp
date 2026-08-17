@@ -56,6 +56,17 @@ Available modes are:
 
 By default, the checkpoints are saved in `~/mlmp_checkpoints`. You can change this by setting the `CKPT_DIR` environment variable.
 
+## Accuracy@k
+
+Training logs greedy validation accuracy every epoch. To ask instead how often a model gets there in `k` tries — sampling `k` programs per validation task and keeping the best one — run, over any number of trained checkpoints or run directories:
+
+```bash
+python -m scripts.eval_pass_at_k ~/mlmp_checkpoints/no-rl-in-weight/<run> [<run> ...] \
+    -k 8 --temperature 1.0 --json passk.json
+```
+
+Everything about each run (model dims, val corpus, grammar, training mode) is read from its checkpoint. The report keeps the same outcome taxonomy the training loop logs — accuracy, failure modes (`malformed` / `runtime_error` / `total_mismatch` / `partial_mismatch`) and outcomes per `n_io_shown` bin — but each program is scored by its best of `k` samples, so `malformed` means all `k` samples were malformed. `--json` writes every counter for plotting.
+
 ## Analysis
 
 In your environment of choice, run:

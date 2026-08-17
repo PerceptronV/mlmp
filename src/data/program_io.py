@@ -9,7 +9,7 @@ are thin callers; they don't independently re-implement any of:
 - symbol-shuffling permutation sampling (full and partial),
 - decoder-target formatting (``<start> + program + <end>`` with optional
   fn-name remapping),
-- greedy decoding,
+- decoding (greedy, or temperature-sampled for accuracy@k),
 - detokenise + reverse-map back to canonical fn names,
 - parse + JIT-compile + execute with timeout, mod-100 (project_int_mod).
 
@@ -209,17 +209,34 @@ class ProgramIO:
         return self.reverse_program_names(program_str, name_map)
 
     # ------------------------------------------------------------------
-    # Greedy decode
+    # Decode
     # ------------------------------------------------------------------
-    def greedy_decode(
+    @staticmethod
+    def _next_tokens(logits, temperature: float) -> list[int]:
+        """``(B, n_tokens)`` logits → one next-token id per row.
+
+        ``temperature <= 0`` is greedy (argmax); above it we sample from the
+        temperature-scaled softmax, which is what makes k independent samples
+        of the same task differ (see ``train.compute_pass_at_k_metrics``).
+        """
+        import torch  # local import: program_io stays importable without torch
+
+        if temperature <= 0:
+            return logits.argmax(dim=-1).tolist()
+        probs = torch.softmax(logits.float() / temperature, dim=-1)
+        return torch.multinomial(probs, num_samples=1).squeeze(-1).tolist()
+
+    def decode_one(
         self,
         model,
         src_tokens,  # 1-D LongTensor on CPU; we move it to ``device``
         max_tokens: int,
         device,
+        temperature: float = 0.0,
     ) -> list[int]:
-        """Greedy-decode a single sequence. Returns the predicted token ids,
-        excluding ``<start>`` but including ``<end>`` if it was emitted.
+        """Decode a single sequence, greedily by default (see ``_next_tokens``
+        for ``temperature``). Returns the predicted token ids, excluding
+        ``<start>`` but including ``<end>`` if it was emitted.
         """
         import torch  # local import: program_io stays importable without torch installed
 
@@ -232,28 +249,29 @@ class ProgramIO:
         for _ in range(max_tokens):
             tgt = torch.tensor(out, dtype=torch.long, device=device).unsqueeze(0)
             logits = model.project(model.decode(tgt, memory))  # (1, len(out), n_tokens)
-            next_token = int(logits[0, -1].argmax())
+            [next_token] = self._next_tokens(logits[:, -1], temperature)
             out.append(next_token)
             if next_token == self.end:
                 break
         return out[1:]  # drop <start>
 
-    def greedy_decode_batch(
+    def decode_batch(
         self,
         model,
         src_tokens_list,  # list of 1-D LongTensors (any device); empty / ``None`` entries are handled
         max_tokens: int,
         device,
+        temperature: float = 0.0,
     ) -> list[list[int]]:
-        """Batched greedy decode over the *jagged* path. Each row is one
-        independent (src, gen) pair; rows can have different src lengths and
-        finish at different times. Returns a list of generated token-id lists
+        """Batched decode over the *jagged* path. Each row is one independent
+        (src, gen) pair; rows can have different src lengths and finish at
+        different times. Returns a list of generated token-id lists
         (excluding ``<start>``, including ``<end>`` if emitted), one per
         non-empty input. Empty / ``None`` entries in ``src_tokens_list`` map
-        to empty output lists.
+        to empty output lists. ``temperature`` is per ``_next_tokens``.
 
-        Falls through to ``greedy_decode`` for the single-row case because
-        jagged SDPA in PyTorch 2.11 is broken at ``B=1`` (see ``greedy_decode``
+        Falls through to ``decode_one`` for the single-row case because
+        jagged SDPA in PyTorch 2.11 is broken at ``B=1`` (see ``decode_one``
         for the dense workaround). Above ``B=1`` the jagged path is the same
         one training uses every step.
         """
@@ -273,8 +291,8 @@ class ProgramIO:
             return out_lists
         if len(valid_srcs) == 1:
             # B=1: jagged SDPA is broken, take the dense path.
-            out_lists[valid_idx[0]] = self.greedy_decode(
-                model, valid_srcs[0], max_tokens, device
+            out_lists[valid_idx[0]] = self.decode_one(
+                model, valid_srcs[0], max_tokens, device, temperature
             )
             return out_lists
 
@@ -298,7 +316,7 @@ class ProgramIO:
             vals = logits_nt.values()                       # (sum_len, n_tokens)
             offsets = logits_nt.offsets()                   # (B+1,)
             last_idx = (offsets[1:] - 1).tolist()
-            next_tokens = vals[last_idx].argmax(dim=-1).tolist()
+            next_tokens = self._next_tokens(vals[last_idx], temperature)
 
             for i, tok in enumerate(next_tokens):
                 if done[i]:
@@ -368,7 +386,7 @@ class ProgramIO:
         with torch.no_grad():
             src = src_tokens.to(device).unsqueeze(0)
             memory = model.encode(src)
-            gen = self.greedy_decode(model, src_tokens, max_program_tokens, device)
+            gen = self.decode_one(model, src_tokens, max_program_tokens, device)
             if not gen:
                 return torch.zeros(model.d_model)
             tgt = torch.tensor([self.start] + gen, dtype=torch.long, device=device).unsqueeze(0)

@@ -212,7 +212,7 @@ class ProgramDataset(Dataset):
         Pre-existing bug context: ``RuleIOSampler.sample`` returns ``[]`` when a
         program fails to compile or raises on every candidate input. Such
         programs end up with a 0-length encoder source in in-weight mode,
-        which crashes dense-path RoPE inside ``greedy_decode``.
+        which crashes dense-path RoPE inside ``ProgramIO.decode_one``.
         """
         n_before = len(self.programs)
         kept_programs: list[dict] = []

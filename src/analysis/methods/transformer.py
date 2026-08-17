@@ -218,7 +218,7 @@ class TransformerMethod(Method):
         if src_tokens.numel() == 0:
             return Prediction(response=None, program=None, correct=False)
 
-        gen_tokens = io.greedy_decode(self._model, src_tokens, self.max_program_tokens, self._device)
+        gen_tokens = io.decode_one(self._model, src_tokens, self.max_program_tokens, self._device)
         program_str = io.detokenise_program(gen_tokens, name_map)
         response = io.execute(program_str, list(trial.query_input), timeout=self.exec_timeout)
         correct = response is not None and response == list(trial.expected_output)
@@ -257,7 +257,7 @@ class TransformerMethod(Method):
             srcs.append(torch.tensor(tok_list, dtype=torch.long))
             name_maps.append(nm)
 
-        gen_lists = io.greedy_decode_batch(
+        gen_lists = io.decode_batch(
             self._model, srcs, self.max_program_tokens, self._device
         )
 
