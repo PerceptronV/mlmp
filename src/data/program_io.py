@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from ..lang.compiler import JITCompiler
 from ..lang.grammar import DefaultGrammar, Grammar
 from ..lang.parser import parse
+from ..lang.prefix import PrefixState
 from .tokeniser import (
     DEFINED_AS_TOKEN,
     END_TOKEN,
@@ -95,6 +96,9 @@ class ProgramIO:
         self.fn_names: list[str] = list(self.grammar.functions.keys())
         # Lazy compiler; expensive to construct.
         self._compiler: JITCompiler | None = None
+        # Constrained-decoding caches (see ``mask_logits``).
+        self._legal_cache: dict = {}
+        self._end_only = None  # built lazily; torch may not be installed
 
     # ------------------------------------------------------------------
     # Tokenisation
@@ -211,6 +215,62 @@ class ProgramIO:
     # ------------------------------------------------------------------
     # Decode
     # ------------------------------------------------------------------
+    def new_prefix_state(self, name_map: dict[str, str] | None = None) -> PrefixState:
+        """A fresh legal-prefix automaton for this grammar (see
+        :mod:`src.lang.prefix`). ``name_map`` is the episode's symbol-shuffling
+        permutation, needed so arity is resolved through the name the model
+        actually emits."""
+        return PrefixState(grammar=self.grammar, name_map=name_map)
+
+    def _legal_ids(self, state: PrefixState, closing_only: bool = False):
+        """Token ids the automaton allows next, as a CPU LongTensor. Cached on
+        the legal set itself: decoding revisits the same few dozen sets
+        constantly, so this is a hit after the first steps."""
+        import torch
+
+        if state.complete:
+            if self._end_only is None:
+                self._end_only = torch.tensor([self.end], dtype=torch.long)
+            return self._end_only
+        legal = state.legal(closing_only=closing_only)
+        ids = self._legal_cache.get(legal)
+        if ids is None:
+            stoi = self.tokeniser.vocab.stoi  # type: ignore[union-attr]
+            ids = torch.tensor(sorted({stoi[t] for t in legal if t in stoi}),
+                               dtype=torch.long)
+            self._legal_cache[legal] = ids
+        return ids
+
+    def mask_logits(self, logits, states, skip=None, budget=None):
+        """Set every token the automaton forbids to ``-inf``.
+
+        ``logits`` is ``(B, n_tokens)`` and ``states[i]`` the automaton for row
+        i; rows flagged in ``skip`` (already finished) pass through untouched.
+        ``budget[i]`` is the row's remaining token allowance: once it reaches
+        what the row still needs to close, openers are masked out too, so the
+        program lands complete instead of being truncated.
+        The mask is assembled on CPU and moved once per step rather than per
+        row, which keeps the GPU round-trips to one.
+        """
+        import torch
+
+        mask = torch.zeros(logits.shape, dtype=torch.bool)
+        for i, state in enumerate(states):
+            if skip is not None and skip[i]:
+                mask[i] = True
+                continue
+            tight = (budget is not None
+                     and budget[i] <= state.min_completion_length())
+            ids = self._legal_ids(state, closing_only=tight)
+            if ids.numel() == 0:
+                # No legal continuation (shouldn't happen; a complete state
+                # yields <end>). Leave the row unconstrained rather than
+                # handing softmax a row of -inf and producing NaNs.
+                mask[i] = True
+                continue
+            mask[i, ids] = True
+        return logits.masked_fill(~mask.to(logits.device), float('-inf'))
+
     @staticmethod
     def _next_tokens(logits, temperature: float) -> list[int]:
         """``(B, n_tokens)`` logits → one next-token id per row.
@@ -233,10 +293,18 @@ class ProgramIO:
         max_tokens: int,
         device,
         temperature: float = 0.0,
+        constrain: bool = False,
+        name_map: dict[str, str] | None = None,
     ) -> list[int]:
         """Decode a single sequence, greedily by default (see ``_next_tokens``
         for ``temperature``). Returns the predicted token ids, excluding
         ``<start>`` but including ``<end>`` if it was emitted.
+
+        With ``constrain``, every step is masked to the tokens that can still
+        complete a parseable, correctly-applied, in-scope program (see
+        :mod:`src.lang.prefix`), so the result cannot come back malformed.
+        ``name_map`` is the episode's symbol-shuffling permutation, which the
+        mask needs to resolve arity.
         """
         import torch  # local import: program_io stays importable without torch installed
 
@@ -245,14 +313,23 @@ class ProgramIO:
         src = src_tokens.to(device).unsqueeze(0)
         memory = model.encode(src)
 
+        state = self.new_prefix_state(name_map) if constrain else None
+        itos = self.tokeniser.vocab.itos  # type: ignore[union-attr]
+
         out = [self.start]
         for _ in range(max_tokens):
             tgt = torch.tensor(out, dtype=torch.long, device=device).unsqueeze(0)
             logits = model.project(model.decode(tgt, memory))  # (1, len(out), n_tokens)
-            [next_token] = self._next_tokens(logits[:, -1], temperature)
+            step = logits[:, -1]
+            if state is not None:
+                step = self.mask_logits(step, [state],
+                                        budget=[max_tokens - len(out)])
+            [next_token] = self._next_tokens(step, temperature)
             out.append(next_token)
             if next_token == self.end:
                 break
+            if state is not None:
+                state.advance(itos[next_token])
         return out[1:]  # drop <start>
 
     def decode_batch(
@@ -262,13 +339,18 @@ class ProgramIO:
         max_tokens: int,
         device,
         temperature: float = 0.0,
+        constrain: bool = False,
+        name_maps: list[dict[str, str] | None] | None = None,
     ) -> list[list[int]]:
         """Batched decode over the *jagged* path. Each row is one independent
         (src, gen) pair; rows can have different src lengths and finish at
         different times. Returns a list of generated token-id lists
         (excluding ``<start>``, including ``<end>`` if emitted), one per
         non-empty input. Empty / ``None`` entries in ``src_tokens_list`` map
-        to empty output lists. ``temperature`` is per ``_next_tokens``.
+        to empty output lists. ``temperature`` is per ``_next_tokens``;
+        ``constrain`` / ``name_maps`` are per ``decode_one`` (``name_maps`` is
+        indexed like ``src_tokens_list``, so it lines up with the rows before
+        empty entries are dropped).
 
         Falls through to ``decode_one`` for the single-row case because
         jagged SDPA in PyTorch 2.11 is broken at ``B=1`` (see ``decode_one``
@@ -291,8 +373,10 @@ class ProgramIO:
             return out_lists
         if len(valid_srcs) == 1:
             # B=1: jagged SDPA is broken, take the dense path.
-            out_lists[valid_idx[0]] = self.decode_one(
-                model, valid_srcs[0], max_tokens, device, temperature
+            only = valid_idx[0]
+            out_lists[only] = self.decode_one(
+                model, valid_srcs[0], max_tokens, device, temperature,
+                constrain, name_maps[only] if name_maps else None,
             )
             return out_lists
 
@@ -302,6 +386,9 @@ class ProgramIO:
         n = len(valid_srcs)
         per_row: list[list[int]] = [[self.start] for _ in range(n)]
         done = [False] * n
+        states = ([self.new_prefix_state(name_maps[i] if name_maps else None)
+                   for i in valid_idx] if constrain else None)
+        itos = self.tokeniser.vocab.itos  # type: ignore[union-attr]
 
         for _ in range(max_tokens):
             if all(done):
@@ -316,7 +403,12 @@ class ProgramIO:
             vals = logits_nt.values()                       # (sum_len, n_tokens)
             offsets = logits_nt.offsets()                   # (B+1,)
             last_idx = (offsets[1:] - 1).tolist()
-            next_tokens = self._next_tokens(vals[last_idx], temperature)
+            step = vals[last_idx]
+            if states is not None:
+                step = self.mask_logits(
+                    step, states, skip=done,
+                    budget=[max_tokens - (len(r) - 1) for r in per_row])
+            next_tokens = self._next_tokens(step, temperature)
 
             for i, tok in enumerate(next_tokens):
                 if done[i]:
@@ -324,6 +416,8 @@ class ProgramIO:
                 per_row[i].append(int(tok))
                 if int(tok) == self.end:
                     done[i] = True
+                elif states is not None:
+                    states[i].advance(itos[int(tok)])
 
         for slot, gen in zip(valid_idx, per_row):
             out_lists[slot] = gen[1:]                       # drop <start>

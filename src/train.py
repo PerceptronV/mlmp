@@ -141,7 +141,7 @@ def greedy_decode(model, src_tokens, start_token, end_token, max_tokens, device)
 
 def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
                          decode_batch_size=64, desc="Accuracy", exec_timeout=1.0,
-                         temperature=0.0):
+                         temperature=0.0, constrain=False):
     """Batch-decode the given dataset indices and classify each outcome.
 
     Returns one ``(correct, status, n_matched, n_shown)`` tuple per index.
@@ -159,6 +159,12 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
     ``temperature`` 0 (the default) is greedy; above it each call draws an
     independent sample per index, which is how accuracy@k gets k different
     programs for the same task.
+
+    ``constrain`` masks each decode step to the tokens that can still complete
+    a well-formed program (:mod:`src.lang.prefix`), which drives the
+    'malformed' outcome to zero by construction. It only applies to program
+    datasets — a dataset with its own ``check_prediction`` isn't emitting
+    programs, so the flag is ignored there.
     """
     model.eval()
     io = getattr(dataset, 'io', None) or ProgramIO(tokeniser=dataset.tokeniser)
@@ -173,11 +179,13 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
         for seq, loss_mask, _program in items:
             len_x = loss_mask.count(0)
             srcs.append(torch.tensor(seq[:len_x], dtype=torch.long))
+        masked = constrain and not use_dataset_checker
+        name_maps = [p.get('name_map') for _s, _m, p in items] if masked else None
         with torch.no_grad():
             if use_batched_decode:
                 try:
                     gens = io.decode_batch(model, srcs, max_program_tokens, device,
-                                           temperature)
+                                           temperature, masked, name_maps)
                 except Exception as e:
                     # The jagged flex-attention path can fail to compile on
                     # some backends (e.g. CPU inductor); decode row-by-row on
@@ -186,8 +194,9 @@ def _decode_and_classify(model, dataset, indices, device, max_program_tokens=80,
                     print(f"\nBatched decode unavailable ({type(e).__name__}); "
                           f"falling back to sequential decode")
             if not use_batched_decode:
-                gens = [io.decode_one(model, s, max_program_tokens, device, temperature)
-                        if s.numel() else [] for s in srcs]
+                gens = [io.decode_one(model, s, max_program_tokens, device, temperature,
+                                      masked, name_maps[i] if name_maps else None)
+                        if s.numel() else [] for i, s in enumerate(srcs)]
         for (seq, _loss_mask, program), src, gen in zip(items, srcs, gens):
             if src.numel() == 0:
                 results.append((True, None, None, 0))
@@ -295,7 +304,8 @@ def _aggregate_outcomes(results, views, n_views, varies):
 
 
 def compute_validation_metrics(model, val_dataset, device, max_program_tokens=80,
-                               max_examples=None, decode_batch_size=64):
+                               max_examples=None, decode_batch_size=64,
+                               constrain=False):
     """Every program-level validation metric from ONE batched decode pass.
 
     Each program is decoded greedily exactly once, at the view
@@ -324,7 +334,7 @@ def compute_validation_metrics(model, val_dataset, device, max_program_tokens=80
     indices, views, n_views, varies = _val_view_indices(val_dataset, max_examples)
     results = _decode_and_classify(model, val_dataset, indices, device,
                                    max_program_tokens, decode_batch_size,
-                                   desc="Val accuracy")
+                                   desc="Val accuracy", constrain=constrain)
     return _aggregate_outcomes(results, views, n_views, varies)
 
 
@@ -349,7 +359,7 @@ def _best_outcome(a, b):
 
 def compute_pass_at_k_metrics(model, val_dataset, device, k=8, temperature=1.0,
                               max_program_tokens=80, max_examples=None,
-                              decode_batch_size=64):
+                              decode_batch_size=64, constrain=False):
     """Accuracy@k: sample ``k`` programs per validation item, keep the best.
 
     Same programs, same views, and same outcome taxonomy as
@@ -375,7 +385,8 @@ def compute_pass_at_k_metrics(model, val_dataset, device, k=8, temperature=1.0,
         results = _decode_and_classify(model, val_dataset, indices, device,
                                        max_program_tokens, decode_batch_size,
                                        desc=f"Sample {j + 1}/{k}",
-                                       temperature=temperature)
+                                       temperature=temperature,
+                                       constrain=constrain)
         best = results if best is None else list(map(_best_outcome, best, results))
         accuracy_at_k.append(sum(r[0] for r in best) / len(best) if best else 0.0)
 

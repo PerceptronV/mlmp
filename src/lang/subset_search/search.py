@@ -8,12 +8,21 @@ a per-subset wall-clock timeout (SIGALRM), results persisted incrementally.
 import json
 import os
 import signal
+from itertools import combinations
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+from math import comb
+
 from ..enumeration.enumerator import BottomUpEnumerator
-from .pool import POOL_NAMES, pool_grammar, iter_subsets, subset_key
-from .support import support_buckets, proxy_score
+from .pool import POOL_NAMES, pool_grammar, subset_key
+from .support import support_buckets, proxy_scores
 from .scoring import score_vector
+
+# Above this many subsets of one size we record only those with a nonzero
+# proxy score. Zero-score subsets can never reach Stage 1 (which takes the
+# top N), and materialising e.g. all C(57,6) = 36M of them is neither useful
+# nor writable.
+ZERO_FILL_LIMIT = 2_000_000
 
 
 class SubsetTimeout(BaseException):
@@ -37,6 +46,14 @@ def run_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None,
     ``target_type`` (e.g. 'list[int]') restricts the search to behaviors of
     that output type. It is recorded in stage0.json and inherited by the
     later stages, so one output directory is always internally consistent.
+
+    ``pool_names`` defaults to the curated :data:`POOL_NAMES`; pass
+    :data:`pool.ALL_NAMES` (CLI ``--pool all``) to search every DefaultGrammar
+    primitive. Note the proxy gets looser as the pool grows: it counts a
+    behavior for a subset only if the *full-pool* enumeration's witness for
+    that behavior happens to fit inside the subset, and a richer pool means
+    more behaviors are first discovered via a witness using primitives outside
+    the subset. Stage 1 (exact per-subset enumeration) is the correction.
     """
     os.makedirs(out_dir, exist_ok=True)
     names = tuple(pool_names) if pool_names is not None else POOL_NAMES
@@ -47,13 +64,18 @@ def run_stage0(out_dir, max_size=7, sizes=(5, 6), pool_names=None,
     # A support larger than the biggest subset can never be contained in one.
     buckets = {s: n for s, n in buckets.items() if len(s) <= max(sizes)}
 
-    scores = sorted(
-        (
-            (subset_key(s), proxy_score(s, buckets))
-            for s in iter_subsets(sizes=sizes, pool_names=names)
-        ),
-        key=lambda kv: (-kv[1], kv[0]),
-    )
+    scores: list[tuple[str, int]] = []
+    for k in sizes:
+        reached = proxy_scores(buckets, names, k)
+        total = comb(len(names), k)
+        if total <= ZERO_FILL_LIMIT:
+            for combo in combinations(sorted(names), k):
+                reached.setdefault(combo, 0)
+        elif len(reached) < total:
+            print(f"stage0: {total:,} subsets of size {k}; recording the "
+                  f"{len(reached):,} with a nonzero proxy score")
+        scores.extend((subset_key(frozenset(s)), n) for s, n in reached.items())
+    scores.sort(key=lambda kv: (-kv[1], kv[0]))
     with open(os.path.join(out_dir, 'stage0.json'), 'w') as f:
         json.dump({'max_size': max_size, 'pool': list(names),
                    'target_type': target_type, 'scores': scores}, f)

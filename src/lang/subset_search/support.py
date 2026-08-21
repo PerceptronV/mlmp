@@ -8,6 +8,8 @@ lower bound is acceptable.
 """
 
 from collections import defaultdict
+from itertools import combinations
+from typing import Sequence
 
 from ..ast_nodes import ASTNode
 from ..enumeration.enumerator import ProgramBank
@@ -52,3 +54,31 @@ def proxy_score(
 ) -> int:
     """Lower bound on the subset's distinct-behavior yield."""
     return sum(n for support, n in buckets.items() if support <= subset)
+
+
+def proxy_scores(
+    buckets: dict[frozenset[str], int],
+    pool_names: Sequence[str],
+    k: int,
+) -> dict[tuple[str, ...], int]:
+    """:func:`proxy_score` for every k-subset of the pool at once.
+
+    Scoring subset-by-subset costs ``#subsets x #supports`` — 10^11 set tests
+    for the 57-primitive pool at k=4. Expanding each support over the subsets
+    that contain it instead costs ``sum_s count(s) * C(n - |s|, k - |s|)``,
+    which is ~10^6 for the same sweep, because a support of size s only
+    reaches C(n-s, k-s) subsets.
+
+    Returns ``{sorted subset tuple: score}`` for the subsets a support
+    actually reached; subsets no support fits inside score 0 and are absent.
+    """
+    names = tuple(sorted(pool_names))
+    scores: dict[tuple[str, ...], int] = defaultdict(int)
+    for support, count in buckets.items():
+        if len(support) > k:
+            continue
+        rest = [n for n in names if n not in support]
+        base = tuple(support)
+        for extra in combinations(rest, k - len(support)):
+            scores[tuple(sorted(base + extra))] += count
+    return dict(scores)

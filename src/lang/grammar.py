@@ -665,11 +665,11 @@ SMALL_GRAMMAR_FUNCTIONS = {
 SmallGrammar = DefaultGrammar.subset(SMALL_GRAMMAR_FUNCTIONS)
 
 # ============================================================================
-# TinyGrammar: a leaner, meaningful subset of DefaultGrammar
+# Various flavours of small grammars
 # ============================================================================
 
 TinyGrammar = DefaultGrammar.subset({'-', 'concat', 'cons', 'drop', 'length', 'take'})
-
+MicroGrammar = DefaultGrammar.subset({'cons', 'product', 'repeat', 'sum'})
 
 # ============================================================================
 # Grammar registry: resolve a Grammar by name (for CLI --grammar flags)
@@ -679,6 +679,7 @@ GRAMMARS: dict[str, Grammar] = {
     'default': DefaultGrammar,
     'small': SmallGrammar,
     'tiny': TinyGrammar,
+    'micro': MicroGrammar
 }
 
 

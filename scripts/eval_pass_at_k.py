@@ -122,6 +122,10 @@ def main():
     parser.add_argument('--decode-batch-size', type=int, default=64)
     parser.add_argument('--device', type=str,
                         default='cuda' if torch.cuda.is_available() else 'cpu')
+    parser.add_argument('--constrain', action='store_true',
+                        help='Mask each decode step to tokens that can still '
+                             'complete a well-formed program, which removes the '
+                             'malformed outcome by construction')
     parser.add_argument('--seed', type=int, default=0,
                         help='Seeds the sampler, so a rerun draws the same k programs')
     parser.add_argument('--json', type=str, default=None,
@@ -160,6 +164,7 @@ def main():
         print(f"\n=== {name} ({path.name}, epoch {ckpt.get('epoch')}, "
               f"mode={saved_args.mode}) ===")
         print(f"  {n_programs:,} val programs, k={args.k}, T={args.temperature}"
+              f"{', constrained' if args.constrain else ''}"
               + (f", stored greedy val accuracy: {greedy:.2%}"
                  if isinstance(greedy, (int, float)) else ""))
 
@@ -168,6 +173,7 @@ def main():
             max_program_tokens=args.max_program_tokens,
             max_examples=args.val_examples,
             decode_batch_size=args.decode_batch_size,
+            constrain=args.constrain,
         )
         for line in format_metrics(metrics):
             print(f"  {line}")
@@ -180,7 +186,8 @@ def main():
 
     if args.json:
         out = {'config': {'k': args.k, 'temperature': args.temperature,
-                          'seed': args.seed, 'val_examples': args.val_examples},
+                          'seed': args.seed, 'val_examples': args.val_examples,
+                          'constrain': args.constrain},
                'runs': {name: {**entry, 'metrics': _jsonable(entry['metrics'])}
                         for name, entry in report.items()}}
         Path(args.json).write_text(json.dumps(out, indent=2))

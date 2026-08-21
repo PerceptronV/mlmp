@@ -1,6 +1,8 @@
 """CLI for the primitive subset search.
 
     python -m src.lang.subset_search --stage 0            # proxy sweep
+    python -m src.lang.subset_search --stage 0 --sizes 4   # 4-primitive subsets
+    python -m src.lang.subset_search --stage 0 --sizes 4 --pool all --max-size 7
     python -m src.lang.subset_search --stage 1 --top-n 200
     python -m src.lang.subset_search --stage 2
 
@@ -13,6 +15,7 @@ Type-restricted search (separate --out; stages 1-2 inherit the restriction):
 import argparse
 
 from . import search
+from .pool import resolve_pool
 
 
 def main(argv=None):
@@ -21,6 +24,14 @@ def main(argv=None):
     parser.add_argument('--out', default='outputs/subset_search')
     parser.add_argument('--max-size', type=int, default=None,
                         help='enumeration size bound (default: 7 stage 0, 10 stage 1)')
+    parser.add_argument('--pool', default='curated',
+                        help="primitives to search over: 'curated' (the 18 in "
+                             "pool.POOL_NAMES, default), 'all' (every "
+                             "DefaultGrammar primitive), or a comma-separated "
+                             "list of names")
+    parser.add_argument('--sizes', default='5,6',
+                        help='comma-separated subset cardinalities to score in '
+                             'stage 0 (default 5,6)')
     parser.add_argument('--top-n', type=int, default=200)
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--workers', type=int, default=None)
@@ -35,6 +46,8 @@ def main(argv=None):
     if args.stage == 0:
         scores = search.run_stage0(
             args.out, max_size=args.max_size if args.max_size is not None else 7,
+            sizes=tuple(int(s) for s in args.sizes.split(',') if s.strip()),
+            pool_names=resolve_pool(args.pool),
             target_type=args.target_type,
         )
         print(f"Stage 0 done: {len(scores)} subsets scored; "
