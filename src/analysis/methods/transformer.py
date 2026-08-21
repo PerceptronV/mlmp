@@ -96,6 +96,7 @@ class TransformerMethod(Method):
 
     def _load_model(self) -> None:
         # Lazy imports keep ``import src.analysis`` torch-free for CSV-only runs.
+        from ...lang.grammar import get_grammar
         from ...models.seq2seq import Seq2SeqTransformer
         from ...train import _easy_shuffle_k_for_epoch
 
@@ -113,10 +114,14 @@ class TransformerMethod(Method):
                 f"{self.name}: checkpoint mode is {ckpt_mode!r} but config says {self.mode!r}"
             )
 
-        # Single source of truth for tokenisation / decode / execute. We don't
-        # need a corpus here — ``ProgramIO`` is corpus-free; only the grammar
-        # and tokeniser matter for inference.
-        self._io = ProgramIO(exec_timeout=self.exec_timeout)
+        # Single source of truth for tokenisation / decode / execute. Match the
+        # checkpoint's training grammar so the vocabulary and output head have
+        # the same shape and decoded function names use the right grammar.
+        grammar_name = str(args.get("grammar", "default"))
+        self._io = ProgramIO(
+            grammar=get_grammar(grammar_name),
+            exec_timeout=self.exec_timeout,
+        )
         n_tokens = len(self._io.tokeniser.vocab)  # type: ignore[union-attr]
 
         model = Seq2SeqTransformer(
@@ -151,8 +156,8 @@ class TransformerMethod(Method):
         va_s = f"{va:.4f}" if isinstance(va, (int, float)) else "n/a"
         vl_s = f"{vl:.4f}" if isinstance(vl, (int, float)) else "n/a"
         logger.info(
-            "[%s] loaded %s ckpt_select=%s epoch=%d val_acc=%s val_loss=%s",
-            self.name, ckpt_path.name, self.ckpt_select, epoch, va_s, vl_s,
+            "[%s] loaded %s ckpt_select=%s epoch=%d grammar=%s val_acc=%s val_loss=%s",
+            self.name, ckpt_path.name, self.ckpt_select, epoch, grammar_name, va_s, vl_s,
         )
 
         if self.mode == "easy-symbol-shuffling":
