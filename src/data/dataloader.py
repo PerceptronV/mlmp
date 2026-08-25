@@ -24,6 +24,11 @@ class ProgramDataset(Dataset):
     (each entry ``{"program": str, "type": str, "size": int}``) and, for each
     item, samples I/O pairs on the fly via ``RuleIOSampler``.
 
+    ``max_program_length`` (in decoder tokens) drops long programs before
+    anything else happens — split, subsample, indexing and per-episode
+    sampling all see the filtered corpus. Train and val datasets must be built
+    with the same value or a holdout split stops being a partition.
+
     Each program is seen ``n_io_views`` times across the dataset, with
     ``n_io_shown`` ranging from ``min_n_io_shown..max_n_io_shown``. The same
     program always samples the same I/O pool (seed = ``base_seed * 1000003 +
@@ -70,6 +75,7 @@ class ProgramDataset(Dataset):
         mode: TrainingMode = "in-weight",
         filter_empty_io: bool = False,
         max_programs: int | None = None,
+        max_program_length: int | None = None,
         grammar: Grammar = DefaultGrammar,
         holdout: int | None = None,
         split: str = "train",
@@ -92,6 +98,7 @@ class ProgramDataset(Dataset):
         self.n_io_per_program = n_io_per_program
         self.min_n_io_shown = min_n_io_shown
         self.mode: TrainingMode = mode
+        self.max_program_length = max_program_length
         self.fn_names: list[str] = self.io.fn_names
 
         if isinstance(corpus_files, Path):
@@ -107,6 +114,26 @@ class ProgramDataset(Dataset):
                 entries = [e for e in entries if e.get("type") == type_filter]
             self.programs.extend(entries)
         assert len(self.programs) > 0, f"No programs loaded from {corpus_files}"
+
+        if max_program_length is not None:
+            # Length-filter FIRST, so the holdout split, the max_programs
+            # subsample, indexing and every per-episode randomisation below run
+            # over the kept programs only. Long targets are both hard to learn
+            # and, past ``--max-program-tokens`` (80 by default), impossible to
+            # emit at eval time.
+            n_before = len(self.programs)
+            self.programs = [
+                e for e in self.programs
+                if self._within_length(e["program"], max_program_length)
+            ]
+            n_after = len(self.programs)
+            assert n_after > 0, (
+                f"max_program_length={max_program_length} filtered out every "
+                f"program in {corpus_files}"
+            )
+            print(f"Length filter (<= {max_program_length} tokens): kept "
+                  f"{n_after:,} / {n_before:,} programs "
+                  f"({n_after / n_before:.2%}); dropped {n_before - n_after:,}")
 
         if holdout:
             # Deterministic held-out split: two datasets constructed over the
@@ -158,6 +185,17 @@ class ProgramDataset(Dataset):
 
         if filter_empty_io:
             self._filter_empty_io_programs()
+
+    def _within_length(self, program_str: str, max_len: int) -> bool:
+        """Whether ``program_str`` tokenises to at most ``max_len`` tokens.
+
+        Every token contributes at least one character, so a string no longer
+        than the cap is under it without paying for the lexer — which matters
+        when the check runs over a multi-million-program corpus at startup.
+        """
+        if len(program_str) <= max_len:
+            return True
+        return len(self.tokeniser.tokenise_program(program_str)) <= max_len
 
     @property
     def max_n_io_shown(self) -> int:

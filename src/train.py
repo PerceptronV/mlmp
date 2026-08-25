@@ -357,6 +357,30 @@ def _best_outcome(a, b):
     return max(a, b, key=rank)
 
 
+def decode_best_of_k(model, dataset, indices, device, k=1, temperature=1.0,
+                     max_program_tokens=80, decode_batch_size=64,
+                     constrain=False):
+    """Decode each index ``k`` times, keeping each one's best outcome.
+
+    Returns ``(best, accuracy_at_k)``: one merged outcome tuple per index (see
+    :func:`_best_outcome`), and the best-of-first-j accuracy for j = 1..k.
+    ``k=1`` with ``temperature=0`` is a plain greedy pass. Shared by
+    :func:`compute_pass_at_k_metrics` and scripts that need the per-program
+    outcomes rather than the aggregate (e.g. accuracy binned by target length).
+    """
+    best = None
+    accuracy_at_k = []
+    for j in range(k):
+        results = _decode_and_classify(model, dataset, indices, device,
+                                       max_program_tokens, decode_batch_size,
+                                       desc=f"Sample {j + 1}/{k}" if k > 1 else "Decoding",
+                                       temperature=temperature,
+                                       constrain=constrain)
+        best = results if best is None else list(map(_best_outcome, best, results))
+        accuracy_at_k.append(sum(r[0] for r in best) / len(best) if best else 0.0)
+    return best, accuracy_at_k
+
+
 def compute_pass_at_k_metrics(model, val_dataset, device, k=8, temperature=1.0,
                               max_program_tokens=80, max_examples=None,
                               decode_batch_size=64, constrain=False):
@@ -378,17 +402,9 @@ def compute_pass_at_k_metrics(model, val_dataset, device, k=8, temperature=1.0,
     """
     assert k >= 1, f"k must be >= 1, got {k}"
     indices, views, n_views, varies = _val_view_indices(val_dataset, max_examples)
-
-    best = None
-    accuracy_at_k = []
-    for j in range(k):
-        results = _decode_and_classify(model, val_dataset, indices, device,
-                                       max_program_tokens, decode_batch_size,
-                                       desc=f"Sample {j + 1}/{k}",
-                                       temperature=temperature,
-                                       constrain=constrain)
-        best = results if best is None else list(map(_best_outcome, best, results))
-        accuracy_at_k.append(sum(r[0] for r in best) / len(best) if best else 0.0)
+    best, accuracy_at_k = decode_best_of_k(
+        model, val_dataset, indices, device, k, temperature,
+        max_program_tokens, decode_batch_size, constrain)
 
     metrics = _aggregate_outcomes(best, views, n_views, varies)
     metrics['accuracy_at_k'] = accuracy_at_k
@@ -547,8 +563,8 @@ def build_val_dataset(args):
     ``args`` is the training argparse Namespace, or a SimpleNamespace over a
     checkpoint's stored ``args`` dict — offline evaluation (scripts/
     eval_pass_at_k.py, scripts/backfill_val_accuracy.py) therefore rebuilds
-    exactly the val set the run was scored against, grammar and holdout split
-    included. Missing keys fall back to the ``train()`` defaults so
+    exactly the val set the run was scored against, grammar, holdout split and
+    length filter included. Missing keys fall back to the ``train()`` defaults so
     checkpoints predating a flag still load.
     """
     if getattr(args, 'dataset', 'program') == 'inverse-mlc':
@@ -573,6 +589,7 @@ def build_val_dataset(args):
         min_n_io_shown=args.min_n_io_shown,
         mode=args.mode,
         filter_empty_io=args.filter_empty_io,
+        max_program_length=getattr(args, 'max_program_length', None),
         grammar=get_grammar(getattr(args, 'grammar', 'default')),
         holdout=holdout,
         split='val' if holdout else 'train',
@@ -671,6 +688,13 @@ def train():
     parser.add_argument('--easy-shuffle-ramp-epochs', type=int, default=None,
                         help='[easy-symbol-shuffling only] Epochs over which K linearly ramps '
                              'from k_start to k_end. None = args.epochs (ramp over the whole run).')
+    parser.add_argument('--max-program-length', type=int, default=None,
+                        help='Drop programs whose target is longer than N decoder '
+                             'tokens, from BOTH the train and val corpora, before '
+                             'any split / subsample / indexing. 60 is a reasonable '
+                             'cap: it is a no-op on the enum corpus (max 30) and '
+                             'keeps ~60%% of the RL corpus, whose tail runs past the '
+                             '80-token decode budget and so can never be emitted.')
     parser.add_argument('--max-train-programs', type=int, default=None,
                         help='Cap the training corpus to N randomly-sampled programs. '
                              'Subsampling uses --data-seed for reproducibility. Applies to '
@@ -797,6 +821,7 @@ def train():
             mode=args.mode,
             filter_empty_io=args.filter_empty_io,
             max_programs=args.max_train_programs,
+            max_program_length=args.max_program_length,
             grammar=grammar,
             holdout=holdout,
             split='train',
