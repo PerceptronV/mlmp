@@ -275,3 +275,17 @@ def test_cache_can_be_disabled(tmp_path, monkeypatch, capsys):
     assert "reusing cached verdict" not in capsys.readouterr().out
     assert not list((tmp_path / "cache" / "io_pools").glob("*.npy")) \
         if (tmp_path / "cache" / "io_pools").exists() else True
+
+
+def test_worker_count_respects_the_scheduler_allocation(tmp_path, monkeypatch):
+    """os.cpu_count() reports the node, not the job: auto-selection must not
+    fork one worker per machine core inside an 8-CPU Slurm allocation."""
+    path, _, _ = _io_corpus(tmp_path)
+    ds = ProgramDataset(corpus_files=path, n_io_per_program=4)
+
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    assert ds._available_cpus() == 8
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "not-a-number")
+    assert ds._available_cpus() >= 1          # falls through, never crashes
+    monkeypatch.delenv("SLURM_CPUS_PER_TASK")
+    assert ds._available_cpus() >= 1

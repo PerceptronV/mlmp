@@ -146,13 +146,20 @@ class ProgramDataset(Dataset):
         self.corpus_files = corpus_files
 
         self.programs: list[dict] = []
-        for path in corpus_files:
+        pbar = tqdm(corpus_files, desc="Loading corpora", unit="file")
+        for path in pbar:
             assert path.exists(), f"Corpus file not found: {path}"
+            # Reading + parsing a 1.9 GB corpus takes minutes; say which file is
+            # in flight so the wait isn't silent. Progress is per file rather
+            # than per byte because json.load streams straight into objects —
+            # materialising the text first to measure it would double peak RSS.
+            pbar.set_postfix_str(f"{path.name} ({path.stat().st_size / 1e9:.2f} GB)")
             with open(path, "r") as f:
                 entries = json.load(f)
             if type_filter is not None:
                 entries = [e for e in entries if e.get("type") == type_filter]
             self.programs.extend(entries)
+            pbar.set_postfix_str(f"{path.name}: {len(entries):,} programs")
         assert len(self.programs) > 0, f"No programs loaded from {corpus_files}"
 
         if max_program_length is not None:
@@ -163,7 +170,8 @@ class ProgramDataset(Dataset):
             # emit at eval time.
             n_before = len(self.programs)
             self.programs = [
-                e for e in self.programs
+                e for e in tqdm(self.programs, unit="prog",
+                                desc=f"Length filter (<= {max_program_length} tokens)")
                 if self._within_length(e["program"], max_program_length)
             ]
             n_after = len(self.programs)
@@ -408,6 +416,23 @@ class ProgramDataset(Dataset):
         return kept
 
     @staticmethod
+    def _available_cpus() -> int:
+        """CPUs this process may actually use.
+
+        ``os.cpu_count()`` reports the machine, not the allocation: under
+        ``sbatch --cpus-per-task=8`` on a 64-core node it would have us fork 64
+        workers into 8 CPUs. Prefer what the scheduler granted, then the
+        process's CPU affinity, and only fall back to the machine count.
+        """
+        slurm = os.environ.get("SLURM_CPUS_PER_TASK")
+        if slurm and slurm.isdigit() and int(slurm) > 0:
+            return int(slurm)
+        try:
+            return len(os.sched_getaffinity(0))   # Linux; respects cgroups/taskset
+        except AttributeError:
+            return os.cpu_count() or 1
+
+    @staticmethod
     def _spawn_without_importable_main() -> bool:
         import multiprocessing as mp
         if mp.get_start_method(allow_none=True) not in (None, "spawn"):
@@ -423,6 +448,7 @@ class ProgramDataset(Dataset):
         """
         programs = [p["program"] for p in self.programs]
         seeds = [self.seed * 1000003 + i for i in range(len(programs))]
+        chosen_by = "--io-workers" if workers is not None else "auto"
         if workers is None:
             # Starting workers costs more than it saves on a small corpus, and
             # far more under 'spawn' (macOS/Windows), where each worker boots a
@@ -431,8 +457,18 @@ class ProgramDataset(Dataset):
             # 'fork' (the Linux default, i.e. the cluster) is near-free.
             import multiprocessing as mp
             per_worker = 2_000 if mp.get_start_method(allow_none=True) == "fork" else 50_000
-            workers = min(os.cpu_count() or 1, len(programs) // per_worker + 1)
+            workers = min(self._available_cpus(), len(programs) // per_worker + 1)
         workers = max(1, workers)
+
+        import multiprocessing as mp
+        method = mp.get_start_method(allow_none=True) or "default"
+        if self._custom_sampler and workers > 1:
+            print("A custom io_sampler can't be rebuilt in a worker; "
+                  "sampling I/O pools in one process.")
+        print(f"Sampling I/O pools for {len(programs):,} programs: {workers} "
+              f"worker{'' if workers == 1 else 's'} ({chosen_by}"
+              + (f", {self._available_cpus()} CPUs available, start method "
+                 f"'{method}'" if chosen_by == "auto" else "") + ")")
         desc = f"Sampling I/O pools ({workers} proc)" if workers > 1 else "Sampling I/O pools"
 
         if workers > 1 and self._spawn_without_importable_main():
