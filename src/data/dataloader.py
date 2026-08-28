@@ -1,7 +1,11 @@
+import hashlib
 import json
+import os
 import random
 from pathlib import Path
 from typing import Literal
+
+import numpy as np
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -17,6 +21,24 @@ TRAINING_MODES: tuple[TrainingMode, ...] = (
 )
 
 
+# Per-worker sampler for the parallel I/O-pool pass. Built once per process
+# rather than pickled: RuleIOSampler holds a JITCompiler and a compiled-function
+# cache, neither of which survives the process boundary.
+_WORKER_SAMPLER: RuleIOSampler | None = None
+
+
+def _init_pool_worker(n_io_per_program: int) -> None:
+    global _WORKER_SAMPLER
+    _WORKER_SAMPLER = RuleIOSampler(num_io_pairs=n_io_per_program)
+
+
+def _pool_size_worker(task: tuple[str, int]) -> int:
+    """Only the pool *size* crosses back — the pools themselves are gigabytes."""
+    program_str, seed = task
+    assert _WORKER_SAMPLER is not None
+    return len(_WORKER_SAMPLER.sample(program_str, random.Random(seed)))
+
+
 class ProgramDataset(Dataset):
     """Corpus-A program dataset.
 
@@ -24,10 +46,21 @@ class ProgramDataset(Dataset):
     (each entry ``{"program": str, "type": str, "size": int}``) and, for each
     item, samples I/O pairs on the fly via ``RuleIOSampler``.
 
-    ``max_program_length`` (in decoder tokens) drops long programs before
-    anything else happens — split, subsample, indexing and per-episode
-    sampling all see the filtered corpus. Train and val datasets must be built
-    with the same value or a holdout split stops being a partition.
+    Two corpus filters run before anything else — split, subsample, indexing
+    and per-episode sampling all see the filtered corpus, and train and val
+    must be built with the same values or a holdout split stops being a
+    partition:
+
+    ``max_program_length``
+        drops programs whose target exceeds N decoder tokens.
+    ``min_io_pairs``
+        drops programs whose sampled I/O pool is smaller than N pairs.
+        ``min_io_pairs=n_io_per_program`` keeps only programs that can fill
+        every view, i.e. "train on programs with all N examples", while
+        ``min_io_pairs=1`` just drops the programs with no usable I/O at all.
+        Deciding it costs one pass of program execution over the corpus, so it
+        runs across ``io_workers`` processes and its verdict is cached on disk
+        (disable with ``io_pool_cache=False``; relocate with ``MLMP_CACHE_DIR``).
 
     Each program is seen ``n_io_views`` times across the dataset, with
     ``n_io_shown`` ranging from ``min_n_io_shown..max_n_io_shown``. The same
@@ -73,7 +106,9 @@ class ProgramDataset(Dataset):
         type_filter: str | None = "list[int]",
         io_sampler: RuleIOSampler | None = None,
         mode: TrainingMode = "in-weight",
-        filter_empty_io: bool = False,
+        min_io_pairs: int | None = None,
+        io_workers: int | None = None,
+        io_pool_cache: bool = True,
         max_programs: int | None = None,
         max_program_length: int | None = None,
         grammar: Grammar = DefaultGrammar,
@@ -85,6 +120,10 @@ class ProgramDataset(Dataset):
             f"min_n_io_shown={min_n_io_shown} must be in [1, n_io_per_program={n_io_per_program}]"
         )
         assert mode in TRAINING_MODES, f"mode={mode!r} must be one of {TRAINING_MODES}"
+        assert min_io_pairs is None or 1 <= min_io_pairs <= n_io_per_program, (
+            f"min_io_pairs={min_io_pairs} must be in [1, n_io_per_program={n_io_per_program}]"
+        )
+        min_pairs = min_io_pairs
         # Single source of truth for tokenisation, symbol-shuffling preamble
         # sampling, decode, and program execution. ``ProgramDataset`` is a thin
         # wrapper around an instance of it (plus corpus iteration / IO-sampler
@@ -99,6 +138,7 @@ class ProgramDataset(Dataset):
         self.min_n_io_shown = min_n_io_shown
         self.mode: TrainingMode = mode
         self.max_program_length = max_program_length
+        self.min_io_pairs = min_pairs
         self.fn_names: list[str] = self.io.fn_names
 
         if isinstance(corpus_files, Path):
@@ -135,6 +175,24 @@ class ProgramDataset(Dataset):
                   f"{n_after:,} / {n_before:,} programs "
                   f"({n_after / n_before:.2%}); dropped {n_before - n_after:,}")
 
+        self._custom_sampler = io_sampler is not None
+        self.io_sampler = io_sampler or RuleIOSampler(num_io_pairs=n_io_per_program)
+
+        # A program's I/O pool is seeded on its position, so filtering would
+        # otherwise re-seed every survivor and hand it a *different* pool than
+        # the one it was selected on. Carrying the pre-filter index through the
+        # split and subsample below keeps each pool exactly what the filter saw
+        # — and means the filter only has to remember one int per program
+        # instead of the pool itself (~8 GB at corpus scale).
+        self._pool_seed_idx: np.ndarray | None = None
+        if min_pairs is not None:
+            self._pool_seed_idx = self._filter_by_io_pool(
+                min_pairs, io_workers,
+                cache_key=self._io_pool_cache_key(
+                    corpus_files, type_filter, max_program_length, min_pairs)
+                if io_pool_cache else None,
+            )
+
         if holdout:
             # Deterministic held-out split: two datasets constructed over the
             # same corpus_files with the same (holdout, split_seed) but
@@ -149,6 +207,8 @@ class ProgramDataset(Dataset):
             keep = order[:holdout] if split == "val" else order[holdout:]
             keep.sort()  # preserve enumeration order within the split
             self.programs = [self.programs[i] for i in keep]
+            if self._pool_seed_idx is not None:
+                self._pool_seed_idx = self._pool_seed_idx[keep]
             print(f"Holdout split '{split}': {len(self.programs):,} programs "
                   f"(holdout={holdout:,}, split_seed={split_seed})")
 
@@ -157,11 +217,15 @@ class ProgramDataset(Dataset):
             # enumeration order — taking the first N would skew toward small programs.
             import random as _random
             n_before = len(self.programs)
-            _random.Random(seed).shuffle(self.programs)
-            self.programs = self.programs[:max_programs]
+            # Permute indices rather than the list itself so the pool seeds can
+            # follow; same RNG stream, so the selected subset is unchanged.
+            order = list(range(n_before))
+            _random.Random(seed).shuffle(order)
+            order = order[:max_programs]
+            self.programs = [self.programs[i] for i in order]
+            if self._pool_seed_idx is not None:
+                self._pool_seed_idx = self._pool_seed_idx[order]
             print(f"Subsampled corpus: {len(self.programs):,} / {n_before:,} programs (cap={max_programs:,}, seed={seed})")
-
-        self.io_sampler = io_sampler or RuleIOSampler(num_io_pairs=n_io_per_program)
 
         # Re-export the special-token ids that downstream code reads off the
         # dataset directly (e.g. ``train.py`` reads ``dataset.start`` /
@@ -182,9 +246,6 @@ class ProgramDataset(Dataset):
         # exactly like ``symbol-shuffling``). The training loop is expected
         # to mutate this between epochs to ramp difficulty.
         self.n_permuted: int | None = None
-
-        if filter_empty_io:
-            self._filter_empty_io_programs()
 
     def _within_length(self, program_str: str, max_len: int) -> bool:
         """Whether ``program_str`` tokenises to at most ``max_len`` tokens.
@@ -209,9 +270,16 @@ class ProgramDataset(Dataset):
         return len(self.programs) * self.n_io_views
 
     def _get_io_pairs(self, prog_idx: int) -> list[tuple[list[int], list[int]]]:
-        """Sample (and cache) the I/O pool for a given program."""
+        """Sample (and cache) the I/O pool for a given program.
+
+        Seeded on the program's pre-filter position when the I/O filter ran, so
+        a program keeps the pool its pool size was judged on no matter how the
+        corpus was later split or subsampled.
+        """
         if prog_idx not in self._io_cache:
-            rng = random.Random(self.seed * 1000003 + prog_idx)
+            seed_idx = (int(self._pool_seed_idx[prog_idx])
+                        if self._pool_seed_idx is not None else prog_idx)
+            rng = random.Random(self.seed * 1000003 + seed_idx)
             self._io_cache[prog_idx] = self.io_sampler.sample(
                 self.programs[prog_idx]["program"], rng
             )
@@ -239,43 +307,156 @@ class ProgramDataset(Dataset):
                 return cur
         raise RuntimeError("No programs in the corpus have non-empty IO pools")
 
-    def _filter_empty_io_programs(self) -> None:
-        """Drop programs whose IO sampler returns an empty pool.
+    # ------------------------------------------------------------------
+    # I/O pool filter
+    # ------------------------------------------------------------------
+    def _io_pool_cache_key(self, corpus_files, type_filter, max_program_length,
+                           min_pairs) -> str:
+        """Fingerprint of everything that determines the filter's verdict.
 
-        Pre-samples each program's IO pool with the same seed scheme that
-        ``_get_io_pairs`` would use, removes programs with no valid pairs, and
-        keeps the surviving pools warm in ``_io_cache`` (re-keyed against the
-        post-filter indices) so the work isn't repeated on first access.
+        Corpus identity (path, size, mtime) plus every setting that changes
+        which programs are sampled or with what seed. Deliberately excludes
+        the holdout split, ``max_programs`` and ``split_seed``: those run
+        *after* the filter, so runs that differ only in them share a cache
+        entry.
+        """
+        parts = [
+            f"{Path(f).resolve()}:{Path(f).stat().st_size}:{Path(f).stat().st_mtime_ns}"
+            for f in corpus_files
+        ]
+        parts += [f"type={type_filter}", f"maxlen={max_program_length}",
+                  f"seed={self.seed}", f"n_io={self.n_io_per_program}",
+                  f"min_pairs={min_pairs}"]
+        return hashlib.blake2b("|".join(parts).encode(), digest_size=16).hexdigest()
 
-        Pre-existing bug context: ``RuleIOSampler.sample`` returns ``[]`` when a
-        program fails to compile or raises on every candidate input. Such
-        programs end up with a 0-length encoder source in in-weight mode,
-        which crashes dense-path RoPE inside ``ProgramIO.decode_one``.
+    @staticmethod
+    def _io_pool_cache_dir() -> Path:
+        return Path(os.environ.get("MLMP_CACHE_DIR",
+                                   Path.home() / ".cache" / "mlmp")) / "io_pools"
+
+    def _filter_by_io_pool(self, min_pairs: int, workers: int | None = None,
+                           cache_key: str | None = None) -> np.ndarray:
+        """Drop programs whose I/O pool has fewer than ``min_pairs`` pairs.
+
+        Returns the surviving programs' pre-filter indices (which is what
+        ``_get_io_pairs`` seeds on).
+
+        ``RuleIOSampler.sample`` returns *up to* ``n_io_per_program`` pairs —
+        fewer when the program fails to compile, raises on candidate inputs, or
+        can't produce enough distinct outputs. Two thresholds matter:
+
+        ``min_pairs=1``
+            An empty pool gives a 0-length encoder source in in-weight mode,
+            which crashes dense-path RoPE inside ``ProgramIO.decode_one``.
+        ``min_pairs=n_io_per_program``
+            Every program can then fill every view, so ``n_io_shown`` really is
+            the number of pairs shown. Below it, a program with a short pool is
+            silently shown fewer pairs than its view asks for, which blurs the
+            per-``n_io_shown`` bins in validation.
+
+        Deciding this means executing every program on up to
+        ``RuleIOSampler.num_candidates`` inputs — ~0.8 ms each, so ~75 minutes
+        for corpus-a's 5.6M programs. Hence the two optimisations: the pass
+        runs across processes, and its verdict is cached on disk under
+        ``cache_key`` so resumes and reruns skip it entirely. Only pool
+        *sizes* cross the process boundary; the pools themselves are re-drawn
+        lazily during training from the same seeds, which keeps both the IPC
+        and the resident memory O(1) per program.
+
+        Runs before the split and subsample, so a holdout of N really yields N.
         """
         n_before = len(self.programs)
-        kept_programs: list[dict] = []
-        kept_cache: dict[int, list[tuple[list[int], list[int]]]] = {}
-        for prog_idx, program in enumerate(
-            tqdm(self.programs, desc="Filtering empty-IO programs")
-        ):
-            rng = random.Random(self.seed * 1000003 + prog_idx)
-            pairs = self.io_sampler.sample(program["program"], rng)
-            if pairs:
-                kept_cache[len(kept_programs)] = pairs
-                kept_programs.append(program)
-        self.programs = kept_programs
-        self._io_cache = kept_cache
-        n_after = len(self.programs)
-        n_dropped = n_before - n_after
-        pct = 100.0 * n_after / n_before if n_before else 0.0
-        print(
-            f"Filtered empty-IO programs: kept {n_after:,} / {n_before:,} "
-            f"({pct:.2f}%); dropped {n_dropped:,}"
+        cache_path = (self._io_pool_cache_dir() / f"{cache_key}.npy"
+                      if cache_key else None)
+        kept = None
+        if cache_path is not None and cache_path.exists():
+            try:
+                kept = np.load(cache_path)
+                print(f"I/O pool filter (>= {min_pairs} pairs): reusing cached "
+                      f"verdict for {len(kept):,} / {n_before:,} programs "
+                      f"({cache_path})")
+            except Exception as e:   # a truncated/corrupt cache must not be fatal
+                print(f"Ignoring unreadable I/O pool cache {cache_path}: {e}")
+                kept = None
+
+        if kept is None:
+            sizes = self._io_pool_sizes(workers)
+            kept = np.flatnonzero(sizes >= min_pairs).astype(np.int64)
+            n_short = int(((sizes > 0) & (sizes < min_pairs)).sum())
+            print(
+                f"I/O pool filter (>= {min_pairs} pairs): kept {len(kept):,} / "
+                f"{n_before:,} programs ({100.0 * len(kept) / max(1, n_before):.2f}%); "
+                f"dropped {n_before - len(kept):,} ({n_short:,} short pools, "
+                f"{n_before - len(kept) - n_short:,} empty)"
+            )
+            if cache_path is not None:
+                try:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    tmp = cache_path.with_name(cache_path.name + ".tmp")
+                    with open(tmp, "wb") as fh:   # a path would gain another .npy
+                        np.save(fh, kept)
+                    os.replace(tmp, cache_path)
+                    print(f"Cached the verdict to {cache_path}")
+                except Exception as e:  # a read-only cache dir is not fatal
+                    print(f"Could not write I/O pool cache {cache_path}: {e}")
+
+        self.programs = [self.programs[i] for i in kept]
+        assert self.programs, (
+            f"min_io_pairs={min_pairs} filtered out every program in "
+            f"{self.corpus_files}"
         )
-        # NOTE: post-filter, ``prog_idx`` in ``_get_io_pairs`` indexes the kept
-        # list, so the seed for any future re-sample (e.g. cache eviction) is
-        # tied to the program's *new* position. This is fine for training but
-        # means IO pools differ between filtered and unfiltered runs.
+        return kept
+
+    @staticmethod
+    def _spawn_without_importable_main() -> bool:
+        import multiprocessing as mp
+        if mp.get_start_method(allow_none=True) not in (None, "spawn"):
+            return False
+        import __main__
+        return getattr(__main__, "__file__", None) is None
+
+    def _io_pool_sizes(self, workers: int | None) -> np.ndarray:
+        """Pool size for every program, across ``workers`` processes.
+
+        Falls back to one process for a custom sampler (which the workers
+        can't rebuild) or a small corpus (where the fork cost dominates).
+        """
+        programs = [p["program"] for p in self.programs]
+        seeds = [self.seed * 1000003 + i for i in range(len(programs))]
+        if workers is None:
+            # Starting workers costs more than it saves on a small corpus, and
+            # far more under 'spawn' (macOS/Windows), where each worker boots a
+            # fresh interpreter and re-imports torch — measured at ~2-4 s each,
+            # which loses to a serial pass over anything under ~50k programs.
+            # 'fork' (the Linux default, i.e. the cluster) is near-free.
+            import multiprocessing as mp
+            per_worker = 2_000 if mp.get_start_method(allow_none=True) == "fork" else 50_000
+            workers = min(os.cpu_count() or 1, len(programs) // per_worker + 1)
+        workers = max(1, workers)
+        desc = f"Sampling I/O pools ({workers} proc)" if workers > 1 else "Sampling I/O pools"
+
+        if workers > 1 and self._spawn_without_importable_main():
+            # spawn (macOS/Windows default) re-imports __main__ in each worker.
+            # From a REPL, a notebook or `python - <<EOF` there is nothing to
+            # re-import, and the pool hangs on failing bootstraps rather than
+            # raising — so decide up front instead.
+            print("Parallel I/O sampling needs an importable __main__ under the "
+                  "'spawn' start method; falling back to one process.")
+            workers = 1
+
+        if workers == 1 or self._custom_sampler:
+            return np.fromiter(
+                (len(self.io_sampler.sample(p, random.Random(sd)))
+                 for p, sd in tqdm(list(zip(programs, seeds)), desc=desc)),
+                dtype=np.int32, count=len(programs))
+
+        from multiprocessing import Pool
+        with Pool(workers, initializer=_init_pool_worker,
+                  initargs=(self.n_io_per_program,)) as pool:
+            sizes = list(tqdm(
+                pool.imap(_pool_size_worker, zip(programs, seeds), chunksize=512),
+                total=len(programs), desc=desc))
+        return np.asarray(sizes, dtype=np.int32)
 
     # -------- delegates to ``self.io`` (see src/data/program_io.py) --------
     # Everything project-specific about how programs and I/O pairs become

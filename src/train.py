@@ -581,6 +581,12 @@ def build_val_dataset(args):
     if not (val_corpus or holdout):
         return None
     val_files = _parse_corpus_arg(val_corpus or args.train_corpus)
+    # ``--filter-empty-io`` was replaced by ``--min-io-pairs``; a checkpoint
+    # predating that stores the old flag, so replay it as the N=1 case to keep
+    # rebuilding the val set the run was actually scored against.
+    min_io_pairs = getattr(args, 'min_io_pairs', None)
+    if min_io_pairs is None and getattr(args, 'filter_empty_io', False):
+        min_io_pairs = 1
     print(f"Loading validation corpus from {val_files}")
     return ProgramDataset(
         corpus_files=val_files,
@@ -588,7 +594,9 @@ def build_val_dataset(args):
         n_io_per_program=args.n_io_per_program,
         min_n_io_shown=args.min_n_io_shown,
         mode=args.mode,
-        filter_empty_io=args.filter_empty_io,
+        min_io_pairs=min_io_pairs,
+        io_workers=getattr(args, 'io_workers', None),
+        io_pool_cache=getattr(args, 'io_pool_cache', True),
         max_program_length=getattr(args, 'max_program_length', None),
         grammar=get_grammar(getattr(args, 'grammar', 'default')),
         holdout=holdout,
@@ -641,7 +649,7 @@ def train():
                              '--train-corpus / --val-corpus + ProgramDataset) or '
                              '"inverse-mlc" (uses inverse-mlc/data_algebraic via '
                              'InverseMLCDataset; --train-corpus / --val-corpus / --mode '
-                             '/ --n-io-per-program / --min-n-io-shown / --filter-empty-io '
+                             '/ --n-io-per-program / --min-n-io-shown / --min-io-pairs '
                              'are ignored).')
     parser.add_argument('--inverse-mlc-episode-type', type=str, default='algebraic',
                         choices=list(INVERSE_MLC_EPISODE_TYPES),
@@ -688,6 +696,28 @@ def train():
     parser.add_argument('--easy-shuffle-ramp-epochs', type=int, default=None,
                         help='[easy-symbol-shuffling only] Epochs over which K linearly ramps '
                              'from k_start to k_end. None = args.epochs (ramp over the whole run).')
+    parser.add_argument('--min-io-pairs', type=int, default=None,
+                        help='Keep only programs whose sampled I/O pool has at '
+                             'least N pairs, in BOTH the train and val corpora, '
+                             'before any split / subsample / indexing. Set it to '
+                             '--n-io-per-program to train only on programs with a '
+                             'full set of examples (~87%% of corpus-a qualifies). '
+                             'Costs one eager sampling pass at startup, ~12 min '
+                             'per million programs. N=1 drops only the programs '
+                             'with no usable I/O at all (what --filter-empty-io '
+                             'used to do; that flag is gone).')
+    parser.add_argument('--io-workers', type=int, default=None,
+                        help='Processes for the --min-io-pairs sampling pass '
+                             '(default: one per core, or 1 for a small corpus). '
+                             'Verdicts are identical whatever this is set to.')
+    parser.add_argument('--no-io-pool-cache', dest='io_pool_cache',
+                        action='store_false',
+                        help='Recompute the --min-io-pairs verdict instead of '
+                             'reusing the cached one. The cache lives under '
+                             '$MLMP_CACHE_DIR (default ~/.cache/mlmp) and is keyed '
+                             'on the corpus files and every setting that changes '
+                             'the verdict, so it should not need disabling.')
+    parser.set_defaults(io_pool_cache=True)
     parser.add_argument('--max-program-length', type=int, default=None,
                         help='Drop programs whose target is longer than N decoder '
                              'tokens, from BOTH the train and val corpora, before '
@@ -699,12 +729,6 @@ def train():
                         help='Cap the training corpus to N randomly-sampled programs. '
                              'Subsampling uses --data-seed for reproducibility. Applies to '
                              'train only, not val.')
-    parser.add_argument('--filter-empty-io', dest='filter_empty_io', action='store_true',
-                        help='Eagerly pre-sample each program\'s IO pool at dataset init and drop '
-                             'programs that return no valid pairs. Off by default (lazy sampling); '
-                             'enabling adds a one-time pass over the corpus but prevents '
-                             'decoding from crashing on a 0-length src in in-weight mode.')
-    parser.set_defaults(filter_empty_io=False)
 
     # Model arguments
     parser.add_argument('--d-model', type=int, default=256, help='Model dimension')
@@ -819,7 +843,9 @@ def train():
             n_io_per_program=args.n_io_per_program,
             min_n_io_shown=args.min_n_io_shown,
             mode=args.mode,
-            filter_empty_io=args.filter_empty_io,
+            min_io_pairs=args.min_io_pairs,
+            io_workers=args.io_workers,
+            io_pool_cache=args.io_pool_cache,
             max_programs=args.max_train_programs,
             max_program_length=args.max_program_length,
             grammar=grammar,

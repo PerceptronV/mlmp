@@ -23,7 +23,8 @@ from src.train import build_model, build_val_dataset
 # pure cost.
 VAL_ARG_KEYS = ('dataset', 'inverse_mlc_episode_type', 'inverse_mlc_data_root',
                 'val_corpus', 'val_split', 'train_corpus', 'data_seed',
-                'n_io_per_program', 'min_n_io_shown', 'mode', 'filter_empty_io',
+                'n_io_per_program', 'min_n_io_shown', 'mode', 'min_io_pairs',
+                'filter_empty_io',  # legacy: pre---min-io-pairs checkpoints
                 'grammar', 'split_seed', 'max_program_length')
 
 
